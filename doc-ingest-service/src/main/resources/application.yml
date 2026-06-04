@@ -1,0 +1,89 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: doc-ingest-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/docplatform?currentSchema=ingest
+    username: docplatform
+    password: docplatform
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+    consumer:
+      group-id: doc-ingest-index-status
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: latest
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+mybatis-plus:
+  type-handlers-package: com.docplatform.ingest.mybatis
+  configuration:
+    map-underscore-to-camel-case: true
+    default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
+  global-config:
+    banner: false
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket: documents
+  presign-expiry-minutes: 30
+
+ingest:
+  text-normalization:
+    enabled: true
+    collapse-blank-lines: true
+    trim-lines: true
+    remove-control-chars: true
+    normalize-unicode-spaces: true
+    drop-noise-lines: true
+    min-line-length: 2
+    line-patterns-to-drop:
+      - "^\\d{1,4}$"
+      - "^第\\s*\\d+\\s*页$"
+      - "^Page\\s+\\d+\\s+of\\s+\\d+$"
+      - "^-{3,}$"
+      - "^_{3,}$"
+  allowed-mime-types: >-
+    application/pdf,
+    application/msword,
+    application/vnd.openxmlformats-officedocument.wordprocessingml.document,
+    application/vnd.ms-excel,
+    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,
+    text/plain,
+    text/markdown,
+    text/x-markdown,
+    text/x-web-markdown,
+    image/png,
+    image/jpeg,
+    image/gif,
+    image/webp,
+    image/bmp,
+    image/tiff
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

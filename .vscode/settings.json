@@ -1,0 +1,6 @@
+{
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.jdt.ls.java.home": "",
+  "maven.executable.path": "D:\\software\\maven\\apache-maven-3.9.11\\bin\\mvn.cmd",
+  "maven.terminal.useJavaHome": true
+}

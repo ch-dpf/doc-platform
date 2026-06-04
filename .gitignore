@@ -1,0 +1,17 @@
+target/
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.DS_Store
+
+# Build / local logs
+build-result.log
+COPY_DONE.txt
+logs/
+*.log
+
+# Frontend
+frontend/*/node_modules/
+frontend/*/dist/

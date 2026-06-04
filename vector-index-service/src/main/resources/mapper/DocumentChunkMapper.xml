@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.docplatform.vector.mapper.DocumentChunkMapper">
+
+    <delete id="deleteByDocId">
+        DELETE FROM vector_idx.document_chunk WHERE doc_id = #{docId}
+    </delete>
+
+    <delete id="deleteByDocIdAndVersion">
+        DELETE FROM vector_idx.document_chunk
+        WHERE doc_id = #{docId} AND version = #{version}
+    </delete>
+
+    <insert id="insertChunk">
+        INSERT INTO vector_idx.document_chunk
+        (chunk_id, doc_id, tenant_id, version, chunk_index, content, metadata, embedding)
+        VALUES
+        (#{chunkId}, #{docId}, #{tenantId}, #{version}, #{chunkIndex}, #{content},
+         <choose>
+             <when test="metadataJson != null">#{metadataJson}::jsonb,</when>
+             <otherwise>NULL,</otherwise>
+         </choose>
+         #{embedding,typeHandler=com.docplatform.vector.mybatis.PGvectorTypeHandler})
+    </insert>
+
+    <select id="search" resultType="com.docplatform.vector.dto.SearchHit">
+        SELECT chunk_id AS chunkId,
+               doc_id AS docId,
+               tenant_id AS tenantId,
+               version,
+               chunk_index AS chunkIndex,
+               content,
+               1 - (embedding &lt;=&gt; #{embedding,typeHandler=com.docplatform.vector.mybatis.PGvectorTypeHandler}) AS score
+        FROM vector_idx.document_chunk
+        WHERE tenant_id = #{tenantId}
+        <if test="docIds != null and docIds.size() &gt; 0">
+            AND doc_id IN
+            <foreach collection="docIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+        ORDER BY embedding &lt;=&gt; #{embedding,typeHandler=com.docplatform.vector.mybatis.PGvectorTypeHandler}
+        LIMIT #{topK}
+    </select>
+</mapper>

@@ -1,0 +1,8 @@
+文档采集上传平台使用 Java 与 Spring Boot 实现。
+
+向量索引服务通过 Ollama 的 nomic-embed-text 模型生成 Embedding。
+
+向量数据存储在 PostgreSQL 的 pgvector 扩展中，支持语义检索。
+
+两个服务通过 Kafka 主题 doc.lifecycle.v1 解耦通信。
+
