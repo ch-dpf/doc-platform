@@ -10,6 +10,8 @@
 | `start-services.ps1` | 新窗口启动两个 Java 服务（需先构建且基础设施已就绪） |
 | `e2e-test.ps1` | 端到端冒烟：上传 → 等待索引 → 检索 → 删除 |
 
+GitHub 同步说明见 **[github-sync.md](./github-sync.md)**。
+
 ## 常用命令
 
 ```powershell
