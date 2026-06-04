@@ -9,12 +9,10 @@
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>doc-platform</name>
-    <description>Document ingest and vector index platform</description>
+    <description>Document platform: ingest, vector index and RAG</description>
 
     <modules>
-        <module>doc-platform-contract</module>
-        <module>doc-ingest-service</module>
-        <module>vector-index-service</module>
+        <module>doc-platform-service</module>
     </modules>
 
     <properties>
@@ -42,11 +40,6 @@
                 <version>${jackson.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>com.docplatform</groupId>
-                <artifactId>doc-platform-contract</artifactId>
-                <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.baomidou</groupId>

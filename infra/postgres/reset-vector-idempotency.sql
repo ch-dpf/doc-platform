@@ -1,5 +1,5 @@
 -- 索引失败后若被错误标记为已处理，可执行本脚本并重新触发索引（或重新上传文档）
-SET search_path TO vector_idx;
+SET search_path TO public;
 
 DELETE FROM processed_event;
 

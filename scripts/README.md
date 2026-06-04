@@ -1,42 +1,32 @@
 # 运维脚本说明
 
-所有脚本默认在项目根目录 `D:\workspace\doc-platform` 下执行（除特别说明外）。
-
 | 脚本 | 用途 |
 |------|------|
-| `build.ps1` | Maven 编译打包（默认 `clean package -DskipTests`） |
-| `start-infra.ps1` | **Docker Compose** 启动 Postgres / Kafka / MinIO / Ollama |
-| `infra-check.ps1` | **本机安装** 时检查五类基础设施是否就绪 |
-| `start-services.ps1` | 新窗口启动两个 Java 服务（需先构建且基础设施已就绪） |
-| `e2e-test.ps1` | 端到端冒烟：上传 → 等待索引 → 检索 → 删除 |
-
-GitHub 同步说明见 **[github-sync.md](./github-sync.md)**。
-
-## 常用命令
+| `build.ps1` | Maven 打包 `doc-platform-service` |
+| `start-infra.ps1` | Docker：Postgres / MinIO / Ollama（无 Kafka） |
+| `reset-db.ps1` | **重置数据库**：单 schema `public` 删表并重建（或重建 Postgres 容器） |
+| `infra-check.ps1` | 本机检查 Postgres、MinIO、Ollama |
+| `start-services.ps1` | 启动单体 Java 服务（8080） |
+| `e2e-test.ps1` | 端到端冒烟 |
 
 ```powershell
-# 编译（含测试）
-.\scripts\build.ps1 -Test
-
-# 仅 Docker 基础设施
+.\scripts\build.ps1
 .\scripts\start-infra.ps1
-
-# 本机基础设施检查
-.\scripts\infra-check.ps1
-
-# 启动 Java 服务
 .\scripts\start-services.ps1
-
-# 联调验证
 .\scripts\e2e-test.ps1
 ```
 
-## 数据库维护 SQL
+### 重置数据库（单 schema）
 
-位于 `infra/postgres/`：
+```powershell
+# 就地清空 public 表并执行 init.sql（Docker Postgres 已运行时）
+.\scripts\reset-db.ps1
 
-| 文件 | 说明 |
-|------|------|
-| `init.sql` | 首次初始化（Docker 挂载或手动执行） |
-| `migrate-source-url.sql` | 已有库增加 `source_url` 列与索引（一次性） |
-| `reset-vector-idempotency.sql` | 清空向量服务幂等表，用于索引失败后的重试 |
+# 删除 Postgres 容器后重建（空库自动跑 init.sql）
+.\scripts\reset-db.ps1 -RecreateContainer
+
+# 本机安装的 PostgreSQL（非 Docker）
+.\scripts\reset-db.ps1 -UseLocalPsql -SkipConfirm
+```
+
+GitHub 同步：[github-sync.md](./github-sync.md)

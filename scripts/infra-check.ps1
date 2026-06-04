@@ -1,4 +1,4 @@
-# Check doc-platform infrastructure before starting Java services
+# Check doc-platform infrastructure (no Kafka)
 $ErrorActionPreference = "Continue"
 $ok = $true
 
@@ -26,10 +26,6 @@ Test-Step "pgvector" {
     if ($v.Trim() -ne "vector") { throw "extension missing" }
 }
 
-Test-Step "Kafka" {
-    & "D:\software\Kafka\bin\windows\kafka-broker-api-versions.bat" --bootstrap-server localhost:9092 2>$null | Out-Null
-}
-
 Test-Step "MinIO" {
     $r = Invoke-WebRequest -Uri "http://localhost:9000/minio/health/live" -UseBasicParsing -TimeoutSec 5
     if ($r.StatusCode -ne 200) { throw "status $($r.StatusCode)" }
@@ -47,7 +43,7 @@ Test-Step "Ollama chat (RAG)" {
 
 Write-Host ""
 if ($ok) {
-    Write-Host "All checks passed. Start Java services next."
+    Write-Host "All checks passed. Start doc-platform-service next."
     exit 0
 } else {
     Write-Host "Some checks failed. Fix infra before starting Java."

@@ -39,12 +39,72 @@ git push -u origin main
 
 ### SSH（可选）
 
+**若出现 `Permission denied (publickey)`**：说明本机还没有密钥或未添加到 GitHub。
+
 ```powershell
+# 1. 生成密钥（一路回车即可，也可自设密码）
+ssh-keygen -t ed25519 -C "your_email@example.com" -f $env:USERPROFILE\.ssh\id_ed25519
+
+# 2. 查看公钥，复制整行
+Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub
+
+# 3. GitHub → Settings → SSH and GPG keys → New SSH key → 粘贴公钥 → Save
+
+# 4. 测试
+ssh -T git@github.com
+
+# 5. 推送
+cd D:\workspace\doc-platform
 git remote set-url origin git@github.com:ch-dpf/doc-platform.git
 git push -u origin main
 ```
 
-需先在 GitHub 添加本机 SSH 公钥（Settings → SSH and GPG keys）。
+### 常见错误
+
+| 报错 | 处理 |
+|------|------|
+| `Permission denied (publickey)` | 按上文生成密钥并添加到 GitHub，或改用 HTTPS |
+| `Repository not found` | 先在 GitHub 创建空仓库 `doc-platform`，或检查账号/仓库名 |
+| `OpenSSL SSL_read: Connection was reset` (errno 10054) | 见下文 **「HTTPS 连接被重置」** |
+| `Failed to connect ... Timed out` | 检查代理/VPN，或为 Git 配置 `http.proxy` |
+| `Are you sure you want to continue connecting` | 输入 **yes**（首次连接正常） |
+
+### HTTPS 连接被重置（浏览器能开 GitHub，git push 失败）
+
+浏览器往往走**系统代理**，Git 默认**不走代理**，且旧版 Git 使用 OpenSSL，容易被中断。
+
+**按顺序尝试：**
+
+```powershell
+# 1) 让 Git 使用 Windows 系统证书栈（常能缓解 SSL 问题）
+git config --global http.sslBackend schannel
+
+# 2) 若本机系统代理为 127.0.0.1:7890（Clash 等常见端口）：
+git config --global http.proxy http://127.0.0.1:7890
+git config --global https.proxy http://127.0.0.1:7890
+# 本仓库环境已配置上述三项 + http.sslBackend=schannel
+
+# 3) 可选：强制 HTTP/1.1
+git config --global http.version HTTP/1.1
+
+# 4) 再推送
+cd D:\workspace\doc-platform
+git push -u origin main
+```
+
+取消代理（不需要时）：
+
+```powershell
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+```
+
+**仍失败时：**
+
+- 升级 [Git for Windows](https://git-scm.com/download/win)（建议 ≥ 2.43）
+- 在代理工具中开启 **TUN/系统代理**，或允许 `git.exe` 走代理
+- 改用 **SSH**（配置好公钥后有时比 HTTPS 稳定）：`git remote set-url origin git@github.com:ch-dpf/doc-platform.git`
+- 临时方案：用 [GitHub Desktop](https://desktop.github.com/) 打开本目录推送（会跟随系统代理）
 
 ## 三、后续更新
 

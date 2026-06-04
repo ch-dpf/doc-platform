@@ -23,5 +23,4 @@ Write-Host "mvn $($goals -join ' ')"
 & $Mvn @goals
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Build OK. JARs:"
-Write-Host "  doc-ingest-service\target\doc-ingest-service-1.0.0-SNAPSHOT.jar"
-Write-Host "  vector-index-service\target\vector-index-service-1.0.0-SNAPSHOT.jar"
+Write-Host "  doc-platform-service\target\doc-platform-service-1.0.0-SNAPSHOT.jar"
