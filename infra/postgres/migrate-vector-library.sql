@@ -41,7 +41,7 @@ VALUES (
     'demo',
     '默认知识库',
     '迁移生成的默认知识库',
-    '{"storageType":"minio","metadataDbType":"postgresql","embeddingProvider":"ollama","embeddingDimension":768,"chunkingStrategy":"paragraph-first","chunkSize":600,"chunkOverlap":100}'::jsonb
+    '{"metadataDbType":"postgresql","embeddingProvider":"ollama","embeddingDimension":768,"chunkingStrategy":"paragraph-first","chunkSize":600,"chunkOverlap":100}'::jsonb
 )
 ON CONFLICT (library_id) DO NOTHING;
 

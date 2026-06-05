@@ -2,7 +2,7 @@
 
 | 脚本 | 用途 |
 |------|------|
-| `build.ps1` | Maven 打包 `doc-platform-service` |
+| `build.ps1` | Maven 打包 `knowbase-service` |
 | `start-infra.ps1` | Docker：Postgres / MinIO / Ollama（无 Kafka） |
 | `reset-db.ps1` | **重置数据库**：单 schema `public` 删表并重建（或重建 Postgres 容器） |
 | `infra-check.ps1` | 本机检查 Postgres、MinIO、Ollama |

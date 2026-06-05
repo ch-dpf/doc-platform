@@ -1,10 +1,10 @@
-# doc-platform
+# 知库（knowbase）
 
-单体文档平台：**文档采集入库**、**向量索引检索** 与 **RAG 问答** 统一在 `doc-platform-service`（端口 **8080**）；前端统一为 `doc-platform-ui`（端口 **5173**）。
+企业知识库平台：**文档采集入库**、**向量索引检索** 与 **RAG 智能问答** 统一在 `knowbase-service`（端口 **8080**）；前端统一为 `knowbase-ui`（端口 **5173**）。
 
 > 原 `doc-ingest-service` + `vector-index-service` + Kafka + `doc-platform-contract` 已合并为进程内直接调用，功能与 API 路径保持不变。
 
-默认工作目录：`D:\workspace\doc-platform`
+默认工作目录：仓库根目录（克隆路径可为 `doc-platform` 或 `knowbase`）
 
 ---
 
@@ -21,7 +21,7 @@
 | 文本解析 | **Apache Tika** |
 | Embedding | **Ollama `nomic-embed-text`** |
 | RAG 对话 | **Ollama `llama3.2`** |
-| 前端 | **Vue 3 + Vite + Element Plus**（`doc-platform-ui`） |
+| 前端 | **Vue 3 + Vite + Element Plus**（`knowbase-ui`） |
 
 **不再依赖**：Kafka、`doc-platform-contract` 独立模块。
 
@@ -31,12 +31,51 @@
 
 | 路径 | 说明 |
 |------|------|
-| `doc-platform-service/` | 单体后端（`com.docplatform.ingest.*` + `com.docplatform.vector.*`） |
-| `frontend/doc-platform-ui/` | 统一前端控制台 |
+| `knowbase-service/` | 单体后端（`com.knowbase.ingest.*` + `com.knowbase.vector.*`） |
+| `frontend/knowbase-ui/` | 统一前端控制台 |
 | `infra/postgres/` | 数据库初始化与迁移 SQL |
 | `scripts/` | 构建、基础设施、启动、E2E |
 
-包内衔接层：`com.docplatform.platform.DocumentIndexCoordinator`（替代原 Kafka 事件总线）。
+包内衔接层：`com.knowbase.platform.DocumentIndexCoordinator`（替代原 Kafka 事件总线）。
+
+---
+
+## 功能分期
+
+### 一期（已实现 · 当前基线）
+
+知识库 = 规则容器，文档入库 = 固定流水线执行。
+
+| 能力 | 说明 |
+|------|------|
+| 知识库四步向导 | 数据源 → 预处理（分块预览）→ 向量化；支持仅建库不入库 |
+| 库级 `config_json` | 清洗、分块、Embedding、数据源模式 |
+| 文档采集 | 手动上传 / URL 采集（按库数据源开关）；`autoIndex` 入库开关 |
+| 采集页规则摘要 | 只读展示当前库规则；跳转编辑规则 |
+| 编辑规则 Diff | 保存前变更对比；影响索引时引导批量补偿重索引 |
+| 批量重索引 | `POST /api/v1/index/rebuild-library`（按 `parsedTextKey` 异步重建） |
+| 入库流水线 | 接入 → Tika 解析 → 清洗 → 分块 → Embedding → `document_chunk` |
+| RAG / 检索 | `POST /api/v1/search`、`/rag/chat`（按库 Embedding） |
+
+设计原则（一期）：**创建时设定主规则，入库时按库规则执行**，入库侧仅保留少量操作开关。
+
+### 二期（建设中 · 治理容器 + 五步向导）
+
+> 创建知识库 → 文档入库 → 规则策略 → 流程与建设方案
+
+- **知识库** = 长期稳定的「治理容器」（默认规则 + 治理边界 + `config_version` 快照）
+- **文档入库** = 单次「加工流水线」（按库规则 + 少量可覆盖项 + 入库前预览确认）
+- **文档采集**：固定同时支持「选择文件」与「选择文件夹」批量接入，无需在创建/配置向导中选择接入方式
+- **创建向导**：快速创建（仅基础信息 + 默认规则）/ 高级配置（五步）
+  1. 基础信息（名称、描述、标签）
+  2. 数据类型与容量（支持类型、单库容量、版本策略；不含接入方式配置）
+  3. 文档处理（解析 / 分块 / 清洗规则）
+  4. 索引与检索（Embedding、混合检索、Rerank 等，部分预留）
+  5. 治理与安全（审核、权限、保留、合规、审计）
+- **创建产出**：知识库 ID + `config_version=1` + 空文档列表 + 可选示例文档
+- **入库页**：库规则摘要、`config_version`、可覆盖 `autoIndex`/块大小、入库前预览确认；双入口（文件 / 文件夹）始终可用
+
+二期配置中标注「预留」的项（OCR、混合检索、Rerank 等）已写入 `config_json`，流水线逐步对接。
 
 ---
 
@@ -53,7 +92,7 @@ flowchart LR
     subgraph prep["建仓准备"]
         L[vector_library]
     end
-    subgraph app["doc-platform-service"]
+    subgraph app["knowbase-service"]
         A[上传 / URL 采集] --> B[对象存储 原文]
         B --> C[doc_metadata]
         C --> D[解析 + 文本清洗]
@@ -66,9 +105,9 @@ flowchart LR
     prep --> A
 ```
 
-1. **知识库**（API：`vector-libraries`）：`GET/POST /api/v1/vector-libraries`；`PUT /{libraryId}` 可更新名称、分块/清洗规则、**库级 Embedding 模型与维度**（不改存储与数据源）；入库与检索按库 `config.embeddingModel` 调用 Ollama
-2. **入库流水线**（代码固定）：数据源接入 → 解析 → 清洗 → 分块 → 向量化 → 入库，无编排表与步骤开关
-3. **采集**：`POST .../upload`、`/upload/batch`、`/upload/async`（大文件）、`/collect`；仅文档 MIME
+1. **知识库**（API：`vector-libraries`）：`GET/POST /api/v1/vector-libraries`；`PUT /{libraryId}` 可更新名称、分块/清洗/检索/治理规则、**库级 Embedding**（`config_version` 递增）；`ingestAccess.accessMode` 固定为 `upload-and-folder`（不可配置）
+2. **入库流水线**（代码固定）：数据源接入 → 解析 → 清洗 → 分块 → 向量化 → 入库
+3. **采集**：`POST .../upload`、`/upload/batch`、`/upload/async`（文件与文件夹批量均走上传接口）
 4. **解析**（异步）：Tika + `ingest.text-normalization`
 5. **索引**（异步）：固定执行分块、向量化并写入 `document_chunk`（清洗是否执行由知识库 `textNormalizationEnabled` 控制）
 6. **问答/检索**：`POST /api/v1/search`、`/rag/chat` 需 `libraryId`
@@ -81,7 +120,7 @@ flowchart LR
 |------|-----|
 | RAG 问答 | `POST /api/v1/rag/chat`（可选 `chatModel` 覆盖全局对话模型） |
 | 语义检索 | `POST /api/v1/search`（查询向量按库 Embedding 配置生成） |
-| 补偿重索引 | `POST /api/v1/index/rebuild`（也可在文档库详情触发） |
+| 批量重索引 | `POST /api/v1/index/rebuild-library`（文档库页触发） |
 
 无命中时 RAG 返回以 **「未找到：」** 开头的固定文案，不调用 LLM，避免编造。
 
@@ -91,31 +130,33 @@ flowchart LR
 
 | 组件 | 端口 | 说明 |
 |------|------|------|
-| PostgreSQL + pgvector | 5432 | 库 `docplatform`，单 schema `public`（见 `infra/postgres/init.sql`） |
+| PostgreSQL + pgvector | 5432 | 库 `knowbase`，单 schema `public`（见 `infra/postgres/init.sql`） |
 | MinIO | 9000 / 9001 | 桶 `documents` |
 | Ollama | 11434 | `nomic-embed-text` + `llama3.2` |
-| **doc-platform-service** | **8080** | Knife4j：`/doc.html` |
-| **doc-platform-ui** | **5173** | 统一控制台 |
+| **knowbase-service** | **8080** | Knife4j：`/doc.html` |
+| **knowbase-ui** | **5173** | 统一控制台 |
 
 `docker-compose.yml` 仅包含 **Postgres、MinIO、Ollama**（已移除 Kafka）。
+
+> **从 doc-platform 升级**：模块已重命名为 `knowbase-service` / `knowbase-ui`，Java 包为 `com.knowbase.*`，数据库账号/库名改为 `knowbase`。若本地仍使用旧库 `docplatform`，请执行 `.\scripts\reset-db.ps1 -RecreateContainer` 或手动迁移；前端请进入 `frontend\knowbase-ui` 开发（旧目录 `doc-platform-ui` 可删除）。
 
 ---
 
 ## 快速启动
 
 ```powershell
-cd D:\workspace\doc-platform
+# 在仓库根目录执行
 .\scripts\build.ps1
 .\scripts\start-infra.ps1    # 或本机安装后 .\scripts\infra-check.ps1
 .\scripts\start-services.ps1 # 启动 8080
 
-cd frontend\doc-platform-ui
+cd frontend\knowbase-ui
 npm install
 npm run dev                  # http://localhost:5173
 ```
 
 ```powershell
-java -jar doc-platform-service\target\doc-platform-service-1.0.0-SNAPSHOT.jar
+java -jar knowbase-service\target\knowbase-service-1.0.0-SNAPSHOT.jar
 ```
 
 ---
@@ -152,7 +193,8 @@ java -jar doc-platform-service\target\doc-platform-service-1.0.0-SNAPSHOT.jar
 | `POST` | `/search` | 语义检索（body 含 `libraryId`） |
 | `POST` | `/rag/chat` | RAG 问答（body 含 `libraryId`） |
 | `POST` | `/index/chunk-preview` | 分块规则预览 |
-| `POST` | `/index/rebuild` | 补偿重索引（body 含 `libraryId`） |
+| `POST` | `/index/rebuild` | 单文档补偿重索引（body 含 `libraryId`） |
+| `POST` | `/index/rebuild-library` | 按当前库规则批量补偿重索引 |
 | `DELETE` | `/index/{docId}` | 清理向量 |
 
 ---
@@ -171,6 +213,12 @@ java -jar doc-platform-service\target\doc-platform-service-1.0.0-SNAPSHOT.jar
 
 ```powershell
 .\scripts\reset-db.ps1 -RecreateContainer
+```
+
+**本机 PostgreSQL（从 docplatform 升级或需删旧库）**：
+
+```powershell
+.\scripts\reset-db.ps1 -UseLocalPsql -BootstrapLocal -AdminPassword "<postgres超级用户密码>" -SkipConfirm
 ```
 
 手动执行 SQL 见 `infra/postgres/recreate-single-schema.sql` → `drop-public-tables.sql` → `init.sql`。
@@ -203,9 +251,10 @@ java -jar doc-platform-service\target\doc-platform-service-1.0.0-SNAPSHOT.jar
 
 ## 配置要点
 
-- 数据源：`jdbc:postgresql://localhost:5432/docplatform`，`search_path=public`
-- `storage.type`：`minio`（默认）或 `local-fs`；`storage.path-prefix` / `storage.local.base-path`
+- 数据源：`jdbc:postgresql://localhost:5432/knowbase`，`search_path=public`
+- `storage.type`：`minio`（默认）或 `local-fs`；`storage.path-prefix` / `storage.local.base-path`（**全局服务端配置**，不在创建向导或库规则页面设定）
 - `ingest.max-file-size`、`ingest.max-batch-files`、`ingest.allowed-mime-types`
+- `ingest.ocr.*`：Tesseract OCR 引擎（`enabled`、`data-path`、`language`）；库级 `parsing.ocrEnabled=true` 时对扫描 PDF 等启用回退
 - `ingest.text-normalization.*`：解析后文本清洗（配置前缀，非 DB schema）
 - `embedding.provider`：向量化实现（一期 `ollama`）
 - `chunking.*`：分块策略（默认 `paragraph-first`）

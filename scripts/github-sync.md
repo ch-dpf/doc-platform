@@ -1,13 +1,13 @@
 # 同步到 GitHub（ch-dpf）
 
-本机已完成：`git init`、首次提交、`main` 分支、`origin` → `https://github.com/ch-dpf/doc-platform.git`。
+本机已完成：`git init`、首次提交、`main` 分支、`origin` → `https://github.com/ch-dpf/knowbase.git`。
 
 自动推送失败原因：GitHub 上尚未创建该仓库，或当前环境未登录 GitHub 账号。
 
 ## 一、在 GitHub 创建空仓库
 
 1. 打开 [https://github.com/new](https://github.com/new)（或你的仓库列表 [ch-dpf](https://github.com/ch-dpf?tab=repositories) → **New**）。
-2. **Repository name**：`doc-platform`（须与下面远程地址一致）。
+2. **Repository name**：`knowbase`（须与下面远程地址一致）。
 3. 选择 **Private** 或 **Public**。
 4. **不要**勾选 “Add a README / .gitignore / license”（本地已有代码）。
 5. 点击 **Create repository**。
@@ -15,7 +15,7 @@
 ## 二、本机推送（PowerShell）
 
 ```powershell
-cd D:\workspace\doc-platform
+cd <仓库根目录>
 
 # 若 commit 报错 unknown option trailer，请用完整路径调用 git：
 # & "D:\software\git\Git\cmd\git.exe" commit -m "your message"
@@ -23,7 +23,7 @@ cd D:\workspace\doc-platform
 # 确认远程（已配置可跳过）
 git remote -v
 # 若无 origin：
-# git remote add origin https://github.com/ch-dpf/doc-platform.git
+# git remote add origin https://github.com/ch-dpf/knowbase.git
 
 # 推送（会弹出 GitHub 登录或要求 Personal Access Token）
 git push -u origin main
@@ -54,8 +54,8 @@ Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub
 ssh -T git@github.com
 
 # 5. 推送
-cd D:\workspace\doc-platform
-git remote set-url origin git@github.com:ch-dpf/doc-platform.git
+cd <仓库根目录>
+git remote set-url origin git@github.com:ch-dpf/knowbase.git
 git push -u origin main
 ```
 
@@ -64,7 +64,7 @@ git push -u origin main
 | 报错 | 处理 |
 |------|------|
 | `Permission denied (publickey)` | 按上文生成密钥并添加到 GitHub，或改用 HTTPS |
-| `Repository not found` | 先在 GitHub 创建空仓库 `doc-platform`，或检查账号/仓库名 |
+| `Repository not found` | 先在 GitHub 创建空仓库 `knowbase`，或检查账号/仓库名 |
 | `OpenSSL SSL_read: Connection was reset` (errno 10054) | 见下文 **「HTTPS 连接被重置」** |
 | `Failed to connect ... Timed out` | 检查代理/VPN，或为 Git 配置 `http.proxy` |
 | `Are you sure you want to continue connecting` | 输入 **yes**（首次连接正常） |
@@ -88,7 +88,7 @@ git config --global https.proxy http://127.0.0.1:7890
 git config --global http.version HTTP/1.1
 
 # 4) 再推送
-cd D:\workspace\doc-platform
+cd <仓库根目录>
 git push -u origin main
 ```
 
@@ -103,13 +103,13 @@ git config --global --unset https.proxy
 
 - 升级 [Git for Windows](https://git-scm.com/download/win)（建议 ≥ 2.43）
 - 在代理工具中开启 **TUN/系统代理**，或允许 `git.exe` 走代理
-- 改用 **SSH**（配置好公钥后有时比 HTTPS 稳定）：`git remote set-url origin git@github.com:ch-dpf/doc-platform.git`
+- 改用 **SSH**（配置好公钥后有时比 HTTPS 稳定）：`git remote set-url origin git@github.com:ch-dpf/knowbase.git`
 - 临时方案：用 [GitHub Desktop](https://desktop.github.com/) 打开本目录推送（会跟随系统代理）
 
 ## 三、后续更新
 
 ```powershell
-cd D:\workspace\doc-platform
+cd <仓库根目录>
 git add -A
 git status
 git commit -m "描述本次修改"
@@ -121,7 +121,7 @@ git push
 ```powershell
 winget install GitHub.cli
 gh auth login
-gh repo create ch-dpf/doc-platform --private --source=. --remote=origin --push
+gh repo create ch-dpf/knowbase --private --source=. --remote=origin --push
 ```
 
 `--private` 可改为 `--public`。

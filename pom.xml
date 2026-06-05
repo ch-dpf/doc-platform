@@ -4,15 +4,15 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.docplatform</groupId>
-    <artifactId>doc-platform</artifactId>
+    <groupId>com.knowbase</groupId>
+    <artifactId>knowbase</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <name>doc-platform</name>
-    <description>Document platform: ingest, vector index and RAG</description>
+    <name>knowbase</name>
+    <description>KnowBase: knowledge library ingest, vector index and RAG</description>
 
     <modules>
-        <module>doc-platform-service</module>
+        <module>knowbase-service</module>
     </modules>
 
     <properties>

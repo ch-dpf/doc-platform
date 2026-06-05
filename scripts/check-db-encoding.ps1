@@ -11,9 +11,9 @@ param(
     [switch] $UseLocalPsql,
     [string] $DbHost = "localhost",
     [int] $DbPort = 5432,
-    [string] $DbUser = "docplatform",
-    [string] $DbName = "docplatform",
-    [string] $DbPassword = "docplatform",
+    [string] $DbUser = "knowbase",
+    [string] $DbName = "knowbase",
+    [string] $DbPassword = "knowbase",
     [string] $LocalPsql = "D:\software\PostgreSQL\pgsql\bin\psql.exe"
 )
 

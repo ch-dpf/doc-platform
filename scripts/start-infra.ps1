@@ -1,4 +1,4 @@
-# Start infrastructure for doc-platform
+# Start infrastructure for knowbase
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 docker compose up -d

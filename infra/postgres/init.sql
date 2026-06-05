@@ -65,7 +65,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_checksum_library_tenant
 CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_source_url_library_tenant
     ON doc_metadata(library_id, tenant_id, source_url)
     WHERE deleted = FALSE AND source_type = 'CRAWL' AND source_url IS NOT NULL;
-
 -- 向量索引
 CREATE TABLE IF NOT EXISTS processed_event (
     idempotency_key VARCHAR(256) PRIMARY KEY,
@@ -112,8 +111,6 @@ VALUES (
     '默认知识库',
     '系统预置知识库，兼容历史数据',
     '{
-      "storageType": "minio",
-      "storagePathPrefix": "",
       "metadataDbType": "postgresql",
       "embeddingProvider": "ollama",
       "embeddingModel": "nomic-embed-text",

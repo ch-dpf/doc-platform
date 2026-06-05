@@ -1,4 +1,4 @@
-# End-to-end smoke test for doc-platform (requires infra + service on 8080)
+# End-to-end smoke test for knowbase (requires infra + service on 8080)
 $ErrorActionPreference = "Stop"
 $base = "http://localhost:8080"
 $tenant = "demo"

@@ -1,6 +1,6 @@
-# doc-platform 前端
+# 知库前端（knowbase-ui）
 
-统一控制台 **doc-platform-ui**，对接单体后端 `doc-platform-service`（默认 `http://localhost:8080`）。
+统一控制台 **knowbase-ui**，对接单体后端 `knowbase-service`（默认 `http://localhost:8080`）。
 
 ## 页面
 
@@ -18,7 +18,7 @@
 ## 启动
 
 ```powershell
-cd D:\workspace\doc-platform\frontend\doc-platform-ui
+cd frontend\knowbase-ui
 npm install
 npm run dev
 ```

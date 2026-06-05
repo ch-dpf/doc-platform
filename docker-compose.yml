@@ -2,9 +2,9 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: docplatform
-      POSTGRES_PASSWORD: docplatform
-      POSTGRES_DB: docplatform
+      POSTGRES_USER: knowbase
+      POSTGRES_PASSWORD: knowbase
+      POSTGRES_DB: knowbase
       # 新数据目录初始化时使用 UTF-8，避免中文种子数据乱码
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
       LANG: C.UTF-8
@@ -14,7 +14,7 @@ services:
     volumes:
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U docplatform -d docplatform"]
+      test: ["CMD-SHELL", "pg_isready -U knowbase -d knowbase"]
       interval: 5s
       timeout: 5s
       retries: 10

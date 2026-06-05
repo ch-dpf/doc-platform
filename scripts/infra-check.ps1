@@ -1,4 +1,4 @@
-# Check doc-platform infrastructure (no Kafka)
+# Check knowbase infrastructure (no Kafka)
 $ErrorActionPreference = "Continue"
 $ok = $true
 
@@ -16,13 +16,13 @@ function Test-Step {
 }
 
 Test-Step "PostgreSQL" {
-    $env:PGPASSWORD = "docplatform"
-    & "D:\software\PostgreSQL\pgsql\bin\psql.exe" -U docplatform -d docplatform -tAc "SELECT 1;" | Out-Null
+    $env:PGPASSWORD = "knowbase"
+    & "D:\software\PostgreSQL\pgsql\bin\psql.exe" -U knowbase -d knowbase -tAc "SELECT 1;" | Out-Null
 }
 
 Test-Step "pgvector" {
-    $env:PGPASSWORD = "docplatform"
-    $v = & "D:\software\PostgreSQL\pgsql\bin\psql.exe" -U docplatform -d docplatform -tAc "SELECT extname FROM pg_extension WHERE extname='vector';"
+    $env:PGPASSWORD = "knowbase"
+    $v = & "D:\software\PostgreSQL\pgsql\bin\psql.exe" -U knowbase -d knowbase -tAc "SELECT extname FROM pg_extension WHERE extname='vector';"
     if ($v.Trim() -ne "vector") { throw "extension missing" }
 }
 
@@ -43,7 +43,7 @@ Test-Step "Ollama chat (RAG)" {
 
 Write-Host ""
 if ($ok) {
-    Write-Host "All checks passed. Start doc-platform-service next."
+    Write-Host "All checks passed. Start knowbase-service next."
     exit 0
 } else {
     Write-Host "Some checks failed. Fix infra before starting Java."
