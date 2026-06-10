@@ -8,8 +8,8 @@
 ### Pipeline Documentation（流程梳理）
 
 - [x] **PIPE-01**: 文档描述建库流程（向导字段 → `config_json` → `LibraryConfigResolver` 生效路径）
-- [ ] **PIPE-02**: 文档描述单文档入库全流程（上传 → 解析 → 清洗 → 分块 → `IndexingChunkFilter` → 嵌入 → `document_chunk`）
-- [ ] **PIPE-03**: 文档标注各阶段关键类与 API（含前端入口与后端服务对照）
+- [x] **PIPE-02**: 文档描述单文档入库全流程（上传 → 解析 → 清洗 → 分块 → `IndexingChunkFilter` → 嵌入 → `document_chunk`）
+- [x] **PIPE-03**: 文档标注各阶段关键类与 API（含前端入口与后端服务对照）
 
 ### File-Type Matrix（类型设定对照）
 
@@ -63,8 +63,8 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | PIPE-01 | Phase 1 | Complete |
-| PIPE-02 | Phase 1 | Pending |
-| PIPE-03 | Phase 1 | Pending |
+| PIPE-02 | Phase 1 | Complete |
+| PIPE-03 | Phase 1 | Complete |
 | TYPE-01 | Phase 2 | Pending |
 | TYPE-02 | Phase 2 | Pending |
 | TYPE-03 | Phase 2 | Pending |
