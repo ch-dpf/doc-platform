@@ -132,7 +132,7 @@ export function resolveLibraryPresetLabel(config) {
   const id = config?.libraryPresetId
   if (id && id !== LIBRARY_PRESET_CUSTOM) {
     const p = getLibraryPresetById(id)
-    if (p) return p.name
+    if (p && configMatchesPreset(config, p)) return p.name
   }
   for (const preset of LIBRARY_PRESETS) {
     if (configMatchesPreset(config, preset)) return preset.name
