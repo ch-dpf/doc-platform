@@ -275,9 +275,39 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## 附录 C 字段路径与代码锚点
+## 附录 C 字段路径与代码锚点 {#appendix-c} {#dev-reference}
 
-（Plan 03 填充）
+与 `frontend/knowbase-ui/src/utils/libraryConfig.js` 中 `REINDEX_FIELDS`（L35–53）及 `CONFIG_FIELD_SPECS`（L161–173）dot-path 对齐；完整 diff 逻辑见 Phase 5 **CFG-01**。下表为主矩阵相关字段子集（D-13 dev TOC）。
+
+| 路径 | 中文标签 | 影响重索引 | 主矩阵关联行 | 代码锚点 |
+|------|----------|------------|--------------|----------|
+| `parsing.ocrEnabled` | OCR | 是 | PDF 扫描件 / 文本型 | `ParsingRulesSettings.java` L5–6；`LibraryConfigResolver.parseOptionsFor` → `DocumentParseService.java` L44–68 |
+| `parsing.tableExtraction` | 表格提取 | 是 | PDF / Word / Excel | `ParsingRulesSettings.java` L7–8；`DocumentParseOptions.requiresHtmlPipeline()` L43–47 |
+| `parsing.autoDetectEncoding` | 自动识别编码 | 是 | TXT / Markdown | `ParsingRulesSettings.java` L9；`TikaEncodingMapper.java` |
+| `parsing.defaultLanguage` | 默认语言 | 是 | PDF OCR 语言 / Word | `ParsingRulesSettings.java` L10–11；`application.yml` L64（OCR 引擎语言） |
+| `chunkingStrategy` | 分块策略 | 是 | 全类型 | `VectorLibraryConfig.java`；`LibraryConfigResolver.chunkingFor` → `IndexingService.java` L153–158 |
+| `chunkSize` | 块大小 | 是 | Excel 周报 / 全类型 | `libraryDefaults.js` L40（向导 500）；`application.yml` L154（系统 600） |
+| `chunkOverlap` | 块重叠 | 是 | 全类型 | `libraryDefaults.js` L41（120）；`application.yml` L155（100） |
+| `minParagraphLength` | 最短段落 | 是 | Excel 续行 / TXT | `VectorLibraryConfigFactory.java` L75–83 |
+| `cleaning.removeHeaderFooter` | 去页眉页脚 | 是 | PDF / Word 制度 | `libraryConfig.js` diff L274；`DocumentCleaningService.java` |
+| `cleaning.removeDuplicateParagraphs` | 去重复段落 | 是 | PDF 导出 / Excel | `REINDEX_FIELDS` L52；`DuplicateParagraphCleaner.java` |
+| `ingestAccess.supportedFileTypes` | 数据类型 | 否 | Markdown 上传门控 | `VectorLibraryConfigFactory.java` L14–23；`supportedFileTypes.js` L1–7；`UploadService.java` |
+| `textNormalizationEnabled` | 文本清洗 | 是 | 全类型（管道门控） | `REINDEX_FIELDS` L36；`DocumentPipelineService.java` L96–102 |
+
+**Resolver 消费链：**
+
+- `LibraryConfigResolver.parseOptionsFor(libraryId)` ← `parsing.*` → `DocumentParseService`（解析阶段）；`ParsePreviewService`（预览）
+- `LibraryConfigResolver.chunkingFor(libraryId)` ← `chunkingStrategy`, `chunkSize`, `chunkOverlap`, `minParagraphLength`, … → `IndexingService` → `IndexingChunkFilter`（入库）；`ChunkPreviewService`（预览）
+
+**UI 入口：**
+
+- `CreateLibraryWizard.vue` — Wizard **Step 3** 文档处理规则（`parsing.*`, `cleaning.*`, `chunking*`）；Step 2 含 `ingestAccess.supportedFileTypes`
+- `EditLibrarySettingsDrawer.vue` — 同上字段编辑；`lockPipeline`（`documentCount > 0 || chunkCount > 0`）时禁用管道字段，与 `VectorLibraryConfigMerger.mergeSafeFields` 硬锁一致
+
+**后端字段权威：**
+
+- `knowbase-service/src/main/java/com/knowbase/library/config/ParsingRulesSettings.java` — `ocrEnabled`, `tableExtraction`, `autoDetectEncoding`, `defaultLanguage`
+- `knowbase-service/src/main/java/com/knowbase/library/service/LibraryConfigResolver.java` — `parseOptionsFor`, `chunkingFor`, `cleaningFor`
 
 ---
 
