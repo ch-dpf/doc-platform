@@ -78,9 +78,60 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## §2 主矩阵
+## §2 主矩阵 {#ops-guide}
 
-（Plan 02 填充 — 骨架见 Task 3）
+本节为 **单张大表**（D-03）：行 = **类型 × 规则项**（完整管道维度），列 = **设定 | 产出 | 质量**，便于横向对比 pdf / word / excel / txt / markdown。单元格推荐值由 Plan 02 填充；Excel 子场景（周报 xlsx）以缩进行标注。
+
+| 类型 × 规则项 | 设定（推荐 config_json） | 产出形态 | 质量风险 / 禁止 |
+|---------------|-------------------------|----------|----------------|
+| **PDF** · `parsing.ocrEnabled` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **PDF** · `parsing.tableExtraction` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **PDF** · `parsing.defaultLanguage` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **PDF** · `cleaning.removeHeaderFooter` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **PDF** · `cleaning.removeDuplicateParagraphs` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **PDF** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **PDF** · `chunkSize` / `chunkOverlap` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **PDF** · `minParagraphLength` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **PDF** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | （Plan 02 填充） | （Plan 02 填充） |
+| **Word** · `parsing.tableExtraction` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Word** · `parsing.defaultLanguage` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Word** · `cleaning.removeHeaderFooter` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Word** · `cleaning.removeDuplicateParagraphs` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Word** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Word** · `chunkSize` / `chunkOverlap` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Word** · `minParagraphLength` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Word** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | （Plan 02 填充） | （Plan 02 填充） |
+| **Excel** · `parsing.tableExtraction` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Excel** · `cleaning.removeDuplicateParagraphs` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Excel** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Excel** · `chunkSize` / `chunkOverlap` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Excel** · `minParagraphLength` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Excel** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | （Plan 02 填充） | （Plan 02 填充） |
+| **Excel** · 子场景（周报 xlsx） | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Excel** · 续行 / 表头（管道内启发式） | —（`TabularContinuationNormalizer`） | （Plan 02 填充） | （Plan 02 填充） |
+| **TXT** · `parsing.autoDetectEncoding` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **TXT** · `cleaning.removeDuplicateParagraphs` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **TXT** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **TXT** · `chunkSize` / `chunkOverlap` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **TXT** · `minParagraphLength` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **TXT** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | （Plan 02 填充） | （Plan 02 填充） |
+| **Markdown** · `parsing.autoDetectEncoding` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Markdown** · MIME 兜底 | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Markdown** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Markdown** · `chunkSize` / `chunkOverlap` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Markdown** · `minParagraphLength` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
+| **Markdown** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | （Plan 02 填充） | （Plan 02 填充） |
+
+### 开发参考：Resolver 消费链
+
+配置 dot-path 与 [INGEST-PIPELINE.md §2.3](./INGEST-PIPELINE.md) 一致；此处仅列主矩阵相关链路，**不**重复 PIPE 九阶段叙述。
+
+| Resolver 方法 | config_json 字段 | 消费类 |
+|---------------|------------------|--------|
+| `parseOptionsFor(libraryId)` | `parsing.*` | `DocumentParseService` |
+| `chunkingFor(libraryId)` | `chunkingStrategy`, `chunkSize`, `chunkOverlap`, `minParagraphLength`, … | `IndexingService` → `IndexingChunkFilter` |
+
+字段路径与 UI diff 对齐：`frontend/knowbase-ui/src/utils/libraryConfig.js` `REINDEX_FIELDS`（L35–53）。
 
 ---
 
