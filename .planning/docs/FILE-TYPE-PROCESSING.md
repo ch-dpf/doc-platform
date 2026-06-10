@@ -190,9 +190,37 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## §4 类型反模式
+## §4 类型反模式 {#ops-guide}
 
-（Plan 03 填充）
+本节**扩展** [INGEST-PIPELINE.md §8 反模式对照](./INGEST-PIPELINE.md#8-反模式对照)（D-11）：通用反模式（**预览≠入库**、**异质语义混库**、**杜鹏飞周报 xlsx** 基准等）保留在 Phase 1 §8，此处仅列**按文件类型**的错误设定 → 质量问题对照，**不重复** §8 通用行。每行「正确做法」链回 [§2 主矩阵](#ops-guide) 对应行或 INGEST-PIPELINE §8 具名条目。
+
+| 类型 | 错误设定/行为 | 症状 | 代码锚点 | 正确做法（链回 §2 矩阵 / INGEST-PIPELINE §8） |
+|------|--------------|------|----------|---------------------------------------------|
+| **PDF** | 扫描件上传 + `parsing.ocrEnabled: false` | 解析文本为空或乱码；0 chunk 或无效向量 | `DocumentParseService.java` L44–68；`OcrFallbackPolicy.java` L11–17；`DocumentOcrService.java` | 开启 OCR + tessdata（[§2 PDF 扫描件行](#ops-guide)）；链回 §8「**扫描 PDF OCR 关闭**」 |
+| **PDF** | 制度 / 法规库使用 `chunkingStrategy: semantic` | 法条、条款在句中或编号中间被切断；检索命中半句上下文 | `ChunkingService.java`（semantic 相似度切分）；`IndexingService.java` L153–158 | 改用 **`heading-level`** 或 **`paragraph-first`**（[§2 PDF chunkingStrategy 行](#ops-guide)） |
+| **PDF** | 多栏 / 复杂版式 PDF 仅用 `parsing.tableExtraction: text-only` | 表格列错位、tab 顺序混乱；表头与数据行粘连 | `DocumentParseService.java` L74–93；`extractPlainWithTika` | 复杂表格改用 **`structured`** 触发 HTML 管道（[§2 PDF tableExtraction 行](#ops-guide)） |
+| **Word** | 复杂表格 docx + `parsing.tableExtraction: text-only` | 表格结构丢失；cell 顺序错乱；行列语义不可还原 | `DocumentParseOptions.java` L43–47；`HtmlParsingContentProcessor.java` | 改用 **`structured`**（[§2 Word tableExtraction 行](#ops-guide)）；触发 `requiresHtmlPipeline()` |
+| **Word** | 制度 docx + `chunkingStrategy: fixed-char` 或大 `chunkSize` 硬切 | 章节标题与正文同块，或条款在段中硬切断 | `ChunkingService.java`（fixed-char 策略） | 制度库用 **`heading-level`**（[§2 Word chunkingStrategy 行](#ops-guide)；ROADMAP **制度 docx** 锚点） |
+| **Word** | 制度 docx + `cleaning.removeHeaderFooter: false` | 页眉页脚、页码行进入索引；检索噪声 | `DocumentCleaningService.java`；`cleaningFor(libraryId)` | 保持 **`true`**（[§2 Word cleaning 行](#ops-guide)） |
+| **Excel** | `parsing.tableExtraction: structured` 用于 xlsx | 无结构化收益；运营误以为行列对象入库 | `DocumentParseService.java` L95–107；`TableExtractionMode.java` L8–9 | 保持 **`text-only`**（[§2 Excel tableExtraction 行](#ops-guide)）；链回 §8「**Excel 误开 structured 表格**」 |
+| **Excel** | `chunkingStrategy: semantic` 用于周报 / 明细 xlsx | 续行与主体行分离；表头块被语义边界误切；召回失败 | `ChunkPreviewServiceTest.java`（杜鹏飞 fixture 脚注[^dupengfei-anti]）；`TabularContinuationNormalizer.java` | **`paragraph-first` + `text-only`**（[§2 Excel chunkingStrategy 行](#ops-guide)）；链回 §8「**杜鹏飞周报 xlsx**」 |
+| **Excel** | 周报 xlsx 与报销 xlsx 建在同一垂直库 | 检索噪声大；问答混淆不同业务语义 | `ChunkMetadataBuilder.java`（`documentMetadata` 仅过滤不拆库） | 按语义主轴**拆库**（[§2 Excel 周报子场景行](#ops-guide)）；链回 §8「**异质语义混库**」 |
+| **TXT** | `parsing.autoDetectEncoding: false` + GBK 源文件 | 乱码 chunk → 无效向量；检索无法命中 | `TikaEncodingMapper.java`；`DocumentParseService.java` `extractPlainWithTika` | 保持 **`autoDetectEncoding: true`**（[§2 TXT 编码行](#ops-guide)） |
+| **TXT** | `chunkingStrategy: semantic` 于短通知 / 清单 txt | 列表项在语义边界被拆开；单行事实跨块 | `ChunkingService.java` | 使用 **`paragraph-first`**（[§2 TXT chunkingStrategy 行](#ops-guide)） |
+| **Markdown** | 库 `ingestAccess.supportedFileTypes` 未含 **`markdown`** | 上传 `.md` 返回 415；文件被拦截 | `supportedFileTypes.js` L1–7；`MimeTypeAllowlist.java` L14–40；`UploadService.java` | 建库 Step 2 纳入 markdown（[§2 Markdown MIME 行](#ops-guide)） |
+| **Markdown** | `chunkingStrategy: semantic` 于含代码块 md | fence 内代码被语义误切；代码块碎片化 | `ChunkingService.java` | **`paragraph-first`** 或含 `#` 标题时长文档用 **`heading-level`**（[§2 Markdown chunkingStrategy 行](#ops-guide)） |
+| **Markdown** | `parsing.autoDetectEncoding: false` + GBK `.md` | 中文 md 乱码；向量无效 | 同 TXT 编码路径 | 保持 **`true`**（[§2 Markdown 编码行](#ops-guide)） |
+
+[^dupengfei-anti]: **可选脚注（D-12）：** `ChunkPreviewServiceTest.previewUsesIndexingChunkFilterAndLibraryChunkParams` 在 `chunkSize=500`, `chunkOverlap=120` 下得 `rawTotalChunks=4`, `filteredOutCount=1`, `totalChunks=3`。**非**硬性 UAT 块数门禁；验收以检索可召回关键事实为准。
+
+**Files（汇总）：**
+
+- `knowbase-service/src/main/java/com/knowbase/ingest/service/DocumentParseService.java`
+- `knowbase-service/src/main/java/com/knowbase/ingest/parse/DocumentParseOptions.java`
+- `knowbase-service/src/main/java/com/knowbase/ingest/parse/OcrFallbackPolicy.java`
+- `knowbase-service/src/main/java/com/knowbase/vector/chunk/IndexingChunkFilter.java`
+- `knowbase-service/src/test/java/com/knowbase/vector/service/ChunkPreviewServiceTest.java`
+- `frontend/knowbase-ui/src/utils/supportedFileTypes.js`
 
 ---
 
