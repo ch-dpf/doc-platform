@@ -65,7 +65,7 @@ Plans:
 
 **Requirements:** PRESET-01 … PRESET-04
 
-**Plans:** 3/3 complete
+**Plans:** 3/3 plans complete
 
 **Key deliverables:**
 
