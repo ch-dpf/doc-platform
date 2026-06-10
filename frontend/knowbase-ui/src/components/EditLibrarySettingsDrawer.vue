@@ -476,29 +476,29 @@ const capacityGb = computed({
   }
 })
 
-function clonePayload() {
-  const cfg = JSON.parse(JSON.stringify(form.config))
-  if (cfg.textNormalization) {
-    cfg.textNormalization.linePatternsToDrop = textToPatterns(dropPatternsText.value)
+function normalizedConfigForDiff(cfg) {
+  const copy = JSON.parse(JSON.stringify(cfg))
+  if (copy.ingestAccess) {
+    copy.ingestAccess.accessMode = 'upload-and-folder'
   }
+  if (copy.textNormalization) {
+    copy.textNormalization.linePatternsToDrop = textToPatterns(dropPatternsText.value)
+  }
+  copy.embeddingProvider = 'ollama'
+  return syncLibraryPresetIdOnEdit(copy)
+}
+
+function clonePayload() {
   return {
     name: form.name,
     description: form.description,
     tags: [...form.tags],
-    config: cfg
+    config: normalizedConfigForDiff(form.config)
   }
 }
 
 function buildSubmitConfig() {
-  const cfg = JSON.parse(JSON.stringify(form.config))
-  if (cfg.ingestAccess) {
-    cfg.ingestAccess.accessMode = 'upload-and-folder'
-  }
-  if (cfg.textNormalization) {
-    cfg.textNormalization.linePatternsToDrop = textToPatterns(dropPatternsText.value)
-  }
-  cfg.embeddingProvider = 'ollama'
-  return syncLibraryPresetIdOnEdit(cfg)
+  return normalizedConfigForDiff(form.config)
 }
 
 function resetForm() {
@@ -607,6 +607,7 @@ async function submit() {
 
   const nextConfig = buildSubmitConfig()
   const beforeCfg = snapshotPayload.value?.config || {}
+  // CFG-01: diff gate compares normalized snapshots — nested parsing/chunking/cleaning must match buildSubmitConfig shape
   const changes = diffLibraryConfig(beforeCfg, nextConfig)
   const metaChanged =
     form.name.trim() !== (snapshotPayload.value?.name || '') ||
