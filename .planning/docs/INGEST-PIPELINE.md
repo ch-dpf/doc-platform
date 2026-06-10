@@ -165,13 +165,92 @@ VectorLibraryConfigMerger.mergeSafeFields(existing, request.config(), lockPipeli
 
 ## §3 单文档入库流程（PIPE-02）
 
-（Plan 02 填充）
+单文档从 `IngestView` 上传到 `document_chunk` 写入 pgvector 的完整路径。各阶段配置均来自 `LibraryConfigResolver.*For(libraryId)`（v1 无采集级覆盖）。
+
+### 3.1 端到端时序图
+
+```mermaid
+sequenceDiagram
+    participant UI as IngestView
+    participant DC as DocumentController
+    participant DI as DocumentIngestor
+    participant OS as Object Storage
+    participant DPS as DocumentPipelineService
+    participant DIC as DocumentIndexCoordinator
+    participant IS as IndexingService
+    participant PG as PostgreSQL
+
+    UI->>DC: POST /documents/upload (+ documentMetadata)
+    DC->>DI: ingestOne(libraryId, tenantId, bytes, autoIndex, customMetadataJson)
+    DI->>DI: validateMimeType(allowedMimeTypes) + capacityLimitsFor
+    DI->>PG: INSERT doc_metadata (parse_status=PENDING)
+    DI->>OS: PUT …/raw/{fileName}
+    DI->>DPS: scheduleProcessAfterCommit(docId, version, bytes)
+    Note over DI,DPS: HTTP 201 返回；解析/索引在 DB 事务提交后异步执行
+
+    DPS->>DPS: processAsync (afterCommit)
+    DPS->>DPS: extractText(parseOptionsFor)
+    DPS->>DPS: normalize(normalizationFor)
+    DPS->>DPS: apply cleaning(cleaningFor)
+    DPS->>OS: PUT …/parsed.txt
+    DPS->>PG: UPDATE parse_status=PARSED
+    alt index_requested=true
+        DPS->>DIC: DocumentReadyForIndexEvent
+        DIC->>IS: index(event)
+        IS->>OS: GET parsed.txt
+        IS->>IS: cleaningFor → chunkingFor → IndexingChunkFilter
+        IS->>IS: embedBatch(embeddingFor)
+        IS->>PG: INSERT document_chunk
+    else requiresManualReview(manual-review)
+        DPS->>PG: index_requested=false，等待 approve-index
+    end
+```
+
+### 3.2 阶段 × 关键类 × 配置来源
+
+| # | 阶段 | 关键类 | 配置来源 (`LibraryConfigResolver`) | 持久化/输出 |
+|---|------|--------|-----------------------------------|-------------|
+| 1 | 上传校验 | `DocumentIngestor`, `UploadService`, `LibraryCapacityValidator` | `allowedMimeTypes(libraryId)`, `capacityLimitsFor(libraryId)`, `versionPolicyFor(libraryId)` | `doc_metadata`；Object Storage `…/v{n}/raw/{fileName}` |
+| 2 | 异步解析 | `DocumentPipelineService.processAsync`, `DocumentParseService` | `parseOptionsFor(libraryId)` | 内存 plainText（随后写入 `parsed.txt`） |
+| 3 | 文本规范化 | `ParsedTextNormalizer` | `normalizationFor(libraryId)`（受 `config(libraryId).textNormalizationEnabled` 门控） | 管道内文本 |
+| 4 | 内容清洗 | `DocumentCleaningService` | `cleaningFor(libraryId)` | Object Storage `…/v{n}/parsed.txt` |
+| 5 | 索引触发 | `DocumentIndexCoordinator`, `DocumentIngestor.resolveIndexRequested` | `requiresManualReview(libraryId)` → `index_requested` / `index_status` | `document_index_job`；manual-review 时需 `POST …/approve-index` |
+| 6 | 分块 | `ChunkingService`（`IndexingService` 内） | `chunkingFor(libraryId)` | 内存 chunk 列表 |
+| 7 | 表头过滤 | `IndexingChunkFilter.removeHeaderOnlyChunks` | —（启发式，非 resolver 字段） | 过滤后 chunk 列表 |
+| 8 | 嵌入写入 | `LibraryEmbeddingService`, `DocumentChunkMapper` | `embeddingFor(libraryId)` | `document_chunk`（content + embedding vector） |
+| 9 | Chunk 元数据 | `ChunkMetadataBuilder`（`IndexingService.resolveChunkMetadataJson`） | `retrievalFor(libraryId)` + `doc_metadata.custom_metadata_json` | `document_chunk.metadata` JSONB |
+
+### 3.3 documentMetadata 数据流（D-06）
+
+1. `IngestView.resolveDocumentMetadataParam()` — 校验 JSON 对象（`IngestView.vue:957`）
+2. 作为 query param `documentMetadata` 传入 `uploadDocument` / `uploadDocumentsBatch`（`ingest.js` `uploadParams`）
+3. `DocumentIngestor.ingestOne` → `DocumentCustomMetadataSupport.normalizeJson` → `doc_metadata.custom_metadata_json`
+4. `IndexingService.resolveChunkMetadataJson` → `ChunkMetadataBuilder.mergeCustomMetadata` → 每个 chunk 的 metadata
+
+**v1 语义：** `documentMetadata` 为**语义标签**（检索过滤），**不**改变 parse/chunk 参数。采集级 ingest profile（OCR/chunk 覆盖持久化）为目标态 backlog。
+
+### 3.4 事务提交后异步（Pattern 2）
+
+`DocumentPipelineService.scheduleProcessAfterCommit` 注册 `TransactionSynchronization.afterCommit`，在 `doc_metadata` 与 `raw/` 对象提交后再启动 `processAsync`。因此 `POST /documents/upload` 返回 `201` 时 `parse_status=PENDING`，客户端需轮询文档状态或列表 API 观察 `PARSED` / 索引完成。该模式避免解析任务读到未提交的 doc 行或 storage key 竞态。
+
+反模式与预览分叉详见 §8 与附录 A；本节不展开。
+
+### 代码锚点
+
+- `frontend/knowbase-ui/src/views/IngestView.vue` — 上传、预览、`documentMetadata`
+- `knowbase-service/.../DocumentController.java` — upload / parse-preview / approve-index
+- `knowbase-service/.../DocumentIngestor.java` — `ingestOne`, `storeAndProcess`
+- `knowbase-service/.../DocumentPipelineService.java` — `scheduleProcessAfterCommit`, `processAsync`
+- `knowbase-service/.../DocumentIndexCoordinator.java` — `processReadyForIndex`
+- `knowbase-service/.../IndexingService.java` — `index`（chunk → filter → embed）
+- `knowbase-service/.../IndexingChunkFilter.java` — `removeHeaderOnlyChunks`
+- `knowbase-service/.../ChunkMetadataBuilder.java` — chunk metadata 合并
 
 ---
 
 ## §4 阶段·类·API 对照（PIPE-03）
 
-（Plan 02 填充）
+（Plan 02 Task 2 填充）
 
 ---
 
