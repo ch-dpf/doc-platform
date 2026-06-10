@@ -29,7 +29,7 @@ focus: file-type-processing
 
 | 维度 | 目标态（文档叙述） | v1 里程碑交付 |
 |------|-------------------|---------------|
-| 按类型矩阵 | 单张大表：类型 × 规则项 → 设定 / 产出 / 质量 | §2 骨架 + Plan 02 填充推荐值 |
+| 按类型矩阵 | 单张大表：类型 × 规则项 → 设定 / 产出 / 质量 | §2 主矩阵（Plan 02 已填充） |
 | 表格类 ingest | 结构化处理保证分块向量化准确可控（D-08） | Tika tab 纯文本 + `paragraph-first` 过渡推荐；差距见附录 B |
 | MIME 自动默认 | 附录 A 完整映射 | 文档规划；Phase 3 预设引用；**非** v1 运行时引擎 |
 | 结构化 Excel | POI 行对象 / 双轨模型 | **Backlog** — PROJECT Out of Scope；不暗示 v1 可实现 |
@@ -60,15 +60,15 @@ focus: file-type-processing
 
 | Requirement | Section | Status |
 |-------------|---------|--------|
-| TYPE-01 | §2 PDF 行组 | Placeholder（Plan 02） |
-| TYPE-02 | §2 Word 行组 | Placeholder（Plan 02） |
+| TYPE-01 | §2 PDF 行组 | Covered |
+| TYPE-02 | §2 Word 行组 | Covered |
 | TYPE-03 | §2 Excel 行组 + 附录 B | Placeholder（Plan 02） |
 | TYPE-04 | §2 TXT/Markdown 行组 | Placeholder（Plan 02） |
 | TYPE-05 | §4 类型反模式 | Placeholder（Plan 03） |
 
 ### ROADMAP 成功标准锚点
 
-Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推荐 / 禁止**（Plan 02 填充具体单元格）：
+Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推荐 / 禁止**：
 
 | 场景 | 类型 | 关键设定方向 |
 |------|------|-------------|
@@ -80,27 +80,38 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ## §2 主矩阵 {#ops-guide}
 
-本节为 **单张大表**（D-03）：行 = **类型 × 规则项**（完整管道维度），列 = **设定 | 产出 | 质量**，便于横向对比 pdf / word / excel / txt / markdown。单元格推荐值由 Plan 02 填充；Excel 子场景（周报 xlsx）以缩进行标注。
+本节为 **单张大表**（D-03）：行 = **类型 × 规则项**（完整管道维度），列 = **设定 | 产出 | 质量**，便于横向对比 pdf / word / excel / txt / markdown。Excel 子场景（周报 xlsx）以缩进行标注。
 
 | 类型 × 规则项 | 设定（推荐 config_json） | 产出形态 | 质量风险 / 禁止 |
 |---------------|-------------------------|----------|----------------|
-| **PDF** · `parsing.ocrEnabled` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **PDF** · `parsing.tableExtraction` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **PDF** · `parsing.defaultLanguage` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **PDF** · `cleaning.removeHeaderFooter` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **PDF** · `cleaning.removeDuplicateParagraphs` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **PDF** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **PDF** · `chunkSize` / `chunkOverlap` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **PDF** · `minParagraphLength` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **PDF** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | （Plan 02 填充） | （Plan 02 填充） |
-| **Word** · `parsing.tableExtraction` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Word** · `parsing.defaultLanguage` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Word** · `cleaning.removeHeaderFooter` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Word** · `cleaning.removeDuplicateParagraphs` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Word** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Word** · `chunkSize` / `chunkOverlap` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Word** · `minParagraphLength` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Word** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | （Plan 02 填充） | （Plan 02 填充） |
+| **PDF** · 文本型 · `parsing.ocrEnabled` | **`false`**（Tika 可提取 ≥32 字符时跳过 OCR，`min-extracted-chars-to-skip: 32`） | Tika 纯文本 → `parsed.txt` | **推荐** 文本 PDF 保持关闭 OCR；低风险 |
+| **PDF** · 扫描件 · `parsing.ocrEnabled` | **`true`** + tessdata 可用（`ingest.ocr.data-path`） | OCR 文本 → `parsed.txt`（`DocumentOcrService` PDF 逐页渲染） | **禁止** OCR 关闭：0 chunk / 乱码（ROADMAP **扫描 pdf** 锚点） |
+| **PDF** · `parsing.tableExtraction` | **`structured`**（触发 HTML 管道）或 **`text-only`**（默认） | `structured` → `HtmlParsingContentProcessor` 表格行；`text-only` → Tika tab/纯文本 | 复杂版式 tab 错位；多栏 PDF 表格勿仅依赖 text-only |
+| **PDF** · `parsing.defaultLanguage` | **`zh-CN`**（库级）；OCR 引擎语言 `chi_sim+eng`（`application.yml` L64） | OCR / Tika 语言提示 | 扫描件 OCR 语言与 tessdata 不匹配 → 识别率下降 |
+| **PDF** · `cleaning.removeHeaderFooter` | **`true`**（导出 PDF / 制度类） | 去除页眉页脚行 | **推荐** 导出 PDF 开启；页码行残留 → 检索噪声 |
+| **PDF** · `cleaning.removeDuplicateParagraphs` | **`true`**（长 PDF / 重复导出） | 去重后段落 | 关闭 → 重复块进入索引 |
+| **PDF** · `chunkingStrategy` | **`paragraph-first`**（默认）；长制度 PDF 可选 **`heading-level`** | 段落边界块 / 标题层级块 | **禁止** 制度库用 `semantic`：法条 mid-sentence 切断 |
+| **PDF** · `chunkSize` / `chunkOverlap` | 向导默认 **`500`** / **`120`**；系统兜底 600 / 100 | 固定窗口块 | 过小 → 碎片块；过大 → 多主题同块 |
+| **PDF** · `minParagraphLength` | **`30`**（同向导 / 系统默认） | 过滤极短段落 | 过高 → 短条款丢失 |
+| **PDF** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | 过滤纯表头块（文本 PDF 含表格时） | 扫描 PDF 通常 N/A；表头块占比高时仍有噪声 |
+| **Word** · `parsing.tableExtraction` | **`structured`**（触发 HTML 管道，`requiresHtmlPipeline()`） | `HtmlParsingContentProcessor` 表格行 → tab/结构化文本 | **禁止** 复杂表格仅用 **`text-only`**：结构丢失、cell 顺序错乱 |
+| **Word** · `parsing.defaultLanguage` | **`zh-CN`** | Tika / HTML 管道语言提示 | 多语言 docx 可显式设置 |
+| **Word** · `cleaning.removeHeaderFooter` | **`true`**（制度 docx / 模板文档） | 去除页眉页脚 | **推荐** 制度文档保持开启 |
+| **Word** · `cleaning.removeDuplicateParagraphs` | **`true`** | 去重段落 | 修订版 docx 重复段 → 索引膨胀 |
+| **Word** · `chunkingStrategy` | 制度 docx **`heading-level`**；短文 **`paragraph-first`** | 按 Word 标题层级块 / 段落块 | **推荐** 制度 docx 用 heading-level（ROADMAP **制度 docx** 锚点）；**禁止** `fixed-char` 硬切章节 |
+| **Word** · `chunkSize` / `chunkOverlap` | 向导默认 **`500`** / **`120`** | 块大小由策略决定；heading-level 以标题为界 | 制度库勿盲目调大 chunkSize |
+| **Word** · `minParagraphLength` | **`30`** | 过滤极短段落 | 表格密集 docx 可酌情降低 |
+| **Word** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | 标准入库过滤纯表头块 | 复杂表格 + structured 时表头块较少 |
+
+### 开发参考：PDF / Word 解析锚点 {#dev-reference}
+
+| 路径 | 行为 | 矩阵关联 |
+|------|------|----------|
+| `DocumentParseService.java` L44–68 | 库级 `ocrEnabled` + `OcrFallbackPolicy.shouldFallback`（Tika 字符 < 32）→ `DocumentOcrService.extract` | PDF 扫描件 / 文本型 OCR 分支 |
+| `DocumentParseService.java` L74–93 | `requiresHtmlPipeline()` 为 true 时走 HTML 管道；失败回退 `extractPlainWithTika` | PDF/Word `structured` 表格提取 |
+| `DocumentParseOptions.java` L43–47 | `requiresHtmlPipeline()`：`tableExtraction != TEXT_ONLY` 或 image/formula 非 SKIP | Word **`structured`** 触发条件 |
+| `OcrFallbackPolicy.java` L11–17 | PDF/image MIME + 提取字符数 < `min-extracted-chars-to-skip`（默认 32） | 扫描 PDF OCR 回退判定 |
+| `application.yml` L59–67 | `ingest.ocr.enabled`、`data-path`、`min-extracted-chars-to-skip: 32` | OCR 引擎 vs 库级 `parsing.ocrEnabled` 区分 |
 | **Excel** · `parsing.tableExtraction` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
 | **Excel** · `cleaning.removeDuplicateParagraphs` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
 | **Excel** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
