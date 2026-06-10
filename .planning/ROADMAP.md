@@ -65,6 +65,8 @@ Plans:
 
 **Requirements:** PRESET-01 … PRESET-04
 
+**Plans:** 3 plans（9c3101d 核心 UI/模型已交付；本 phase 补测试、持久化、文档闭环）
+
 **Key deliverables:**
 
 - `frontend/knowbase-ui/src/utils/libraryPresets.js`（或同级）
@@ -74,6 +76,12 @@ Plans:
 **Success criteria:**
 
 - 创建「周报库」后配置与文档推荐一致，无需手调 10+ 字段
+
+Plans:
+
+- [ ] 03-01-PLAN.md — vitest 预设单测 + 附录 A/ROADMAP 锚点审计 + JsonSupport 往返测试
+- [ ] 03-02-PLAN.md — Merger libraryPresetId + 编辑页 custom 漂移检测（PRESET-04）
+- [ ] 03-03-PLAN.md — 文档 §10、VERIFICATION、REQUIREMENTS/STATE/ROADMAP 闭环
 
 ---
 
@@ -121,7 +129,7 @@ Plans:
 ## Next Step
 
 ```bash
-/gsd-execute-phase 3
+/gsd-execute-phase 03-library-presets
 ```
 
 ---
