@@ -84,9 +84,34 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## §3 三层默认值对照
+## §3 三层默认值对照 {#dev-reference}
 
-（Plan 02-01 Task 2 填充）
+本节对照 **系统默认**（`application.yml` 平台兜底）、**向导默认**（`libraryDefaults.js` 建库向导初始值）、**类型推荐值**（§2 主矩阵「设定」列，Plan 02 填充 per-type 单元格）。配置层级完整模型见 [INGEST-PIPELINE.md §5](./INGEST-PIPELINE.md#5-三层配置矩阵) — 本文不重复采集覆盖（目标态）列。
+
+**层级说明：**
+
+- **系统级** — 无库 JSON 或字段缺失时 `VectorLibraryConfigFactory` 兜底（如 `chunkSize` 600、`chunkOverlap` 100）；`ingest.ocr.enabled` 为 OCR **引擎开关**，非库级 `parsing.ocrEnabled`。
+- **向导级** — `CreateLibraryWizard` Step 3 通过 `defaultLibraryConfig()` 写入新库 `config_json` 初始值。
+- **类型推荐** — 运营按 §2 矩阵为垂直库覆盖；与向导默认一致时标注「同左」，差异时在 §2 脚注说明。
+
+| 规则项 | 配置路径 | 系统默认 (`application.yml`) | 向导默认 (`libraryDefaults.js`) | 类型推荐值（汇总） | 一致/差异说明 |
+|--------|----------|------------------------------|--------------------------------|-------------------|--------------|
+| 分块策略 | `chunkingStrategy` | `paragraph-first`（L153） | `paragraph-first`（L39） | PDF/Excel/TXT/MD: 同左；Word 长文档: **`heading-level`**（制度 docx，见 §2） | 一致 |
+| 块大小 | `chunkSize` | `600`（L154） | `500`（L40） | Excel 周报: 500（测试基准）；其他类型见 §2 | **差异**：向导默认低于系统兜底 |
+| 块重叠 | `chunkOverlap` | `100`（L155） | `120`（L41） | 同向导或按类型脚注 | **差异** |
+| OCR（库级） | `parsing.ocrEnabled` | —（库级字段） | `false`（L63） | 扫描 PDF: **`true`** | 系统 `ingest.ocr.enabled: true`（L61）仅为引擎可用性开关，**非**库级默认 |
+| 表格提取 | `parsing.tableExtraction` | — | `text-only`（L64） | Word: **`structured`**；Excel: **`text-only`**（禁止 structured） | Excel 勿改 structured（附录 B） |
+| 编码检测 | `parsing.autoDetectEncoding` | — | `true`（L67） | TXT/MD: **`true`** | 一致 |
+| 默认语言 | `parsing.defaultLanguage` | `ingest.ocr.language: chi_sim+eng`（L64，OCR 引擎） | `zh-CN`（L68） | OCR 脚注语言 | 引擎语言 vs 库级 defaultLanguage 不同层级 |
+| 去页眉页脚 | `cleaning.removeHeaderFooter` | — | `true`（L71） | PDF/Word 制度: 保持 `true` | 一致 |
+| 去重复段落 | `cleaning.removeDuplicateParagraphs` | — | `true`（L73） | PDF 导出/长文: 保持 `true` | 一致 |
+
+**代码锚点：**
+
+- 系统 chunking 兜底：`application.yml` L152–160；`VectorLibraryConfigFactory.java` L75–83（`chunkSize` ≤0 → 600，`chunkOverlap` ≤0 → 100）
+- 向导默认形状：`frontend/knowbase-ui/src/utils/libraryDefaults.js` `defaultLibraryConfig()`
+- 后端 parsing 字段名权威：`ParsingRulesSettings.java` — `ocrEnabled`, `tableExtraction`, `autoDetectEncoding`, `defaultLanguage`
+- 系统 OCR 引擎：`application.yml` L59–67 — `enabled`, `data-path`, `language`, `min-extracted-chars-to-skip`
 
 ---
 
