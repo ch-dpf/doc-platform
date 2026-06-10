@@ -296,6 +296,32 @@ sequenceDiagram
 
 **目标态：** Phase 4 **PARITY** 要求预览规则 = 入库规则。完整四锚点差距表见附录 A（Plan 03）；PARITY 需求见 `.planning/REQUIREMENTS.md` backlog。
 
+### 4.4 当前差距：预览 vs 入库（D-14）
+
+| 维度 | 预览路径 | 正式入库路径 | 差距 |
+|------|----------|-------------|------|
+| 解析来源 | `ParsePreviewService.preview` — 内存 extract-only，不写 storage | `DocumentPipelineService.processAsync` — 解析后持久化 `parsed.txt` | 预览跳过管道持久化；索引读已清洗的 stored text |
+| 规范化/清洗顺序 | `ChunkPreviewService` 对请求 body 内 `sampleText` **重新** apply normalization + cleaning | 管道内已 normalize+clean 写入 `parsed.txt`；`IndexingService` **再次** `cleaningFor` 后分块 | 双次清洗 + 顺序差异 |
+| 分块参数 | `IngestView.buildChunkPreviewBody` 可传 `overrideChunkSize`（`overrideChunkEnabled`） | `IndexingService` 仅 `libraryConfigResolver.chunkingFor(libraryId)` | `overrideChunk` **仅预览** |
+| UI 文案 | `IngestView.vue:531` 显示「仅本次预览与入库」 | `ingest.js` `uploadParams` 只传 `documentMetadata`，**无** chunkSize | 文案误导运营 |
+| 块数预期 | `chunk-preview` 返回 `totalChunks` / `rawTotalChunks` / `filteredOutCount` | `document_chunk` 行数（经 `IndexingChunkFilter`） | 参数或路径不同则 N≠M |
+
+**代码锚点 — overrideChunk 预览专用：**
+
+```javascript
+// IngestView.vue:1132 — override 仅进入 chunk-preview body
+const chunkSize = overrideChunkEnabled.value ? overrideChunkSize.value : sizing.chunkSize
+
+// ingest.js:17-20 — upload 不传 chunk 覆盖
+function uploadParams(libraryId, tenantId, autoIndex, documentMetadata) {
+  const params = { libraryId, tenantId, autoIndex }
+  if (documentMetadata?.trim()) params.documentMetadata = documentMetadata.trim()
+  return params
+}
+```
+
+**目标态（Phase 4 PARITY）：** 预览规则 = 入库规则；`overrideChunk` 要么同步传入入库管道，要么从 UI 移除。**现状预览不等于入库** — 勿将预览块数当作入库结果。`DocumentPipelineService` 与 `IndexingService` 锚点行见附录 A（Plan 03）。
+
 ---
 
 ## §5 三层配置矩阵
