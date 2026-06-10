@@ -117,7 +117,7 @@ Plans:
 
 **Requirements:** CFG-01, CFG-02
 
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 **Key deliverables:**
 
@@ -144,7 +144,7 @@ Plans:
 ## Next Step
 
 ```bash
-/gsd-verify-work 05-config-ux
+/gsd-complete-milestone
 ```
 
 ---

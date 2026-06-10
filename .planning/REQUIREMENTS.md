@@ -29,8 +29,8 @@
 ### Preview–Index Parity（预览与入库一致）
 
 - [x] **PARITY-01**: 采集分块预览与 `IndexingService` 使用相同分块参数与 `IndexingChunkFilter` 规则
-- [ ] **PARITY-02**: 预览展示的 `rawTotalChunks` / `filteredOutCount` / 最终块数与入库后 chunk 数一致（同文本输入）
-- [ ] **PARITY-03**: 库配置变更后预览即时反映（含 `tableExtraction` diff 保存）
+- [x] **PARITY-02**: 预览展示的 `rawTotalChunks` / `filteredOutCount` / 最终块数与入库后 chunk 数一致（同文本输入）
+- [x] **PARITY-03**: 库配置变更后预览即时反映（含 `tableExtraction` diff 保存）
 - [x] **PARITY-04**: 后端单测覆盖至少 1 个周报样本的预览 vs 索引块数一致性
 
 ### Config UX（配置可预期）
@@ -75,8 +75,8 @@
 | PRESET-03 | Phase 3 | Complete |
 | PRESET-04 | Phase 3 | Complete |
 | PARITY-01 | Phase 4 | Complete |
-| PARITY-02 | Phase 4 | Pending |
-| PARITY-03 | Phase 4 | Pending |
+| PARITY-02 | Phase 4 | Complete |
+| PARITY-03 | Phase 4 | Complete |
 | PARITY-04 | Phase 4 | Complete |
 | CFG-01 | Phase 5 | Complete |
 | CFG-02 | Phase 5 | Complete |
@@ -89,4 +89,4 @@
 
 ---
 *Requirements defined: 2026-06-10*
-*Last updated: 2026-06-10 after Phase 3 completion (PRESET-01–04)*
+*Last updated: 2026-06-10 after Phase 4 verification (PARITY-01–04) and Phase 5 execution (CFG-01–02)*
