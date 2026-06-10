@@ -78,7 +78,7 @@ Each task was committed atomically:
 2. **Task 2: Appendix C field paths and bidirectional cross-refs** - `d55a614` (docs)
 3. **Task 3: Acceptance checklist, traceability, STATE and ROADMAP update** - `ecfaf08` (docs)
 
-**Plan metadata:** pending final docs commit
+**Plan metadata:** `47578a1` (docs: complete plan)
 
 ## Files Created/Modified
 
@@ -120,6 +120,7 @@ None - no external service configuration required.
 - FOUND: `0cdadd1` Task 1 commit
 - FOUND: `d55a614` Task 2 commit
 - FOUND: `ecfaf08` Task 3 commit
+- FOUND: `47578a1` Plan metadata commit
 - VERIFIED: No `（Plan 03 填充）` placeholders remain
 - VERIFIED: TYPE-01–05 all Covered in traceability table
 - VERIFIED: ROADMAP anchors 周报 xlsx / 扫描 pdf / 制度 docx grep-able with 推荐/禁止
