@@ -51,7 +51,7 @@ focus: file-type-processing
 
 | 能力 | 本阶段 | 后续 |
 |------|--------|------|
-| 按类型推荐矩阵 | §2（Plan 02 填充单元格） | — |
+| 按类型推荐矩阵 | §2 主矩阵（已填充） | — |
 | MIME 运行时自动默认 | 附录 A 规划表 only | Phase 3 `libraryPresets.js` |
 | 结构化 Excel ingest | 附录 B backlog | 另立里程碑 |
 | 预览=入库一致性 | 反模式链回 INGEST-PIPELINE §8 | Phase 4 PARITY |
@@ -63,7 +63,7 @@ focus: file-type-processing
 | TYPE-01 | §2 PDF 行组 | Covered |
 | TYPE-02 | §2 Word 行组 | Covered |
 | TYPE-03 | §2 Excel 行组 + 附录 B | Covered |
-| TYPE-04 | §2 TXT/Markdown 行组 | Placeholder（Plan 02） |
+| TYPE-04 | §2 TXT/Markdown 行组 | Covered |
 | TYPE-05 | §4 类型反模式 | Placeholder（Plan 03） |
 
 ### ROADMAP 成功标准锚点
@@ -133,18 +133,18 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 | **Excel** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | `removeHeaderOnlyChunks` 去掉「序号\t类别\t…」纯表头块 | 表头块占比过高时仍有检索噪声 |
 | **Excel** · 子场景（**周报 xlsx**） | 同上 + **同质语义单库**（仅周报类 xlsx） | 3–4 chunks/doc（chunkSize=500）；`IndexingChunkFilter` 过滤 1 表头块 → 3 块入库 | **推荐** 周报专用库；**禁止** 周报 + 报销混库（ROADMAP **周报 xlsx** 锚点） |
 | **Excel** · 续行 / 表头（管道内启发式） | —（`TabularContinuationNormalizer`） | 合并单元格内换行续行 → 同一 tab 数据行；再 `paragraph-first` 分块 | 续行与主体分离 → 召回失败；见 `TabularContinuationNormalizer.joinContinuations` |
-| **TXT** · `parsing.autoDetectEncoding` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **TXT** · `cleaning.removeDuplicateParagraphs` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **TXT** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **TXT** · `chunkSize` / `chunkOverlap` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **TXT** · `minParagraphLength` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **TXT** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | （Plan 02 填充） | （Plan 02 填充） |
-| **Markdown** · `parsing.autoDetectEncoding` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Markdown** · MIME 兜底 | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Markdown** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Markdown** · `chunkSize` / `chunkOverlap` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Markdown** · `minParagraphLength` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Markdown** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | （Plan 02 填充） | （Plan 02 填充） |
+| **TXT** · `parsing.autoDetectEncoding` | **`true`** | UTF-8 / GBK 等正确解码 → `parsed.txt` | **禁止** `false` + GBK 源文件：乱码 chunk → 无效向量 |
+| **TXT** · `cleaning.removeDuplicateParagraphs` | **`true`**（默认） | 去重段落 | 日志/导出 txt 重复行 → 索引膨胀 |
+| **TXT** · `chunkingStrategy` | **`paragraph-first`** | 空行 / 换行边界段落块 | 极短文件可调低 `chunkSize`（见脚注） |
+| **TXT** · `chunkSize` / `chunkOverlap` | 向导默认 **`500`** / **`120`** | 段落块 | 过小 → 碎片块；单段超长 txt 可适度增大 |
+| **TXT** · `minParagraphLength` | **`30`** | 过滤极短行 | 过高 → 短通知/清单行丢失 |
+| **TXT** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | 标准入库过滤（纯 txt 通常无表头块） | tab 分隔 txt 偶发表头行时可过滤 |
+| **Markdown** · `parsing.autoDetectEncoding` | **`true`**（同 TXT） | 正确解码 `.md` 源文件 | GBK md 关闭检测 → 乱码 |
+| **Markdown** · MIME 兜底 | `ingestAccess.supportedFileTypes` 含 **`markdown`**；MIME：`text/markdown`, `text/x-markdown`（`application.yml` L90–92） | `.md` 被识别为 `text/plain` 时 `MimeTypeAllowlist` 扩展名兜底仍允许 | **禁止** 库未纳入 markdown → 上传 415 |
+| **Markdown** · `chunkingStrategy` | **`paragraph-first`**；含 `#` 标题时长文档可选 **`heading-level`** | 标题 / 段落块 | **禁止** **`semantic`** 于代码块：fence 内语义误切 |
+| **Markdown** · `chunkSize` / `chunkOverlap` | 向导默认 **`500`** / **`120`** | 块大小由策略决定 | 代码密集 md 可保持 paragraph-first |
+| **Markdown** · `minParagraphLength` | **`30`** | 过滤极短段落 | 列表项过短时可酌情降低 |
+| **Markdown** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | 标准入库过滤 | 含 tab 表格的 md 偶发表头块 |
 
 ### 开发参考：Resolver 消费链
 
@@ -161,7 +161,7 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ## §3 三层默认值对照 {#dev-reference}
 
-本节对照 **系统默认**（`application.yml` 平台兜底）、**向导默认**（`libraryDefaults.js` 建库向导初始值）、**类型推荐值**（§2 主矩阵「设定」列，Plan 02 填充 per-type 单元格）。配置层级完整模型见 [INGEST-PIPELINE.md §5](./INGEST-PIPELINE.md#5-三层配置矩阵) — 本文不重复采集覆盖（目标态）列。
+本节对照 **系统默认**（`application.yml` 平台兜底）、**向导默认**（`libraryDefaults.js` 建库向导初始值）、**类型推荐值**（§2 主矩阵「设定」列）。配置层级完整模型见 [INGEST-PIPELINE.md §5](./INGEST-PIPELINE.md#5-三层配置矩阵) — 本文不重复采集覆盖（目标态）列。
 
 **层级说明：**
 
@@ -171,7 +171,7 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 | 规则项 | 配置路径 | 系统默认 (`application.yml`) | 向导默认 (`libraryDefaults.js`) | 类型推荐值（汇总） | 一致/差异说明 |
 |--------|----------|------------------------------|--------------------------------|-------------------|--------------|
-| 分块策略 | `chunkingStrategy` | `paragraph-first`（L153） | `paragraph-first`（L39） | PDF/Excel/TXT/MD: 同左；Word 长文档: **`heading-level`**（制度 docx，见 §2） | 一致 |
+| 分块策略 | `chunkingStrategy` | `paragraph-first`（L153） | `paragraph-first`（L39） | PDF/Excel/TXT: 同左；Word 制度 / MD 长文档: **`heading-level`**（见 §2） | 一致 |
 | 块大小 | `chunkSize` | `600`（L154） | `500`（L40） | Excel 周报: 500（测试基准）；其他类型见 §2 | **差异**：向导默认低于系统兜底 |
 | 块重叠 | `chunkOverlap` | `100`（L155） | `120`（L41） | 同向导或按类型脚注 | **差异** |
 | OCR（库级） | `parsing.ocrEnabled` | —（库级字段） | `false`（L63） | 扫描 PDF: **`true`** | 系统 `ingest.ocr.enabled: true`（L61）仅为引擎可用性开关，**非**库级默认 |
@@ -196,9 +196,33 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## 附录 A MIME → 推荐 config_json
+## 附录 A MIME → 推荐 config_json {#appendix-a} {#dev-reference}
 
-（Plan 02 填充）
+> **文档规划，Phase 3 预设引用** — 本表为库级初始默认片段，供 Phase 3 `libraryPresets.js` 套用。**非** v1 运行时 MIME 自动默认引擎（实现 deferred）。
+
+| MIME | 文件类型键 | 扩展名 | 推荐 config_json 片段（库级初始默认） |
+|------|-----------|--------|--------------------------------------|
+| `application/pdf` | `pdf` | `.pdf` | `{ parsing: { ocrEnabled: false, tableExtraction: 'text-only' }, chunkingStrategy: 'paragraph-first' }` — 扫描 PDF 库覆盖 `ocrEnabled: true` |
+| `application/msword` | `word` | `.doc` | `{ parsing: { tableExtraction: 'structured', ocrEnabled: false }, chunkingStrategy: 'heading-level' }` — 短文可降 `paragraph-first` |
+| `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `word` | `.docx` | 同上 |
+| `application/vnd.ms-excel` | `excel` | `.xls` | `{ parsing: { tableExtraction: 'text-only' }, chunkingStrategy: 'paragraph-first' }` — **禁止** `structured` |
+| `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | `excel` | `.xlsx` | 同上 |
+| `text/plain` | `txt` | `.txt` | `{ parsing: { autoDetectEncoding: true }, chunkingStrategy: 'paragraph-first' }` |
+| `text/markdown` | `markdown` | `.md` | 同 TXT；`ingestAccess.supportedFileTypes` 含 `markdown` |
+| `text/x-markdown` | `markdown` | `.md`, `.markdown` | 同 TXT；`.md` 可能被识别为 `text/plain` — `MimeTypeAllowlist` 扩展名兜底 |
+
+**代码映射源：**
+
+- `VectorLibraryConfigFactory.java` L14–23 — `FILE_TYPE_MIMES`
+- `supportedFileTypes.js` L1–7 — `EXT_MAP`
+- `MimeTypeAllowlist.java` L14–40 — Markdown 扩展名 + `text/plain` 兜底
+- `application.yml` L83–92 — 平台 `allowed-mime-types` 白名单
+
+**MIME 默认三层覆盖（D-07）：**
+
+1. **附录 A 值** = 库级初始默认（Phase 3 `libraryPresets.js` 套用源）
+2. **垂直专用库**可覆盖（如扫描 PDF 库全局 `parsing.ocrEnabled: true`；周报库 `chunkSize: 500`）
+3. **采集级覆盖** = 目标态 backlog（[INGEST-PIPELINE.md 附录 B.3](./INGEST-PIPELINE.md) ingest profile）
 
 ---
 
