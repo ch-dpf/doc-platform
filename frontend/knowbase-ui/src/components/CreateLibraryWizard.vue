@@ -276,7 +276,7 @@
           <el-tag v-else type="warning" size="small">待预览</el-tag>
           <span v-if="previewSummary" class="preview-summary">{{ previewSummary }}</span>
         </div>
-        <p v-if="previewAdjustHint" class="preview-adjust-hint">{{ previewAdjustHint }}</p>
+        <p v-if="strategyPreviewHint" class="preview-adjust-hint">{{ strategyPreviewHint }}</p>
         <el-table v-if="previewChunkItems.length" :data="previewChunkItems" size="small" max-height="240" stripe class="preview-table">
           <el-table-column prop="index" label="#" width="48" align="center" />
           <el-table-column prop="length" label="字数" width="72" align="center" />
@@ -461,7 +461,7 @@ import { applyLibraryPreset, LIBRARY_PRESETS } from '../utils/libraryPresets'
 import {
   CHUNK_PREVIEW_COMPARISON_SAMPLE,
   CHUNK_STRATEGY_PREVIEW_HINTS,
-  resolvePreviewChunkParams
+  libraryChunkParams
 } from '../utils/chunkPreviewSample'
 import { DEFAULT_LINE_DROP_PATTERNS, patternsToText } from '../utils/textPatterns'
 import { usePageTitle } from '../composables/usePageTitle'
@@ -496,7 +496,6 @@ const previewLoading = ref(false)
 const previewDone = ref(false)
 const previewChunkItems = ref([])
 const previewSummary = ref('')
-const previewAdjustHint = ref('')
 const dropPatternsText = ref(patternsToText(DEFAULT_LINE_DROP_PATTERNS))
 
 const strategyPreviewHint = computed(
@@ -587,14 +586,8 @@ async function runPreview() {
   previewLoading.value = true
   previewChunkItems.value = []
   previewSummary.value = ''
-  previewAdjustHint.value = ''
-  const textLen = previewText.value.trim().length
   const strategy = form.config.chunkingStrategy
-  const sizing = resolvePreviewChunkParams(textLen, form.config, strategy)
-  const hints = [sizing.expectedHint, sizing.previewHint].filter(Boolean)
-  if (hints.length) {
-    previewAdjustHint.value = hints.join(' ')
-  }
+  const sizing = libraryChunkParams(form.config)
   try {
     const norm = { ...form.config.textNormalization, enabled: true }
     const { data } = await fetchChunkPreview({
@@ -617,16 +610,8 @@ async function runPreview() {
       ? `共 ${previewChunkItems.value.length} 块（入库预览，已过滤 ${filtered} 个表头块）`
       : `共 ${previewChunkItems.value.length} 块（入库预览）`
     previewDone.value = true
-    if (sizing.expectedHint) {
-      const expectedMatch = sizing.expectedHint.match(/约\s*(\d+)/)
-      if (expectedMatch) {
-        const expected = Number(expectedMatch[1])
-        const actual = previewChunkItems.value.length
-        if (Math.abs(actual - expected) > 2 && strategy === 'semantic') {
-          ElMessage.info(`语义分块 ${actual} 块：若远高于 2，请确认 Ollama embedding 可用，或两段主题差异是否足够大`)
-        }
-      }
-    } else if (previewChunkItems.value.length <= 1 && textLen > 200) {
+    const textLen = previewText.value.trim().length
+    if (previewChunkItems.value.length <= 1 && textLen > 200) {
       ElMessage.info('仅分出 1 块：可加载对比示例，或调小块大小后再预览')
     }
   } catch (e) {
@@ -651,7 +636,6 @@ function loadPreviewSample() {
   previewDone.value = false
   previewChunkItems.value = []
   previewSummary.value = ''
-  previewAdjustHint.value = ''
   ElMessage.success('已加载对比示例，请切换分块策略后分别预览')
 }
 
