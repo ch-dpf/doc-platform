@@ -150,6 +150,7 @@
               <div class="switch-row">
                 <el-form-item label="OCR">
                   <el-switch v-model="form.config.parsing.ocrEnabled" :disabled="lockPipeline" />
+                  <p v-if="fieldImpactHint('parsing.ocrEnabled')" class="settings-form__tip">{{ fieldImpactHint('parsing.ocrEnabled') }}</p>
                 </el-form-item>
                 <el-form-item label="默认语言">
                   <el-select
@@ -177,6 +178,7 @@
                     <el-option label="结构化" value="structured" />
                     <el-option label="跳过" value="skip" />
                   </el-select>
+                  <p v-if="fieldImpactHint('parsing.tableExtraction')" class="settings-form__tip">{{ fieldImpactHint('parsing.tableExtraction') }}</p>
                 </div>
                 <div class="metric-field">
                   <label class="metric-field__label">图片提取</label>
@@ -188,6 +190,7 @@
                     <el-option label="OCR 描述" value="ocr-caption" />
                     <el-option label="跳过" value="skip" />
                   </el-select>
+                  <p v-if="fieldImpactHint('parsing.imageExtraction')" class="settings-form__tip">{{ fieldImpactHint('parsing.imageExtraction') }}</p>
                 </div>
                 <div class="metric-field">
                   <label class="metric-field__label">公式提取</label>
@@ -244,6 +247,7 @@
                   <el-option label="语义分块" value="semantic" />
                   <el-option label="按标题层级" value="heading-level" />
                 </el-select>
+                <p v-if="fieldImpactHint('chunkingStrategy')" class="settings-form__tip">{{ fieldImpactHint('chunkingStrategy') }}</p>
               </el-form-item>
               <div class="metric-grid">
                 <div class="metric-field">
@@ -256,6 +260,7 @@
                     controls-position="right"
                     class="full-width"
                   />
+                  <p v-if="fieldImpactHint('chunkSize')" class="settings-form__tip">{{ fieldImpactHint('chunkSize') }}</p>
                 </div>
                 <div class="metric-field">
                   <label class="metric-field__label">重叠</label>
@@ -419,6 +424,7 @@ import { getVectorLibrary, updateVectorLibrarySettings } from '../api/library'
 import { patternsToText, textToPatterns } from '../utils/textPatterns'
 import { defaultLibraryConfig, FILE_TYPE_OPTIONS } from '../utils/libraryDefaults'
 import { diffLibraryConfig, diffNeedsReindex, hasIngestedContent } from '../utils/libraryConfig'
+import { fieldImpactHint } from '../utils/fieldImpactHints'
 import { resolveLibraryPresetLabel, syncLibraryPresetIdOnEdit } from '../utils/libraryPresets'
 
 const props = defineProps({
@@ -862,6 +868,12 @@ watch(
   margin-left: 8px;
   font-size: 12px;
   color: #94a3b8;
+}
+.settings-form__tip {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
 }
 .settings-footer {
   display: flex;

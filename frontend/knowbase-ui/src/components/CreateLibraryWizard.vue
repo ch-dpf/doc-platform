@@ -167,13 +167,14 @@
             <template #label>
               <span>OCR</span>
               <el-tooltip
-                content="适用于扫描件 PDF：库开启后，Tika 抽取不足时将回退 Tesseract OCR（需服务端 ingest.ocr.enabled=true）"
+                :content="fieldImpactHint('parsing.ocrEnabled')"
                 placement="top"
               >
                 <el-icon class="tip-icon"><QuestionFilled /></el-icon>
               </el-tooltip>
             </template>
             <el-switch v-model="form.config.parsing.ocrEnabled" />
+            <p v-if="fieldImpactHint('parsing.ocrEnabled')" class="wizard-field-hint">{{ fieldImpactHint('parsing.ocrEnabled') }}</p>
           </el-form-item>
           <div class="field-grid field-grid--3">
             <el-form-item label="表格提取">
@@ -182,6 +183,7 @@
                 <el-option label="结构化" value="structured" />
                 <el-option label="跳过" value="skip" />
               </el-select>
+              <p v-if="fieldImpactHint('parsing.tableExtraction')" class="wizard-field-hint">{{ fieldImpactHint('parsing.tableExtraction') }}</p>
             </el-form-item>
             <el-form-item label="图片提取">
               <el-select v-model="form.config.parsing.imageExtraction" class="wizard-full-width">
@@ -244,11 +246,13 @@
               <el-option label="语义分块" value="semantic" />
               <el-option label="按标题层级" value="heading-level" />
             </el-select>
+            <p v-if="fieldImpactHint('chunkingStrategy')" class="wizard-field-hint">{{ fieldImpactHint('chunkingStrategy') }}</p>
           </el-form-item>
           <div class="metric-grid">
             <div class="metric-field">
               <label class="metric-field__label">块大小</label>
               <el-input-number v-model="form.config.chunkSize" :min="100" :max="8000" controls-position="right" class="wizard-full-width" />
+              <p v-if="fieldImpactHint('chunkSize')" class="wizard-field-hint">{{ fieldImpactHint('chunkSize') }}</p>
             </div>
             <div class="metric-field">
               <label class="metric-field__label">重叠</label>
@@ -464,6 +468,7 @@ import {
   libraryChunkParams
 } from '../utils/chunkPreviewSample'
 import { DEFAULT_LINE_DROP_PATTERNS, patternsToText } from '../utils/textPatterns'
+import { fieldImpactHint } from '../utils/fieldImpactHints'
 import { usePageTitle } from '../composables/usePageTitle'
 
 const STEP_DESCRIPTIONS = [
@@ -967,6 +972,12 @@ watch(visible, (v) => {
   color: #94a3b8;
   vertical-align: middle;
   cursor: help;
+}
+.wizard-field-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
 }
 .library-wizard :deep(.el-dialog__body) {
   padding-top: 16px;
