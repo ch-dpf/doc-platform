@@ -1,5 +1,5 @@
 ---
-last_mapped_commit: 6dafbc9
+last_mapped_commit: 071d350
 analysis_date: 2026-06-10
 focus: ingest-pipeline
 ---
@@ -42,9 +42,9 @@ focus: ingest-pipeline
 
 | Requirement | Section | Status |
 |-------------|---------|--------|
-| PIPE-01 | §2 建库流程 | Plan 01-01 |
-| PIPE-02 | §3 单文档入库流程 | Plan 01-02 ✓ |
-| PIPE-03 | §4 阶段·类·API 对照 | Plan 01-02 ✓ |
+| PIPE-01 | §2 建库流程 | Covered |
+| PIPE-02 | §3 单文档入库流程 | Covered |
+| PIPE-03 | §4 阶段·类·API 对照 | Covered |
 
 ### 按文件类型处理
 
@@ -320,7 +320,7 @@ function uploadParams(libraryId, tenantId, autoIndex, documentMetadata) {
 }
 ```
 
-**目标态（Phase 4 PARITY）：** 预览规则 = 入库规则；`overrideChunk` 要么同步传入入库管道，要么从 UI 移除。**现状预览不等于入库** — 勿将预览块数当作入库结果。`DocumentPipelineService` 与 `IndexingService` 锚点行见附录 A（Plan 03）。
+**目标态（Phase 4 PARITY）：** 预览规则 = 入库规则；`overrideChunk` 要么同步传入入库管道，要么从 UI 移除。**现状预览不等于入库** — 勿将预览块数当作入库结果。`DocumentPipelineService` 与 `IndexingService` 锚点行见[附录 A](#附录-a当前差距详表)。
 
 ---
 
@@ -374,7 +374,7 @@ function uploadParams(libraryId, tenantId, autoIndex, documentMetadata) {
 
 **现状：** 整条 ingest 管道（解析 / 清洗 / 分块 / 嵌入）规则**锁定在库级**——`LibraryConfigResolver.*For(libraryId)` 为唯一运行时来源；无持久化 ingest profile。`documentMetadata` 仅进入 chunk 元数据供检索过滤。
 
-**目标态：** 库级为默认值，采集级可覆盖白名单内字段（OCR、chunk 参数等），变更触发重索引（D-15 软锁定）。完整差距表见附录 A（Plan 03）。
+**目标态：** 库级为默认值，采集级可覆盖白名单内字段（OCR、chunk 参数等），变更触发重索引（D-15 软锁定）。完整差距表见[附录 A](#附录-a当前差距详表)。
 
 ---
 
@@ -632,3 +632,27 @@ if (lockPipelineConfig) {
 | `ingestAccess.capacityLimits.maxDocuments` | 容量-文档数 | 否 | 2 |
 | `retrieval.hybridSearchEnabled` | 混合检索 | 否 | 4 |
 | `governance.ingestReviewMode` | 入库审核 | 否 | 5 |
+
+---
+
+## §9 验收清单
+
+ROADMAP Phase 1 成功标准：**新人可据文档从「建库」追到 `document_chunk` 写入而无歧义**。下列五步可在**不打开 Java/Vue 源码**的情况下完成追溯（每步引用本文章节）。
+
+1. **建库字段从哪来？** — 阅读 [§2.2 向导步骤 ↔ config_json 字段](#22-向导步骤--config_json-字段)，对照 `CreateLibraryWizard` 五步与 `defaultLibraryConfig()` 默认形状；确认 `POST /api/v1/vector-libraries` 持久化路径见 [§2.4](#24-数据流建库--首次入库)。
+
+2. **config_json 如何生效？** — 查 [§2.3 config_json → LibraryConfigResolver 生效点](#23-config_json--libraryconfigresolver-生效点) 与 [§5.2 Resolver 方法 → 消费方](#52-resolver-方法--消费方)；理解 `*For(libraryId)` 为运行时唯一来源（现状无采集覆盖，见 [§5 当前差距](#当前差距-1)）。
+
+3. **上传走哪个 API？** — [§4.1 阶段·HTTP·类·前端矩阵](#41-阶段httplass前端矩阵) 定位 `POST /api/v1/documents/upload` → `DocumentIngestor`；`documentMetadata` 语义见 [§3.3](#33-documentmetadata-数据流-d-06)。
+
+4. **管道各阶段顺序？** — [§3.1 端到端时序图](#31-端到端时序图)（mermaid）+ [§3.2 阶段 × 关键类 × 配置来源](#32-阶段--关键类--配置来源) 九阶段表：上传 → 解析 → 规范化 → 清洗 → 索引触发 → 分块 → `IndexingChunkFilter` → 嵌入 → metadata。
+
+5. **document_chunk 如何写入？** — 时序图 alt 分支：`DocumentIndexCoordinator` → `IndexingService.index` → `INSERT document_chunk`；块内容与质量准则见 [§7](#7-分块质量准则)；验收 API 为 `GET /api/v1/documents/{docId}/chunks`（[§4.1](#41-阶段httplass前端矩阵)）。**勿**以预览块数代替入库结果（[§4.4](#44-当前差距预览-vs-入库-d-14)）。
+
+### 需求可追溯（终稿）
+
+| Requirement | Section | Status |
+|-------------|---------|--------|
+| PIPE-01 | §2 建库流程 | Covered |
+| PIPE-02 | §3 单文档入库流程 | Covered |
+| PIPE-03 | §4 阶段·类·API 对照 | Covered |
