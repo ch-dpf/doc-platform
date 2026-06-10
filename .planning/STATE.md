@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Phase 02 context gathered
-last_updated: "2026-06-10T05:20:54.414Z"
+stopped_at: Phase 02 planned — ready for /gsd-execute-phase 2
+last_updated: "2026-06-10T05:26:54.910Z"
 progress:
   total_phases: 2
   completed_phases: 0
-  total_plans: 4
+  total_plans: 8
   completed_plans: 3
   percent: 0
 ---
@@ -56,4 +56,4 @@ See: `.planning/PROJECT.md` (updated 2026-06-10)
 - **2026-06-10:** Plan 01-01 executed — INGEST-PIPELINE.md scaffold, config matrix, decision tree, PIPE-01 §2
 - **2026-06-10:** Plan 01-02 executed — §3 入库九阶段流程、§4 API/组件矩阵、§4.4 预览差距（PIPE-02/03）
 - **2026-06-10:** Plan 01-03 executed — §7/§8 质量准则与反模式、附录 A/B/C、§9 验收清单；Phase 1 INGEST-PIPELINE.md delivered
-- **Stopped at:** Phase 02 context gathered
+- **Stopped at:** Phase 02 planned — ready for /gsd-execute-phase 2
