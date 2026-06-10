@@ -21,10 +21,10 @@
 
 ### Library Presets（库预设）
 
-- [ ] **PRESET-01**: 定义至少 4 种库预设：周报 Excel 库、制度/长文库、报销扫描库、通用混合库
-- [ ] **PRESET-02**: 每预设包含完整 `parsing` + `cleaning` + `chunking` 子配置及一句话适用说明
-- [ ] **PRESET-03**: 建库向导可选择预设并填充表单（`CreateLibraryWizard.vue`）
-- [ ] **PRESET-04**: 编辑库设置时可查看当前预设来源或「自定义」状态
+- [x] **PRESET-01**: 定义至少 4 种库预设：周报 Excel 库、制度/长文库、报销扫描库、通用混合库
+- [x] **PRESET-02**: 每预设包含完整 `parsing` + `cleaning` + `chunking` 子配置及一句话适用说明
+- [x] **PRESET-03**: 建库向导可选择预设并填充表单（`CreateLibraryWizard.vue`）
+- [x] **PRESET-04**: 编辑库设置时可查看当前预设来源或「自定义」状态
 
 ### Preview–Index Parity（预览与入库一致）
 
@@ -70,10 +70,10 @@
 | TYPE-03 | Phase 2 | Complete |
 | TYPE-04 | Phase 2 | Complete |
 | TYPE-05 | Phase 2 | Complete |
-| PRESET-01 | Phase 3 | Pending |
-| PRESET-02 | Phase 3 | Pending |
-| PRESET-03 | Phase 3 | Pending |
-| PRESET-04 | Phase 3 | Pending |
+| PRESET-01 | Phase 3 | Complete |
+| PRESET-02 | Phase 3 | Complete |
+| PRESET-03 | Phase 3 | Complete |
+| PRESET-04 | Phase 3 | Complete |
 | PARITY-01 | Phase 4 | Pending |
 | PARITY-02 | Phase 4 | Pending |
 | PARITY-03 | Phase 4 | Pending |
@@ -89,4 +89,4 @@
 
 ---
 *Requirements defined: 2026-06-10*
-*Last updated: 2026-06-10 after Phase 2 completion (TYPE-01–05)*
+*Last updated: 2026-06-10 after Phase 3 completion (PRESET-01–04)*
