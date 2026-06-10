@@ -14,8 +14,8 @@ focus: file-type-processing
 
 | 受众 | 锚点 | 推荐阅读章节 |
 |------|------|--------------|
-| 运营 | [#ops-guide](#ops-guide) | §2 主矩阵（推荐/禁止/质量风险）、§4 类型反模式 |
-| 开发 | [#dev-reference](#dev-reference) | §3 三层默认值、附录 A MIME 映射、附录 C 字段路径 |
+| 运营 | [#ops-guide](#ops-guide) | §2 [#ops-matrix](#ops-matrix)（推荐/禁止/质量风险）、§4 [#ops-anti-patterns](#ops-anti-patterns) 类型反模式；§9 [#ops-checklist](#ops-checklist) |
+| 开发 | [#dev-reference](#dev-reference) | §3 [#dev-defaults](#dev-defaults) 三层默认值、附录 A [#dev-appendix-a](#dev-appendix-a)、附录 C [#dev-field-paths](#dev-field-paths) |
 
 ---
 
@@ -78,7 +78,7 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## §2 主矩阵 {#ops-guide}
+## §2 主矩阵 {#ops-matrix}
 
 本节为 **单张大表**（D-03）：行 = **类型 × 规则项**（完整管道维度），列 = **设定 | 产出 | 质量**，便于横向对比 pdf / word / excel / txt / markdown。Excel 子场景（周报 xlsx）以缩进行标注。
 
@@ -125,7 +125,7 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 > **Excel 目标态（D-08）：** 表格类文件在目标态应走**结构化文档处理**（行列对象入库），方能在分块/向量化层保证数据准确可控。**v1 过渡推荐（D-09）：** 运营仍用 **`text-only` + `paragraph-first` + `IndexingChunkFilter`**；差距详表见 [附录 B](#appendix-b)。
 
-### 开发参考：PDF / Word 解析锚点 {#dev-reference}
+### 开发参考：PDF / Word 解析锚点 {#dev-reference-pdf-word}
 
 | 路径 | 行为 | 矩阵关联 |
 |------|------|----------|
@@ -135,7 +135,7 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 | `OcrFallbackPolicy.java` L11–17 | PDF/image MIME + 提取字符数 < `min-extracted-chars-to-skip`（默认 32） | 扫描 PDF OCR 回退判定 |
 | `application.yml` L59–67 | `ingest.ocr.enabled`、`data-path`、`min-extracted-chars-to-skip: 32` | OCR 引擎 vs 库级 `parsing.ocrEnabled` 区分 |
 
-### 开发参考：Excel 解析与分块锚点 {#dev-reference}
+### 开发参考：Excel 解析与分块锚点 {#dev-reference-excel}
 
 | 路径 | 行为 | 矩阵关联 |
 |------|------|----------|
@@ -159,7 +159,7 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## §3 三层默认值对照 {#dev-reference}
+## §3 三层默认值对照 {#dev-defaults}
 
 本节对照 **系统默认**（`application.yml` 平台兜底）、**向导默认**（`libraryDefaults.js` 建库向导初始值）、**类型推荐值**（§2 主矩阵「设定」列）。配置层级完整模型见 [INGEST-PIPELINE.md §5](./INGEST-PIPELINE.md#5-三层配置矩阵) — 本文不重复采集覆盖（目标态）列。
 
@@ -183,33 +183,33 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 **代码锚点：**
 
-- 系统 chunking 兜底：`application.yml` L152–160；`VectorLibraryConfigFactory.java` L75–83（`chunkSize` ≤0 → 600，`chunkOverlap` ≤0 → 100）
+- 系统 chunking 兜底：`application.yml` L152–160；`VectorLibraryConfigFactory.java` L75–83（`chunkSize` ≤0 → 600，`chunkOverlap` ≤0 → 100；**不含** `minParagraphLength`，见 L158 / `VectorLibraryConfig.java`）
 - 向导默认形状：`frontend/knowbase-ui/src/utils/libraryDefaults.js` `defaultLibraryConfig()`
 - 后端 parsing 字段名权威：`ParsingRulesSettings.java` — `ocrEnabled`, `tableExtraction`, `autoDetectEncoding`, `defaultLanguage`
 - 系统 OCR 引擎：`application.yml` L59–67 — `enabled`, `data-path`, `language`, `min-extracted-chars-to-skip`
 
 ---
 
-## §4 类型反模式 {#ops-guide}
+## §4 类型反模式 {#ops-anti-patterns}
 
-本节**扩展** [INGEST-PIPELINE.md §8 反模式对照](./INGEST-PIPELINE.md#8-反模式对照)（D-11）：通用反模式（**预览≠入库**、**异质语义混库**、**杜鹏飞周报 xlsx** 基准等）保留在 Phase 1 §8，此处仅列**按文件类型**的错误设定 → 质量问题对照，**不重复** §8 通用行。每行「正确做法」链回 [§2 主矩阵](#ops-guide) 对应行或 INGEST-PIPELINE §8 具名条目。
+本节**扩展** [INGEST-PIPELINE.md §8 反模式对照](./INGEST-PIPELINE.md#8-反模式对照)（D-11）：通用反模式（**预览≠入库**、**异质语义混库**、**杜鹏飞周报 xlsx** 基准等）保留在 Phase 1 §8，此处仅列**按文件类型**的错误设定 → 质量问题对照，**不重复** §8 通用行。每行「正确做法」链回 [§2 主矩阵](#ops-matrix) 对应行或 INGEST-PIPELINE §8 具名条目。
 
 | 类型 | 错误设定/行为 | 症状 | 代码锚点 | 正确做法（链回 §2 矩阵 / INGEST-PIPELINE §8） |
 |------|--------------|------|----------|---------------------------------------------|
-| **PDF** | 扫描件上传 + `parsing.ocrEnabled: false` | 解析文本为空或乱码；0 chunk 或无效向量 | `DocumentParseService.java` L44–68；`OcrFallbackPolicy.java` L11–17；`DocumentOcrService.java` | 开启 OCR + tessdata（[§2 PDF 扫描件行](#ops-guide)）；链回 §8「**扫描 PDF OCR 关闭**」 |
-| **PDF** | 制度 / 法规库使用 `chunkingStrategy: semantic` | 法条、条款在句中或编号中间被切断；检索命中半句上下文 | `ChunkingService.java`（semantic 相似度切分）；`IndexingService.java` L153–158 | 改用 **`heading-level`** 或 **`paragraph-first`**（[§2 PDF chunkingStrategy 行](#ops-guide)） |
-| **PDF** | 多栏 / 复杂版式 PDF 仅用 `parsing.tableExtraction: text-only` | 表格列错位、tab 顺序混乱；表头与数据行粘连 | `DocumentParseService.java` L74–93；`extractPlainWithTika` | 复杂表格改用 **`structured`** 触发 HTML 管道（[§2 PDF tableExtraction 行](#ops-guide)） |
-| **Word** | 复杂表格 docx + `parsing.tableExtraction: text-only` | 表格结构丢失；cell 顺序错乱；行列语义不可还原 | `DocumentParseOptions.java` L43–47；`HtmlParsingContentProcessor.java` | 改用 **`structured`**（[§2 Word tableExtraction 行](#ops-guide)）；触发 `requiresHtmlPipeline()` |
-| **Word** | 制度 docx + `chunkingStrategy: fixed-char` 或大 `chunkSize` 硬切 | 章节标题与正文同块，或条款在段中硬切断 | `ChunkingService.java`（fixed-char 策略） | 制度库用 **`heading-level`**（[§2 Word chunkingStrategy 行](#ops-guide)；ROADMAP **制度 docx** 锚点） |
-| **Word** | 制度 docx + `cleaning.removeHeaderFooter: false` | 页眉页脚、页码行进入索引；检索噪声 | `DocumentCleaningService.java`；`cleaningFor(libraryId)` | 保持 **`true`**（[§2 Word cleaning 行](#ops-guide)） |
-| **Excel** | `parsing.tableExtraction: structured` 用于 xlsx | 无结构化收益；运营误以为行列对象入库 | `DocumentParseService.java` L95–107；`TableExtractionMode.java` L8–9 | 保持 **`text-only`**（[§2 Excel tableExtraction 行](#ops-guide)）；链回 §8「**Excel 误开 structured 表格**」 |
-| **Excel** | `chunkingStrategy: semantic` 用于周报 / 明细 xlsx | 续行与主体行分离；表头块被语义边界误切；召回失败 | `ChunkPreviewServiceTest.java`（杜鹏飞 fixture 脚注[^dupengfei-anti]）；`TabularContinuationNormalizer.java` | **`paragraph-first` + `text-only`**（[§2 Excel chunkingStrategy 行](#ops-guide)）；链回 §8「**杜鹏飞周报 xlsx**」 |
-| **Excel** | 周报 xlsx 与报销 xlsx 建在同一垂直库 | 检索噪声大；问答混淆不同业务语义 | `ChunkMetadataBuilder.java`（`documentMetadata` 仅过滤不拆库） | 按语义主轴**拆库**（[§2 Excel 周报子场景行](#ops-guide)）；链回 §8「**异质语义混库**」 |
-| **TXT** | `parsing.autoDetectEncoding: false` + GBK 源文件 | 乱码 chunk → 无效向量；检索无法命中 | `TikaEncodingMapper.java`；`DocumentParseService.java` `extractPlainWithTika` | 保持 **`autoDetectEncoding: true`**（[§2 TXT 编码行](#ops-guide)） |
-| **TXT** | `chunkingStrategy: semantic` 于短通知 / 清单 txt | 列表项在语义边界被拆开；单行事实跨块 | `ChunkingService.java` | 使用 **`paragraph-first`**（[§2 TXT chunkingStrategy 行](#ops-guide)） |
-| **Markdown** | 库 `ingestAccess.supportedFileTypes` 未含 **`markdown`** | 上传 `.md` 返回 415；文件被拦截 | `supportedFileTypes.js` L1–7；`MimeTypeAllowlist.java` L14–40；`UploadService.java` | 建库 Step 2 纳入 markdown（[§2 Markdown MIME 行](#ops-guide)） |
-| **Markdown** | `chunkingStrategy: semantic` 于含代码块 md | fence 内代码被语义误切；代码块碎片化 | `ChunkingService.java` | **`paragraph-first`** 或含 `#` 标题时长文档用 **`heading-level`**（[§2 Markdown chunkingStrategy 行](#ops-guide)） |
-| **Markdown** | `parsing.autoDetectEncoding: false` + GBK `.md` | 中文 md 乱码；向量无效 | 同 TXT 编码路径 | 保持 **`true`**（[§2 Markdown 编码行](#ops-guide)） |
+| **PDF** | 扫描件上传 + `parsing.ocrEnabled: false` | 解析文本为空或乱码；0 chunk 或无效向量 | `DocumentParseService.java` L44–68；`OcrFallbackPolicy.java` L11–17；`DocumentOcrService.java` | 开启 OCR + tessdata（[§2 PDF 扫描件行](#ops-matrix)）；链回 §8「**扫描 PDF OCR 关闭**」 |
+| **PDF** | 制度 / 法规库使用 `chunkingStrategy: semantic` | 法条、条款在句中或编号中间被切断；检索命中半句上下文 | `ChunkingService.java`（semantic 相似度切分）；`IndexingService.java` L153–158 | 改用 **`heading-level`** 或 **`paragraph-first`**（[§2 PDF chunkingStrategy 行](#ops-matrix)） |
+| **PDF** | 多栏 / 复杂版式 PDF 仅用 `parsing.tableExtraction: text-only` | 表格列错位、tab 顺序混乱；表头与数据行粘连 | `DocumentParseService.java` L74–93；`extractPlainWithTika` | 复杂表格改用 **`structured`** 触发 HTML 管道（[§2 PDF tableExtraction 行](#ops-matrix)） |
+| **Word** | 复杂表格 docx + `parsing.tableExtraction: text-only` | 表格结构丢失；cell 顺序错乱；行列语义不可还原 | `DocumentParseOptions.java` L43–47；`HtmlParsingContentProcessor.java` | 改用 **`structured`**（[§2 Word tableExtraction 行](#ops-matrix)）；触发 `requiresHtmlPipeline()` |
+| **Word** | 制度 docx + `chunkingStrategy: fixed-char` 或大 `chunkSize` 硬切 | 章节标题与正文同块，或条款在段中硬切断 | `ChunkingService.java`（fixed-char 策略） | 制度库用 **`heading-level`**（[§2 Word chunkingStrategy 行](#ops-matrix)；ROADMAP **制度 docx** 锚点） |
+| **Word** | 制度 docx + `cleaning.removeHeaderFooter: false` | 页眉页脚、页码行进入索引；检索噪声 | `DocumentCleaningService.java`；`cleaningFor(libraryId)` | 保持 **`true`**（[§2 Word cleaning 行](#ops-matrix)） |
+| **Excel** | `parsing.tableExtraction: structured` 用于 xlsx | 无结构化收益；运营误以为行列对象入库 | `DocumentParseService.java` L95–107；`TableExtractionMode.java` L8–9 | 保持 **`text-only`**（[§2 Excel tableExtraction 行](#ops-matrix)）；链回 §8「**Excel 误开 structured 表格**」 |
+| **Excel** | `chunkingStrategy: semantic` 用于周报 / 明细 xlsx | 续行与主体行分离；表头块被语义边界误切；召回失败 | `ChunkPreviewServiceTest.java`（杜鹏飞 fixture 脚注[^dupengfei-anti]）；`TabularContinuationNormalizer.java` | **`paragraph-first` + `text-only`**（[§2 Excel chunkingStrategy 行](#ops-matrix)）；链回 §8「**杜鹏飞周报 xlsx**」 |
+| **Excel** | 周报 xlsx 与报销 xlsx 建在同一垂直库 | 检索噪声大；问答混淆不同业务语义 | `ChunkMetadataBuilder.java`（`documentMetadata` 仅过滤不拆库） | 按语义主轴**拆库**（[§2 Excel 周报子场景行](#ops-matrix)）；链回 §8「**异质语义混库**」 |
+| **TXT** | `parsing.autoDetectEncoding: false` + GBK 源文件 | 乱码 chunk → 无效向量；检索无法命中 | `TikaEncodingMapper.java`；`DocumentParseService.java` `extractPlainWithTika` | 保持 **`autoDetectEncoding: true`**（[§2 TXT 编码行](#ops-matrix)） |
+| **TXT** | `chunkingStrategy: semantic` 于短通知 / 清单 txt | 列表项在语义边界被拆开；单行事实跨块 | `ChunkingService.java` | 使用 **`paragraph-first`**（[§2 TXT chunkingStrategy 行](#ops-matrix)） |
+| **Markdown** | 库 `ingestAccess.supportedFileTypes` 未含 **`markdown`** | 上传 `.md` 返回 415；文件被拦截 | `supportedFileTypes.js` L1–7；`MimeTypeAllowlist.java` L14–40；`UploadService.java` | 建库 Step 2 纳入 markdown（[§2 Markdown MIME 行](#ops-matrix)） |
+| **Markdown** | `chunkingStrategy: semantic` 于含代码块 md | fence 内代码被语义误切；代码块碎片化 | `ChunkingService.java` | **`paragraph-first`** 或含 `#` 标题时长文档用 **`heading-level`**（[§2 Markdown chunkingStrategy 行](#ops-matrix)） |
+| **Markdown** | `parsing.autoDetectEncoding: false` + GBK `.md` | 中文 md 乱码；向量无效 | 同 TXT 编码路径 | 保持 **`true`**（[§2 Markdown 编码行](#ops-matrix)） |
 
 [^dupengfei-anti]: **可选脚注（D-12）：** `ChunkPreviewServiceTest.previewUsesIndexingChunkFilterAndLibraryChunkParams` 在 `chunkSize=500`, `chunkOverlap=120` 下得 `rawTotalChunks=4`, `filteredOutCount=1`, `totalChunks=3`。**非**硬性 UAT 块数门禁；验收以检索可召回关键事实为准。
 
@@ -224,7 +224,7 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## 附录 A MIME → 推荐 config_json {#appendix-a} {#dev-reference}
+## 附录 A MIME → 推荐 config_json {#appendix-a} {#dev-appendix-a}
 
 > **文档规划，Phase 3 预设引用** — 本表为库级初始默认片段，供 Phase 3 `libraryPresets.js` 套用。**非** v1 运行时 MIME 自动默认引擎（实现 deferred）。
 
@@ -254,7 +254,7 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## 附录 B 结构化 Excel 差距 {#appendix-b} {#ops-guide}
+## 附录 B 结构化 Excel 差距 {#appendix-b} {#ops-appendix-b}
 
 > **D-08–D-10：** 目标态 structured ingest 需另立里程碑；**v1 不承诺 POI / 双轨实现**。运营按 §2 Excel 行组的过渡推荐配置即可。
 
@@ -275,24 +275,31 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## 附录 C 字段路径与代码锚点 {#appendix-c} {#dev-reference}
+## 附录 C 字段路径与代码锚点 {#appendix-c} {#dev-field-paths}
 
-与 `frontend/knowbase-ui/src/utils/libraryConfig.js` 中 `REINDEX_FIELDS`（L35–53）及 `CONFIG_FIELD_SPECS`（L161–173）dot-path 对齐；完整 diff 逻辑见 Phase 5 **CFG-01**。下表为主矩阵相关字段子集（D-13 dev TOC）。
+**主矩阵相关字段子集** — 与 `libraryConfig.js` `REINDEX_FIELDS`（L35–53）及 `CONFIG_FIELD_SPECS` dot-path 对照；完整 diff 逻辑见 Phase 5 **CFG-01**。下表含主矩阵引用但**不在** `REINDEX_FIELDS` 的字段，脚注标注。
 
 | 路径 | 中文标签 | 影响重索引 | 主矩阵关联行 | 代码锚点 |
 |------|----------|------------|--------------|----------|
 | `parsing.ocrEnabled` | OCR | 是 | PDF 扫描件 / 文本型 | `ParsingRulesSettings.java` L5–6；`LibraryConfigResolver.parseOptionsFor` → `DocumentParseService.java` L44–68 |
 | `parsing.tableExtraction` | 表格提取 | 是 | PDF / Word / Excel | `ParsingRulesSettings.java` L7–8；`DocumentParseOptions.requiresHtmlPipeline()` L43–47 |
-| `parsing.autoDetectEncoding` | 自动识别编码 | 是 | TXT / Markdown | `ParsingRulesSettings.java` L9；`TikaEncodingMapper.java` |
-| `parsing.defaultLanguage` | 默认语言 | 是 | PDF OCR 语言 / Word | `ParsingRulesSettings.java` L10–11；`application.yml` L64（OCR 引擎语言） |
+| `parsing.autoDetectEncoding` | 自动识别编码 | 是[^reindex-nc-1] | TXT / Markdown | `ParsingRulesSettings.java` L9；`TikaEncodingMapper.java` |
+| `parsing.defaultLanguage` | 默认语言 | 是[^reindex-nc-2] | PDF OCR 语言 / Word | `ParsingRulesSettings.java` L10–11；`application.yml` L64（OCR 引擎语言） |
 | `chunkingStrategy` | 分块策略 | 是 | 全类型 | `VectorLibraryConfig.java`；`LibraryConfigResolver.chunkingFor` → `IndexingService.java` L153–158 |
 | `chunkSize` | 块大小 | 是 | Excel 周报 / 全类型 | `libraryDefaults.js` L40（向导 500）；`application.yml` L154（系统 600） |
 | `chunkOverlap` | 块重叠 | 是 | 全类型 | `libraryDefaults.js` L41（120）；`application.yml` L155（100） |
-| `minParagraphLength` | 最短段落 | 是 | Excel 续行 / TXT | `VectorLibraryConfigFactory.java` L75–83 |
-| `cleaning.removeHeaderFooter` | 去页眉页脚 | 是 | PDF / Word 制度 | `libraryConfig.js` diff L274；`DocumentCleaningService.java` |
+| `minParagraphLength` | 最短段落 | 是 | Excel 续行 / TXT | `application.yml` L158（`chunking.min-paragraph-length: 30`）；`VectorLibraryConfig.java` 字段默认 30 |
+| `cleaning.removeHeaderFooter` | 去页眉页脚 | 是[^reindex-nc-3] | PDF / Word 制度 | `libraryConfig.js` diff L274；`DocumentCleaningService.java` |
 | `cleaning.removeDuplicateParagraphs` | 去重复段落 | 是 | PDF 导出 / Excel | `REINDEX_FIELDS` L52；`DuplicateParagraphCleaner.java` |
-| `ingestAccess.supportedFileTypes` | 数据类型 | 否 | Markdown 上传门控 | `VectorLibraryConfigFactory.java` L14–23；`supportedFileTypes.js` L1–7；`UploadService.java` |
+| `ingestAccess.supportedFileTypes` | 数据类型 | 否[^reindex-nc-4] | Markdown 上传门控 | `VectorLibraryConfigFactory.java` L14–23；`supportedFileTypes.js` L1–7；`UploadService.java` |
 | `textNormalizationEnabled` | 文本清洗 | 是 | 全类型（管道门控） | `REINDEX_FIELDS` L36；`DocumentPipelineService.java` L96–102 |
+
+[^reindex-nc-1]: 不在 REINDEX_FIELDS；`diffLibraryConfig` 仍追踪 parsing 变更
+[^reindex-nc-2]: 不在 REINDEX_FIELDS；`diffLibraryConfig` 仍追踪 parsing 变更
+[^reindex-nc-3]: 不在 REINDEX_FIELDS；见 `libraryConfig.js` diff L274
+[^reindex-nc-4]: 不在 REINDEX_FIELDS；影响重索引列保持 **否**
+
+> `VectorLibraryConfigFactory.java` L75–83 仅对 `chunkSize` / `chunkOverlap` ≤0 时应用系统兜底（600/100），**不**设置 `minParagraphLength`。
 
 **Resolver 消费链：**
 
@@ -311,21 +318,21 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## §9 验收清单 {#ops-guide} {#dev-reference}
+## §9 验收清单 {#ops-checklist} {#dev-checklist}
 
 ROADMAP Phase 2 成功标准：**周报 xlsx、扫描 pdf、制度 docx 各有明确「推荐 / 禁止」设定说明**。下列七步可在**不打开 Java/Vue 源码**的情况下完成 Phase 2 文档验收（TYPE-01–05 全覆盖）。
 
-1. **运营路径 — ROADMAP 三锚点：** 从目录 [#ops-guide](#ops-guide) 进入 [§2 主矩阵](#ops-guide)，确认 **周报 xlsx**（Excel 子场景行：推荐 `paragraph-first` + `text-only`、禁止 `semantic` / `structured` / 异质混库）、**扫描 pdf**（PDF 扫描件行：推荐 `parsing.ocrEnabled: true`、禁止 OCR 关闭）、**制度 docx**（Word chunkingStrategy 行：推荐 `heading-level` + `structured`、禁止 `fixed-char` / `semantic`）各有加粗 **推荐** / **禁止** 标注。
+1. **运营路径 — ROADMAP 三锚点：** 从目录 [#ops-guide](#ops-guide) 进入 [§2 主矩阵](#ops-matrix)，确认 **周报 xlsx**（Excel 子场景行：推荐 `paragraph-first` + `text-only`、禁止 `semantic` / `structured` / 异质混库）、**扫描 pdf**（PDF 扫描件行：推荐 `parsing.ocrEnabled: true`、禁止 OCR 关闭）、**制度 docx**（Word chunkingStrategy 行：推荐 `heading-level` + `structured`、禁止 `fixed-char` / `semantic`）各有加粗 **推荐** / **禁止** 标注。
 
-2. **开发路径 — 三层默认值差异：** 从 [#dev-reference](#dev-reference) 进入 [§3 三层默认值对照](#dev-reference)，核对 `chunkSize` 向导 **500** vs 系统 **600**、`chunkOverlap` 向导 **120** vs 系统 **100** 差异列；确认 `ingest.ocr.enabled`（引擎开关）与 `parsing.ocrEnabled`（库级）区分说明存在。
+2. **开发路径 — 三层默认值差异：** 从 [#dev-reference](#dev-reference) 进入 [§3 三层默认值对照](#dev-defaults)，核对 `chunkSize` 向导 **500** vs 系统 **600**、`chunkOverlap` 向导 **120** vs 系统 **100** 差异列；确认 `ingest.ocr.enabled`（引擎开关）与 `parsing.ocrEnabled`（库级）区分说明存在。
 
 3. **Phase 3 预设引用源 — 附录 A：** 打开 [附录 A MIME → 推荐 config_json](#appendix-a)，确认 8 行 MIME 映射表可被 Phase 3 `libraryPresets.js` 引用；表头含「文档规划，Phase 3 预设引用」横幅，**非** v1 运行时引擎。
 
-4. **类型反模式 — §4 与 §8 链回：** 阅读 [§4 类型反模式](#ops-guide)，确认 pdf / word / excel / txt / markdown 每类型 **≥2** 行；通用反模式（预览≠入库、异质混库、杜鹏飞周报）**链回** [INGEST-PIPELINE.md §8](./INGEST-PIPELINE.md#8-反模式对照) 而非重复全文；每行含代码锚点路径。
+4. **类型反模式 — §4 与 §8 链回：** 阅读 [§4 类型反模式](#ops-anti-patterns)，确认 pdf / word / excel / txt / markdown 每类型 **≥2** 行；通用反模式（预览≠入库、异质混库、杜鹏飞周报）**链回** [INGEST-PIPELINE.md §8](./INGEST-PIPELINE.md#8-反模式对照) 而非重复全文；每行含代码锚点路径。
 
 5. **Excel structured 差距 — 附录 B：** 打开 [附录 B 结构化 Excel 差距](#appendix-b)，确认目标态 / v1 现状 / 过渡推荐 / Backlog 四列完整；显式引用 PROJECT Out of Scope 与 CONCERNS Tech Debt；正文勿误导 `structured` 对 xlsx 有效。
 
-6. **需求可追溯 — TYPE-01–05：** 核对 [§1 需求可追溯表](#ops-guide) 五行均为 **Covered**；交叉验证 [INGEST-PIPELINE.md §7.5](./INGEST-PIPELINE.md#75-按文件类型的细表phase-2-引用) 与 [§8](./INGEST-PIPELINE.md#8-反模式对照) 已链回本文件 `./FILE-TYPE-PROCESSING.md` §2/§4（非「待创建」）。
+6. **需求可追溯 — TYPE-01–05：** 核对 [§1 需求可追溯表](#ops-guide) 五行均为 **Covered**；交叉验证 [INGEST-PIPELINE.md §7.5](./INGEST-PIPELINE.md#75-按文件类型的细表phase-2-引用) 与 [§8](./INGEST-PIPELINE.md#8-反模式对照) 已链回本文件 [§2 主矩阵](./FILE-TYPE-PROCESSING.md#ops-matrix) / [§4 类型反模式](./FILE-TYPE-PROCESSING.md#ops-anti-patterns)（非「待创建」）。
 
 7. **文档-only 确认：** 本里程碑**无** `knowbase-service` 或 `frontend` 应用代码变更；交付物仅为 `.planning/docs/FILE-TYPE-PROCESSING.md` 与 [INGEST-PIPELINE.md](./INGEST-PIPELINE.md) 最小 back-link 修订。
 
@@ -359,5 +366,5 @@ ROADMAP Phase 2 成功标准：**周报 xlsx、扫描 pdf、制度 docx 各有�
 |--------|------|------|
 | FILE-TYPE-PROCESSING §1 | INGEST-PIPELINE §5/§7/§8 | §1「与全链路文档关系」链接有效 |
 | FILE-TYPE-PROCESSING §4 | INGEST-PIPELINE §8 | 每类型行链回 §8 具名条目或 §2 |
-| INGEST-PIPELINE §7.5 | FILE-TYPE-PROCESSING §2 | 按类型细表推荐值指向 §2 |
-| INGEST-PIPELINE §8 | FILE-TYPE-PROCESSING §2/§4 | 扫描 PDF / Excel structured 行链回本文件 |
+| INGEST-PIPELINE §7.5 | FILE-TYPE-PROCESSING §2 | `#ops-matrix` |
+| INGEST-PIPELINE §8 | FILE-TYPE-PROCESSING §2/§4 | `#ops-matrix` / `#ops-anti-patterns` |

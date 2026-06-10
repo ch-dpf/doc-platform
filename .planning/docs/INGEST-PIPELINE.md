@@ -48,7 +48,7 @@ focus: ingest-pipeline
 
 ### 按文件类型处理
 
-Phase 1 **不**展开 PDF/Word/Excel/TXT/Markdown 逐类型矩阵（D-17）。详见 Phase 2 交付物 [FILE-TYPE-PROCESSING.md](./FILE-TYPE-PROCESSING.md) [§2 主矩阵](./FILE-TYPE-PROCESSING.md#ops-guide) 与 [§4 类型反模式](./FILE-TYPE-PROCESSING.md#ops-guide)。
+Phase 1 **不**展开 PDF/Word/Excel/TXT/Markdown 逐类型矩阵（D-17）。详见 Phase 2 交付物 [FILE-TYPE-PROCESSING.md](./FILE-TYPE-PROCESSING.md) [§2 主矩阵](./FILE-TYPE-PROCESSING.md#ops-matrix) 与 [§4 类型反模式](./FILE-TYPE-PROCESSING.md#ops-anti-patterns)。
 
 ---
 
@@ -467,9 +467,9 @@ return kept.isEmpty() ? List.copyOf(chunks) : kept;
 
 ### 7.5 按文件类型的细表（Phase 2 引用）
 
-Phase 1 **不**展开 PDF/Word/Excel/TXT/Markdown 逐类型推荐设定矩阵（D-17）。各类型「推荐 / 禁止」设定、产出形态见 [FILE-TYPE-PROCESSING.md §2 主矩阵](./FILE-TYPE-PROCESSING.md#ops-guide)；类型专属反模式见 [§4](./FILE-TYPE-PROCESSING.md#ops-guide)（TYPE-01–05）。
+Phase 1 **不**展开 PDF/Word/Excel/TXT/Markdown 逐类型推荐设定矩阵（D-17）。各类型「推荐 / 禁止」设定、产出形态见 [FILE-TYPE-PROCESSING.md §2 主矩阵](./FILE-TYPE-PROCESSING.md#ops-matrix)；类型专属反模式见 [§4 类型反模式](./FILE-TYPE-PROCESSING.md#ops-anti-patterns)（TYPE-01–05）。
 
-**Phase 1 通用建议（跨类型）：** 按类型细表推荐值以 [FILE-TYPE-PROCESSING.md §2](./FILE-TYPE-PROCESSING.md#ops-guide) 为准；下列为跨类型摘要——
+**Phase 1 通用建议（跨类型）：** 按类型细表推荐值以 [FILE-TYPE-PROCESSING.md §2](./FILE-TYPE-PROCESSING.md#ops-matrix) 为准；下列为跨类型摘要——
 
 - 表格型 Excel 周报：`parsing.tableExtraction: text-only` + `chunkingStrategy: paragraph-first`（非 semantic）
 - 扫描 PDF：`parsing.ocrEnabled: true` 且 tessdata 可用
@@ -485,9 +485,9 @@ Phase 1 **不**展开 PDF/Word/Excel/TXT/Markdown 逐类型推荐设定矩阵（
 |--------|--------------|------|----------|--------------------------------|
 | **预览≠入库** | 开启 `overrideChunkEnabled` 或信任 UI「仅本次预览与入库」文案 | 预览显示 N 块，入库 `document_chunk` 为 M 块（N≠M）；运营以为已验证入库结果 | `IngestView.vue`（`:531` 文案、`:1132` override 仅进 preview body）；`ingest.js` `uploadParams` 不传 chunkSize；`IndexingService` 仅 `chunkingFor(libraryId)` | **目标态：** Phase 4 **PARITY-01–04** — 预览规则=入库规则；**现状：** 以 `GET …/documents/{docId}/chunks` 为准，勿信预览块数 |
 | **杜鹏飞周报 xlsx** | 错误分块策略（如 semantic）、忽略表头过滤认知，或 `tableExtraction: structured` 误以为对 xlsx 生效 | 检索命中纯表头块；或漏召回工作项行；续行与主体分离 | `ChunkPreviewServiceTest.previewUsesIndexingChunkFilterAndLibraryChunkParams` — 杜鹏飞 fixture；`IndexingChunkFilter.java`；`DocumentParseService`（Excel 走 Tika 纯文本） | **`paragraph-first` + `text-only`**；表头由 `IndexingChunkFilter` 过滤。**测试基准**（`chunkSize=500`, `chunkOverlap=120`）：`rawTotalChunks=4`, `filteredOutCount=1`, `totalChunks=3`[^dupengfei-count] |
-| **扫描 PDF OCR 关闭** | 库或系统级 `parsing.ocrEnabled=false` 上传图片型 PDF | 解析文本为空或乱码；0 chunk 或无效向量 | `DocumentParseService.java`；`DocumentOcrService.java`；`infra/tesseract/README.md` | 开启 OCR + 运行 `scripts/setup-tesseract.ps1` 部署 tessdata；详见 [FILE-TYPE-PROCESSING.md §2 PDF 扫描件行](./FILE-TYPE-PROCESSING.md#ops-guide) 与 [§4](./FILE-TYPE-PROCESSING.md#ops-guide) |
+| **扫描 PDF OCR 关闭** | 库或系统级 `parsing.ocrEnabled=false` 上传图片型 PDF | 解析文本为空或乱码；0 chunk 或无效向量 | `DocumentParseService.java`；`DocumentOcrService.java`；`infra/tesseract/README.md` | 开启 OCR + 运行 `scripts/setup-tesseract.ps1` 部署 tessdata；详见 [FILE-TYPE-PROCESSING.md §2 PDF 扫描件行](./FILE-TYPE-PROCESSING.md#ops-matrix) 与 [§4 类型反模式](./FILE-TYPE-PROCESSING.md#ops-anti-patterns) |
 | **异质语义混库** | 周报 xlsx 与报销 xlsx 建在同一垂直库 | 检索噪声大；问答混淆不同业务语义 | CONTEXT **D-10**；`ChunkMetadataBuilder` 语义标签仅过滤不拆库 | 按**语义主轴**拆库（§6.2）；同质语义才混合 MIME |
-| **Excel 误开 structured 表格** | `parsing.tableExtraction: structured` 用于 xlsx | 无结构化收益；运营误以为 Excel 会按行列对象入库 | `DocumentParseService.java`（structured 仅 HTML 管道）；`HtmlTableExtractionProcessor.java` | 保持 **`text-only`**；详见 [FILE-TYPE-PROCESSING.md §2 Excel 行](./FILE-TYPE-PROCESSING.md#ops-guide)、[附录 B](./FILE-TYPE-PROCESSING.md#appendix-b) 与 [§4](./FILE-TYPE-PROCESSING.md#ops-guide) |
+| **Excel 误开 structured 表格** | `parsing.tableExtraction: structured` 用于 xlsx | 无结构化收益；运营误以为 Excel 会按行列对象入库 | `DocumentParseService.java`（structured 仅 HTML 管道）；`HtmlTableExtractionProcessor.java` | 保持 **`text-only`**；详见 [FILE-TYPE-PROCESSING.md §2 Excel 行](./FILE-TYPE-PROCESSING.md#ops-matrix)、[附录 B](./FILE-TYPE-PROCESSING.md#appendix-b) 与 [§4 类型反模式](./FILE-TYPE-PROCESSING.md#ops-anti-patterns) |
 
 [^dupengfei-count]: **参数脚注（RESEARCH Assumption A1）：** 单元测试在 `chunkSize=500` 下过滤 1 个表头块得 **3 块**。用户在生产参数下手工验证 **4 块均可召回**——差异来自 `chunkSize` / `minParagraphLength` / 库级配置组合。验收以「检索可召回关键事实（杜鹏飞工作项、说明续行）」为准，非固定块数 magic number。
 
