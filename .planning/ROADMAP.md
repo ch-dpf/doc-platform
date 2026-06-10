@@ -91,14 +91,23 @@ Plans:
 
 **Requirements:** PARITY-01 … PARITY-04
 
+**Plans:** 3 plans
+
 **Key deliverables:**
 
-- 共享 `IndexingChunkFilter` / `libraryChunkParams` 路径审计与必要修补
+- 共享 `LibraryChunkPipeline` + 消除 IndexingService 重复清洗
 - 单测：周报样本预览块数 = 模拟索引块数
+- 前端移除 overrideChunk，统一 `libraryChunkParams`
 
 **Success criteria:**
 
 - 用户反馈的「预览 8 块入库 3 块」类问题不可复现（同配置同文本）
+
+Plans:
+
+- [ ] 04-01-PLAN.md — 共享 LibraryChunkPipeline；IndexingService 去重清洗
+- [ ] 04-02-PLAN.md — PARITY-04 回归单测；libraryId 解析分块参数
+- [ ] 04-03-PLAN.md — IngestView/Wizard 前端对齐 + 配置热刷新
 
 ---
 
@@ -108,14 +117,20 @@ Plans:
 
 **Requirements:** CFG-01, CFG-02
 
+**Plans:** 1 plan
+
 **Key deliverables:**
 
-- `libraryConfig.js` diff 覆盖验证
+- `libraryConfig.js` diff 覆盖验证（vitest）
 - 向导/编辑页字段旁简短影响文案
 
 **Success criteria:**
 
 - 修改 `tableExtraction` 等嵌套字段可保存且无「配置未变更」误报
+
+Plans:
+
+- [ ] 05-01-PLAN.md — diffLibraryConfig 测试与修补 + fieldImpactHints UI
 
 ---
 
@@ -129,7 +144,7 @@ Plans:
 ## Next Step
 
 ```bash
-/gsd-execute-phase 03-library-presets
+/gsd-execute-phase 04-preview-index-parity
 ```
 
 ---
