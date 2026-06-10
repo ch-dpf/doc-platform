@@ -1,5 +1,5 @@
 ---
-last_mapped_commit: 789c40a
+last_mapped_commit: d55a614
 analysis_date: 2026-06-10
 focus: file-type-processing
 ---
@@ -64,7 +64,7 @@ focus: file-type-processing
 | TYPE-02 | §2 Word 行组 | Covered |
 | TYPE-03 | §2 Excel 行组 + 附录 B | Covered |
 | TYPE-04 | §2 TXT/Markdown 行组 | Covered |
-| TYPE-05 | §4 类型反模式 | Placeholder（Plan 03） |
+| TYPE-05 | §4 类型反模式 | Covered |
 
 ### ROADMAP 成功标准锚点
 
@@ -311,6 +311,53 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## §9 验收清单
+## §9 验收清单 {#ops-guide} {#dev-reference}
 
-（Plan 03 填充）
+ROADMAP Phase 2 成功标准：**周报 xlsx、扫描 pdf、制度 docx 各有明确「推荐 / 禁止」设定说明**。下列七步可在**不打开 Java/Vue 源码**的情况下完成 Phase 2 文档验收（TYPE-01–05 全覆盖）。
+
+1. **运营路径 — ROADMAP 三锚点：** 从目录 [#ops-guide](#ops-guide) 进入 [§2 主矩阵](#ops-guide)，确认 **周报 xlsx**（Excel 子场景行：推荐 `paragraph-first` + `text-only`、禁止 `semantic` / `structured` / 异质混库）、**扫描 pdf**（PDF 扫描件行：推荐 `parsing.ocrEnabled: true`、禁止 OCR 关闭）、**制度 docx**（Word chunkingStrategy 行：推荐 `heading-level` + `structured`、禁止 `fixed-char` / `semantic`）各有加粗 **推荐** / **禁止** 标注。
+
+2. **开发路径 — 三层默认值差异：** 从 [#dev-reference](#dev-reference) 进入 [§3 三层默认值对照](#dev-reference)，核对 `chunkSize` 向导 **500** vs 系统 **600**、`chunkOverlap` 向导 **120** vs 系统 **100** 差异列；确认 `ingest.ocr.enabled`（引擎开关）与 `parsing.ocrEnabled`（库级）区分说明存在。
+
+3. **Phase 3 预设引用源 — 附录 A：** 打开 [附录 A MIME → 推荐 config_json](#appendix-a)，确认 8 行 MIME 映射表可被 Phase 3 `libraryPresets.js` 引用；表头含「文档规划，Phase 3 预设引用」横幅，**非** v1 运行时引擎。
+
+4. **类型反模式 — §4 与 §8 链回：** 阅读 [§4 类型反模式](#ops-guide)，确认 pdf / word / excel / txt / markdown 每类型 **≥2** 行；通用反模式（预览≠入库、异质混库、杜鹏飞周报）**链回** [INGEST-PIPELINE.md §8](./INGEST-PIPELINE.md#8-反模式对照) 而非重复全文；每行含代码锚点路径。
+
+5. **Excel structured 差距 — 附录 B：** 打开 [附录 B 结构化 Excel 差距](#appendix-b)，确认目标态 / v1 现状 / 过渡推荐 / Backlog 四列完整；显式引用 PROJECT Out of Scope 与 CONCERNS Tech Debt；正文勿误导 `structured` 对 xlsx 有效。
+
+6. **需求可追溯 — TYPE-01–05：** 核对 [§1 需求可追溯表](#ops-guide) 五行均为 **Covered**；交叉验证 [INGEST-PIPELINE.md §7.5](./INGEST-PIPELINE.md#75-按文件类型的细表phase-2-引用) 与 [§8](./INGEST-PIPELINE.md#8-反模式对照) 已链回本文件 `./FILE-TYPE-PROCESSING.md` §2/§4（非「待创建」）。
+
+7. **文档-only 确认：** 本里程碑**无** `knowbase-service` 或 `frontend` 应用代码变更；交付物仅为 `.planning/docs/FILE-TYPE-PROCESSING.md` 与 [INGEST-PIPELINE.md](./INGEST-PIPELINE.md) 最小 back-link 修订。
+
+### 需求可追溯（终稿）
+
+| Requirement | Section | Status |
+|-------------|---------|--------|
+| TYPE-01 | §2 PDF 行组 | Covered |
+| TYPE-02 | §2 Word 行组 | Covered |
+| TYPE-03 | §2 Excel 行组 + 附录 B | Covered |
+| TYPE-04 | §2 TXT/Markdown 行组 | Covered |
+| TYPE-05 | §4 类型反模式 | Covered |
+
+### Phase 2 锁定决策覆盖（D-01–D-14）
+
+| 决策 | 文档落点 |
+|------|----------|
+| D-01 目标态叙述 | §1 目标态 vs v1 边界表 |
+| D-02 表格类结构化目标 | §2 Excel 目标态脚注 + 附录 B |
+| D-03/D-04 单张大表 + 完整管道行 | §2 主矩阵 |
+| D-05 五类型范围 | §1 Phase 2 覆盖范围 |
+| D-06/D-07 MIME 附录 + 三层覆盖 | 附录 A |
+| D-08–D-10 Excel structured backlog | 附录 B |
+| D-11/D-12 反模式扩展 §8 | §4（杜鹏飞仅脚注） |
+| D-13 双 TOC | 目录 + §1 双锚点 |
+| D-14 三层默认值 | §3 |
+
+### 双向交叉引用检查
+
+| 源文档 | 目标 | 验证 |
+|--------|------|------|
+| FILE-TYPE-PROCESSING §1 | INGEST-PIPELINE §5/§7/§8 | §1「与全链路文档关系」链接有效 |
+| FILE-TYPE-PROCESSING §4 | INGEST-PIPELINE §8 | 每类型行链回 §8 具名条目或 §2 |
+| INGEST-PIPELINE §7.5 | FILE-TYPE-PROCESSING §2 | 按类型细表推荐值指向 §2 |
+| INGEST-PIPELINE §8 | FILE-TYPE-PROCESSING §2/§4 | 扫描 PDF / Excel structured 行链回本文件 |

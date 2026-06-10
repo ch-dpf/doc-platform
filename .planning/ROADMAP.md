@@ -37,7 +37,7 @@ Plans:
 
 **Requirements:** TYPE-01 … TYPE-05
 
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 **Key deliverables:**
 
@@ -50,9 +50,9 @@ Plans:
 
 Plans:
 
-- [ ] 02-01-PLAN.md — scaffold, dual TOC, §3 三层默认值, §2 矩阵骨架
-- [ ] 02-02-PLAN.md — TYPE-01–04 五行组矩阵行, 附录 A MIME, 附录 B Excel 差距
-- [ ] 02-03-PLAN.md — TYPE-05 类型反模式, 附录 C 字段路径, 交叉引用, §9 验收, STATE 更新
+- [x] 02-01-PLAN.md — scaffold, dual TOC, §3 三层默认值, §2 矩阵骨架
+- [x] 02-02-PLAN.md — TYPE-01–04 五行组矩阵行, 附录 A MIME, 附录 B Excel 差距
+- [x] 02-03-PLAN.md — TYPE-05 类型反模式, 附录 C 字段路径, 交叉引用, §9 验收, STATE 更新
 
 ---
 
@@ -118,7 +118,7 @@ Plans:
 ## Next Step
 
 ```bash
-/gsd-execute-phase 1
+/gsd-execute-phase 3
 ```
 
 ---
