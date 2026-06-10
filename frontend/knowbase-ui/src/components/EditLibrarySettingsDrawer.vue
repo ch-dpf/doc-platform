@@ -419,7 +419,7 @@ import { getVectorLibrary, updateVectorLibrarySettings } from '../api/library'
 import { patternsToText, textToPatterns } from '../utils/textPatterns'
 import { defaultLibraryConfig, FILE_TYPE_OPTIONS } from '../utils/libraryDefaults'
 import { diffLibraryConfig, diffNeedsReindex, hasIngestedContent } from '../utils/libraryConfig'
-import { resolveLibraryPresetLabel } from '../utils/libraryPresets'
+import { resolveLibraryPresetLabel, syncLibraryPresetIdOnEdit } from '../utils/libraryPresets'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -451,6 +451,8 @@ const wizardModeLabel = computed(() => {
   const m = form.config.wizardMode
   return m === 'advanced' ? '高级配置' : '快速创建'
 })
+
+const presetLabel = computed(() => resolveLibraryPresetLabel(form.config))
 
 const readonly = reactive({ metadataDbType: 'postgresql' })
 
@@ -490,7 +492,7 @@ function buildSubmitConfig() {
     cfg.textNormalization.linePatternsToDrop = textToPatterns(dropPatternsText.value)
   }
   cfg.embeddingProvider = 'ollama'
-  return cfg
+  return syncLibraryPresetIdOnEdit(cfg)
 }
 
 function resetForm() {
