@@ -91,7 +91,7 @@ Plans:
 
 **Requirements:** PARITY-01 … PARITY-04
 
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 **Key deliverables:**
 
@@ -105,9 +105,9 @@ Plans:
 
 Plans:
 
-- [ ] 04-01-PLAN.md — 共享 LibraryChunkPipeline；IndexingService 去重清洗
-- [ ] 04-02-PLAN.md — PARITY-04 回归单测；libraryId 解析分块参数
-- [ ] 04-03-PLAN.md — IngestView/Wizard 前端对齐 + 配置热刷新
+- [x] 04-01-PLAN.md — 共享 LibraryChunkPipeline；IndexingService 去重清洗
+- [x] 04-02-PLAN.md — PARITY-04 回归单测；libraryId 解析分块参数
+- [x] 04-03-PLAN.md — IngestView/Wizard 前端对齐 + 配置热刷新
 
 ---
 
@@ -130,7 +130,7 @@ Plans:
 
 Plans:
 
-- [ ] 05-01-PLAN.md — diffLibraryConfig 测试与修补 + fieldImpactHints UI
+- [x] 05-01-PLAN.md — diffLibraryConfig 测试与修补 + fieldImpactHints UI
 
 ---
 
@@ -144,7 +144,7 @@ Plans:
 ## Next Step
 
 ```bash
-/gsd-execute-phase 04-preview-index-parity
+/gsd-verify-work 05-config-ux
 ```
 
 ---

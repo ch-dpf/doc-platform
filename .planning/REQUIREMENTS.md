@@ -28,15 +28,15 @@
 
 ### Preview–Index Parity（预览与入库一致）
 
-- [ ] **PARITY-01**: 采集分块预览与 `IndexingService` 使用相同分块参数与 `IndexingChunkFilter` 规则
+- [x] **PARITY-01**: 采集分块预览与 `IndexingService` 使用相同分块参数与 `IndexingChunkFilter` 规则
 - [ ] **PARITY-02**: 预览展示的 `rawTotalChunks` / `filteredOutCount` / 最终块数与入库后 chunk 数一致（同文本输入）
 - [ ] **PARITY-03**: 库配置变更后预览即时反映（含 `tableExtraction` diff 保存）
-- [ ] **PARITY-04**: 后端单测覆盖至少 1 个周报样本的预览 vs 索引块数一致性
+- [x] **PARITY-04**: 后端单测覆盖至少 1 个周报样本的预览 vs 索引块数一致性
 
 ### Config UX（配置可预期）
 
-- [ ] **CFG-01**: `diffLibraryConfig` 正确比较 `parsing.*` / `chunking.*` / `cleaning.*` 嵌套字段
-- [ ] **CFG-02**: 向导/编辑页对「表格提取」「OCR」等选项展示简短影响说明（非仅字段名）
+- [x] **CFG-01**: `diffLibraryConfig` 正确比较 `parsing.*` / `chunking.*` / `cleaning.*` 嵌套字段
+- [x] **CFG-02**: 向导/编辑页对「表格提取」「OCR」等选项展示简短影响说明（非仅字段名）
 
 ## v2 Requirements
 
@@ -74,12 +74,12 @@
 | PRESET-02 | Phase 3 | Complete |
 | PRESET-03 | Phase 3 | Complete |
 | PRESET-04 | Phase 3 | Complete |
-| PARITY-01 | Phase 4 | Pending |
+| PARITY-01 | Phase 4 | Complete |
 | PARITY-02 | Phase 4 | Pending |
 | PARITY-03 | Phase 4 | Pending |
-| PARITY-04 | Phase 4 | Pending |
-| CFG-01 | Phase 5 | Pending |
-| CFG-02 | Phase 5 | Pending |
+| PARITY-04 | Phase 4 | Complete |
+| CFG-01 | Phase 5 | Complete |
+| CFG-02 | Phase 5 | Complete |
 
 **Coverage:**
 
