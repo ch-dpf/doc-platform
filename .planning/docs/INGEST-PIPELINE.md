@@ -294,7 +294,7 @@ sequenceDiagram
 
 与正式入库 `POST /documents/upload` → `DocumentPipelineService` → `IndexingService` 路径不同。预览与入库的路径差异及块数不一致详见 §4.4。
 
-**目标态：** Phase 4 **PARITY** 要求预览规则 = 入库规则。完整四锚点差距表见附录 A（Plan 03）；PARITY 需求见 `.planning/REQUIREMENTS.md` backlog。
+**目标态：** Phase 4 **PARITY** 要求预览规则 = 入库规则。完整四锚点差距表见[附录 A](#附录-a当前差距详表)；PARITY 需求见 `.planning/REQUIREMENTS.md` backlog。
 
 ### 4.4 当前差距：预览 vs 入库（D-14）
 
@@ -505,10 +505,130 @@ Phase 1 **不**展开 PDF/Word/Excel/TXT/Markdown 逐类型推荐设定矩阵（
 
 ## 附录 A：当前差距详表
 
-（Plan 03 填充）
+目标态与 v1 实现之间的**四类锚点**差距（Claude's Discretion，D-01）。每锚点含摘要表 + CONCERNS 风格展开。
+
+| 锚点 | 现状 | 目标态 | 代码证据 | 关联 Phase / Backlog |
+|------|------|--------|----------|---------------------|
+| `DocumentPipelineService` | 解析/规范化/清洗**仅**读库级 `libraryConfigResolver.*For(libraryId)` | 采集级 ingest profile 可覆盖 parsing/cleaning 白名单字段 | `parseOptionsFor` / `normalizationFor` / `cleaningFor`（`DocumentPipelineService.java:96–102`） | Phase 4 ingest profile；附录 B |
+| `IndexingService` | 分块**仅** `chunkingFor(libraryId)`；对 `parsed.txt` **再次** `cleaningFor` | 预览参数=入库参数；清洗顺序与预览一致 | `cleaningFor` + `chunkingFor` + `IndexingChunkFilter`（`IndexingService.java:153–158`） | Phase 4 **PARITY**；双次清洗待统一 |
+| `IngestView.vue` | `overrideChunk` **仅**进入 chunk-preview body；`lockPipeline` 禁用控件；`documentMetadata` 仅语义 | 预览=入库；软锁+重索引警告；ingest profile UI | `:517–531`, `:1132`；`uploadParams` 无 chunk 覆盖 | Phase 4 PARITY；Phase 5 CFG diff |
+| `VectorLibraryConfigMerger` | `lockPipelineConfig=true` 时 **硬锁**：early return，丢弃 parsing/cleaning/chunking/embedding 更新 | **软锁定**（D-15）：允许改规则 + 强制全库重索引 + UI 强警告 | `mergeSafeFields`（`:67–71`）；触发 `VectorLibraryService.updateSettings` | Backlog 软锁任务；现可手动 `rebuild-library` |
+
+### A.1 DocumentPipelineService — 库级单源，无 ingest profile
+
+**Issue:** 异步解析管道 `processAsync` 从 `LibraryConfigResolver` 读取 `parseOptionsFor`、`normalizationFor`、`cleaningFor`，**无**采集级覆盖入口；上传 API 不接受 per-upload parsing 参数。
+
+**Files:** `knowbase-service/src/main/java/com/knowbase/ingest/service/DocumentPipelineService.java`, `LibraryConfigResolver.java`
+
+**Why:** MVP 将整条 ingest 规则绑定在 `vector_library.config_json`。
+
+**Impact:** 同一库内所有文档共享 OCR/清洗策略；无法为单次上传临时开启 OCR 并持久化为 ingest job。
+
+**Fix approach:** 引入 ingest profile（持久化于 `doc_metadata` 或 ingest job 表），resolver 层合并「库默认 + 采集覆盖」；Phase 4 与 PARITY 一并落地。
+
+### A.2 IndexingService — 无 overrideChunk；双次清洗
+
+**Issue:** `index()` 读取 Object Storage 中已清洗的 `parsed.txt`，再次 `documentCleaningService.apply(..., cleaningFor(libraryId))` 后分块；**不接受** preview 传入的 `overrideChunkSize`。
+
+**Files:** `knowbase-service/src/main/java/com/knowbase/vector/service/IndexingService.java`, `ChunkingService.java`
+
+**Why:** 索引路径设计为库级单源；管道与索引阶段清洗解耦。
+
+**Impact:** 与 `ChunkPreviewService`（对 request body 内文本做 normalization+cleaning）路径不一致；块边界可能与预览不同。
+
+**Fix approach:** Phase 4 抽取共享「normalize → clean → chunk → filter」管道；消除 IndexingService 重复清洗或使预览走同一 stored text 路径。
+
+### A.3 IngestView.vue — overrideChunk 预览专用；lockPipeline UI
+
+**Issue:** `buildChunkPreviewBody` 在 `overrideChunkEnabled` 时替换 `chunkSize`（`:1132`），但 `uploadDocument` 的 `uploadParams` **不传** chunk 参数。UI 文案「仅本次预览与入库」（`:531`）与行为不符。
+
+**Files:** `frontend/knowbase-ui/src/views/IngestView.vue`, `frontend/knowbase-ui/src/api/ingest.js`, `EditLibrarySettingsDrawer.vue`
+
+**Why:** 预览 API 与上传 API 分离；override 为调试/实验 UI，未接后端入库。
+
+**Impact:** 运营误以为预览块数=入库块数；`lockPipeline` 时虽禁用 override，但空库首次上传仍可能因路径差异产生偏差。
+
+**Fix approach:** Phase 4 PARITY — 移除误导文案或 wired override 至入库；Phase 5 配置 diff 展示 reindex 影响。
+
+### A.4 VectorLibraryConfigMerger — lockPipeline 硬锁
+
+**Issue:** 当 `documentCount > 0 || chunkCount > 0`，`updateSettings` 设 `lockPipeline=true`；merger 在合并 tags/retrieval/governance/ingestAccess 后 **early return**，**丢弃** embedding/parsing/cleaning/chunking 变更。
+
+```java
+// VectorLibraryConfigMerger.java:67-71
+if (lockPipelineConfig) {
+    return;
+}
+```
+
+**Files:** `VectorLibraryConfigMerger.java`, `VectorLibraryService.java`, `EditLibrarySettingsDrawer.vue`, `libraryConfig.js` `hasIngestedContent`
+
+**Why:** 防止运营修改管道规则导致已索引 chunk 与配置不一致。
+
+**Impact:** 库内有文档后**无法**通过 UI 调整 OCR/分块；只能新建库或手动 `POST /api/v1/index/rebuild-library`（且硬锁下仍无法改 config）。
+
+**Fix approach:** 目标态 **软锁定**（D-15）— 允许修改 + 排队全库重索引 + 强警告；见附录 B backlog。
 
 ---
 
-## 附录 B：Backlog 与字段路径索引
+## 附录 B：Backlog 与后续 Phase 引用
 
-（Plan 03 填充）
+下列为**未在 v1 承诺**的能力，仅作路线图追溯。勿将 backlog 项描述为已交付功能（D-06、D-19）。
+
+### B.1 按 Phase 的需求映射
+
+| Phase | 需求 ID | 交付物 | 与 Phase 1 文档关系 |
+|-------|---------|--------|---------------------|
+| **Phase 2** | TYPE-01–05 | `.planning/docs/FILE-TYPE-PROCESSING.md` | §7.5 引用；§8 Excel/PDF 反模式 cross-ref |
+| **Phase 3** | PRESET-01–04 | `libraryPresets.js` + 向导预设 UI | §6 决策树「预设套用」落点 |
+| **Phase 4** | PARITY-01–04 | 预览=入库工程落地 | §4.4、§8、附录 A.2/A.3 差距关闭 |
+| **Phase 5** | CFG-01–02 | 配置 diff UX、保存可靠性 | `libraryConfig.js` `diffLibraryConfig` |
+
+### B.2 v2 质量门禁（D-19，仅定义不实现）
+
+| ID | 准则（文档级） | v1 状态 |
+|----|---------------|---------|
+| **GATE-01** | 检索可召回：关键事实块在 top-K 检索中可命中 | 手工案例 / chunk 列表验收 |
+| **GATE-02** | 反模式回归：杜鹏飞等 fixture 块形态不退化 | 参考 `ChunkPreviewServiceTest`；无 CI 门禁 |
+
+### B.3 Deferred（CONTEXT.md）
+
+| 项 | 说明 | 目标 Phase |
+|----|------|-----------|
+| **采集级 ingest profile 持久化** | OCR/chunk 覆盖写入 doc 或 job | Phase 4 + backlog |
+| **MIME 自动默认引擎** | 按 MIME 套用 parsing/chunk 默认 | Phase 2/3 |
+| **软锁定 + 全库重索引任务** | 替代 `VectorLibraryConfigMerger` 硬锁 | Backlog（D-15） |
+| **结构化双轨 + QueryRouter** | `document_record`、表格 SQL 查询 | 另立里程碑（Out of Scope） |
+
+---
+
+## 附录 C：配置字段路径索引（condensed）
+
+与 `frontend/knowbase-ui/src/utils/libraryConfig.js` 中 `CONFIG_FIELD_SPECS` / `REINDEX_FIELDS` dot-path 对齐。完整 diff 逻辑见 Phase 5。
+
+| 路径 | 中文标签 | 影响重索引 | Wizard 步骤 |
+|------|----------|------------|-------------|
+| `chunkingStrategy` | 分块策略 | 是 | 3 |
+| `chunkSize` | 块大小 | 是 | 3 |
+| `chunkOverlap` | 块重叠 | 是 | 3 |
+| `minChunkSize` | 最小块 | 是 | 3 |
+| `maxChunkSize` | 最大块 | 是 | 3 |
+| `minParagraphLength` | 最短段落 | 是 | 3 |
+| `normalizeBeforeChunk` | 分块前规范化 | 是 | 3 |
+| `textNormalizationEnabled` | 文本清洗 | 是 | 3 |
+| `textNormalization.*` | 清洗子规则 | 是 | 3 |
+| `parsing.ocrEnabled` | OCR | 是 | 3 |
+| `parsing.tableExtraction` | 表格提取 | 是 | 3 |
+| `parsing.imageExtraction` | 图片提取 | 是 | 3 |
+| `parsing.formulaExtraction` | 公式提取 | 是 | 3 |
+| `parsing.defaultLanguage` | 默认语言 | 是 | 3 |
+| `parsing.autoDetectEncoding` | 自动识别编码 | 是 | 3 |
+| `cleaning.removeHeaderFooter` | 去页眉页脚 | 是 | 3 |
+| `cleaning.removeDuplicateParagraphs` | 去重复段落 | 是 | 3 |
+| `embeddingProvider` | Embedding 提供方 | 是 | 4 |
+| `embeddingModel` | Embedding 模型 | 是 | 4 |
+| `embeddingDimension` | 向量维度 | 是 | 4 |
+| `ingestAccess.supportedFileTypes` | 数据类型 | 否 | 2 |
+| `ingestAccess.capacityLimits.maxDocuments` | 容量-文档数 | 否 | 2 |
+| `retrieval.hybridSearchEnabled` | 混合检索 | 否 | 4 |
+| `governance.ingestReviewMode` | 入库审核 | 否 | 5 |
