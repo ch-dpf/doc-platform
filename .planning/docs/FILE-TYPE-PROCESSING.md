@@ -102,29 +102,6 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 | **Word** · `chunkSize` / `chunkOverlap` | 向导默认 **`500`** / **`120`** | 块大小由策略决定；heading-level 以标题为界 | 制度库勿盲目调大 chunkSize |
 | **Word** · `minParagraphLength` | **`30`** | 过滤极短段落 | 表格密集 docx 可酌情降低 |
 | **Word** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | 标准入库过滤纯表头块 | 复杂表格 + structured 时表头块较少 |
-
-### 开发参考：PDF / Word 解析锚点 {#dev-reference}
-
-| 路径 | 行为 | 矩阵关联 |
-|------|------|----------|
-| `DocumentParseService.java` L44–68 | 库级 `ocrEnabled` + `OcrFallbackPolicy.shouldFallback`（Tika 字符 < 32）→ `DocumentOcrService.extract` | PDF 扫描件 / 文本型 OCR 分支 |
-| `DocumentParseService.java` L74–93 | `requiresHtmlPipeline()` 为 true 时走 HTML 管道；失败回退 `extractPlainWithTika` | PDF/Word `structured` 表格提取 |
-| `DocumentParseOptions.java` L43–47 | `requiresHtmlPipeline()`：`tableExtraction != TEXT_ONLY` 或 image/formula 非 SKIP | Word **`structured`** 触发条件 |
-| `OcrFallbackPolicy.java` L11–17 | PDF/image MIME + 提取字符数 < `min-extracted-chars-to-skip`（默认 32） | 扫描 PDF OCR 回退判定 |
-| `application.yml` L59–67 | `ingest.ocr.enabled`、`data-path`、`min-extracted-chars-to-skip: 32` | OCR 引擎 vs 库级 `parsing.ocrEnabled` 区分 |
-
-> **Excel 目标态（D-08）：** 表格类文件在目标态应走**结构化文档处理**（行列对象入库），方能在分块/向量化层保证数据准确可控。**v1 过渡推荐（D-09）：** 运营仍用 **`text-only` + `paragraph-first` + `IndexingChunkFilter`**；差距详表见 [附录 B](#appendix-b)。
-
-### 开发参考：Excel 解析与分块锚点 {#dev-reference}
-
-| 路径 | 行为 | 矩阵关联 |
-|------|------|----------|
-| `DocumentParseService.java` L95–107 | xlsx 始终 `extractPlainWithTika` — **`structured` 不生效** | Excel **`text-only`** 唯一路径 |
-| `TableExtractionMode.java` L8–9 | `STRUCTURED` 枚举值；仅 HTML 管道消费 | Excel **禁止 structured** 依据 |
-| `TabularContinuationNormalizer.java` L19–44 | 合并 Tika Excel 单元格内换行续行 | Excel 续行 / 表头行 |
-| `IndexingChunkFilter.java` L11–22 | `removeHeaderOnlyChunks` 过滤纯表头块 | Excel 表头过滤产出列 |
-| `IndexingService.java` L157–158 | 分块后调用 `IndexingChunkFilter` | 入库与预览共用过滤链 |
-| `ChunkPreviewServiceTest.java` | 杜鹏飞周报 fixture：`chunkSize=500`, `overlap=120` → rawTotalChunks=4, filteredOutCount=1, totalChunks=3 | 周报 xlsx 块数基准（D-12 脚注） |
 | **Excel** · `parsing.tableExtraction` | **`text-only`**（v1 唯一有效路径；xlsx 始终 `extractPlainWithTika`） | Tika tab 分隔纯文本 → `parsed.txt` | **禁止** **`structured`**：对 xlsx 无收益、错误预期（见 [附录 B](#appendix-b)） |
 | **Excel** · `cleaning.removeDuplicateParagraphs` | **`true`**（默认） | 去重 tab 行段落 | 关闭 → 重复表头/续行进入索引 |
 | **Excel** · `chunkingStrategy` | **`paragraph-first`** | tab 行段落块（`\t` 分隔列） | **禁止** **`semantic`**：续行/表头语义误判、跨行切断 |
@@ -145,6 +122,29 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 | **Markdown** · `chunkSize` / `chunkOverlap` | 向导默认 **`500`** / **`120`** | 块大小由策略决定 | 代码密集 md 可保持 paragraph-first |
 | **Markdown** · `minParagraphLength` | **`30`** | 过滤极短段落 | 列表项过短时可酌情降低 |
 | **Markdown** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | 标准入库过滤 | 含 tab 表格的 md 偶发表头块 |
+
+> **Excel 目标态（D-08）：** 表格类文件在目标态应走**结构化文档处理**（行列对象入库），方能在分块/向量化层保证数据准确可控。**v1 过渡推荐（D-09）：** 运营仍用 **`text-only` + `paragraph-first` + `IndexingChunkFilter`**；差距详表见 [附录 B](#appendix-b)。
+
+### 开发参考：PDF / Word 解析锚点 {#dev-reference}
+
+| 路径 | 行为 | 矩阵关联 |
+|------|------|----------|
+| `DocumentParseService.java` L44–68 | 库级 `ocrEnabled` + `OcrFallbackPolicy.shouldFallback`（Tika 字符 < 32）→ `DocumentOcrService.extract` | PDF 扫描件 / 文本型 OCR 分支 |
+| `DocumentParseService.java` L74–93 | `requiresHtmlPipeline()` 为 true 时走 HTML 管道；失败回退 `extractPlainWithTika` | PDF/Word `structured` 表格提取 |
+| `DocumentParseOptions.java` L43–47 | `requiresHtmlPipeline()`：`tableExtraction != TEXT_ONLY` 或 image/formula 非 SKIP | Word **`structured`** 触发条件 |
+| `OcrFallbackPolicy.java` L11–17 | PDF/image MIME + 提取字符数 < `min-extracted-chars-to-skip`（默认 32） | 扫描 PDF OCR 回退判定 |
+| `application.yml` L59–67 | `ingest.ocr.enabled`、`data-path`、`min-extracted-chars-to-skip: 32` | OCR 引擎 vs 库级 `parsing.ocrEnabled` 区分 |
+
+### 开发参考：Excel 解析与分块锚点 {#dev-reference}
+
+| 路径 | 行为 | 矩阵关联 |
+|------|------|----------|
+| `DocumentParseService.java` L95–107 | xlsx 始终 `extractPlainWithTika` — **`structured` 不生效** | Excel **`text-only`** 唯一路径 |
+| `TableExtractionMode.java` L8–9 | `STRUCTURED` 枚举值；仅 HTML 管道消费 | Excel **禁止 structured** 依据 |
+| `TabularContinuationNormalizer.java` L19–44 | 合并 Tika Excel 单元格内换行续行 | Excel 续行 / 表头行 |
+| `IndexingChunkFilter.java` L11–22 | `removeHeaderOnlyChunks` 过滤纯表头块 | Excel 表头过滤产出列 |
+| `IndexingService.java` L157–158 | 分块后调用 `IndexingChunkFilter` | 入库与预览共用过滤链 |
+| `ChunkPreviewServiceTest.java` | 杜鹏飞周报 fixture：`chunkSize=500`, `overlap=120` → rawTotalChunks=4, filteredOutCount=1, totalChunks=3 | 周报 xlsx 块数基准（D-12 脚注） |
 
 ### 开发参考：Resolver 消费链
 
