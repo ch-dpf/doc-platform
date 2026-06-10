@@ -12,7 +12,7 @@
 
 **Requirements:** PIPE-01, PIPE-02, PIPE-03
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 **Key deliverables:**
 
@@ -27,7 +27,7 @@ Plans:
 
 - [x] 01-01-PLAN.md — Doc scaffold, decision tree, config matrix, PIPE-01 建库流程
 - [x] 01-02-PLAN.md — PIPE-02 入库流程 + PIPE-03 阶段/类/API 矩阵 + 预览差距
-- [ ] 01-03-PLAN.md — 质量准则、反模式、附录 A/B、验收清单与 STATE 更新
+- [x] 01-03-PLAN.md — 质量准则、反模式、附录 A/B、验收清单与 STATE 更新
 
 ---
 

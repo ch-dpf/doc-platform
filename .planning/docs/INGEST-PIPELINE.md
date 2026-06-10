@@ -1,5 +1,5 @@
 ---
-last_mapped_commit: 071d350
+last_mapped_commit: ff9f059
 analysis_date: 2026-06-10
 focus: ingest-pipeline
 ---
