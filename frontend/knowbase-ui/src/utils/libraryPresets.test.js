@@ -4,7 +4,8 @@ import {
   LIBRARY_PRESET_CUSTOM,
   applyLibraryPreset,
   resolveLibraryPresetLabel,
-  getLibraryPresetById
+  getLibraryPresetById,
+  syncLibraryPresetIdOnEdit
 } from './libraryPresets'
 import { defaultLibraryConfig } from './libraryDefaults'
 import { APPENDIX_A_EXPECTATIONS, ROADMAP_ANCHOR_EXPECTATIONS } from './appendixAPresetAudit'
@@ -135,6 +136,30 @@ describe('resolveLibraryPresetLabel', () => {
     const config = applyLibraryPreset(base, 'weekly-report-excel')
     config.chunkingStrategy = 'semantic'
     expect(resolveLibraryPresetLabel(config)).toBe('自定义')
+  })
+})
+
+describe('syncLibraryPresetIdOnEdit', () => {
+  const base = defaultLibraryConfig('quick')
+
+  it('keeps preset id when pipeline fields unchanged', () => {
+    const config = applyLibraryPreset(base, 'scan-reimbursement')
+    const synced = syncLibraryPresetIdOnEdit(config)
+    expect(synced.libraryPresetId).toBe('scan-reimbursement')
+  })
+
+  it('marks custom when ocrEnabled changed', () => {
+    const config = applyLibraryPreset(base, 'scan-reimbursement')
+    config.parsing.ocrEnabled = false
+    const synced = syncLibraryPresetIdOnEdit(config)
+    expect(synced.libraryPresetId).toBe(LIBRARY_PRESET_CUSTOM)
+  })
+
+  it('marks custom when supportedFileTypes drift from preset', () => {
+    const config = applyLibraryPreset(base, 'weekly-report-excel')
+    config.ingestAccess.supportedFileTypes = ['excel', 'pdf']
+    const synced = syncLibraryPresetIdOnEdit(config)
+    expect(synced.libraryPresetId).toBe(LIBRARY_PRESET_CUSTOM)
   })
 })
 

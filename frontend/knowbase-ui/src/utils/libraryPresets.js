@@ -148,7 +148,21 @@ function configMatchesPreset(config, preset) {
   const o = preset.overrides
   if (config.chunkingStrategy !== o.chunkingStrategy) return false
   if (o.chunkSize != null && config.chunkSize !== o.chunkSize) return false
+  if (o.chunkOverlap != null && config.chunkOverlap !== o.chunkOverlap) return false
   if (o.parsing?.ocrEnabled != null && config.parsing?.ocrEnabled !== o.parsing.ocrEnabled) return false
   if (o.parsing?.tableExtraction != null && config.parsing?.tableExtraction !== o.parsing.tableExtraction) return false
+  if (o.cleaning?.removeHeaderFooter != null && config.cleaning?.removeHeaderFooter !== o.cleaning.removeHeaderFooter) return false
+  if (o.cleaning?.removeDuplicateParagraphs != null && config.cleaning?.removeDuplicateParagraphs !== o.cleaning.removeDuplicateParagraphs) return false
   return true
+}
+
+/** 编辑保存前：按当前字段匹配预设 id，漂移则标记 custom（PRESET-04） */
+export function syncLibraryPresetIdOnEdit(config) {
+  if (!config) return config
+  for (const preset of LIBRARY_PRESETS) {
+    if (configMatchesPreset(config, preset)) {
+      return { ...config, libraryPresetId: preset.id }
+    }
+  }
+  return { ...config, libraryPresetId: LIBRARY_PRESET_CUSTOM }
 }
