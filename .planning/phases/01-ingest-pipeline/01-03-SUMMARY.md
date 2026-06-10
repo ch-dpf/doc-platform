@@ -74,7 +74,7 @@ completed: 2026-06-10
 2. **Task 2: Appendix A current gaps and Appendix B backlog** — `071d350`
 3. **Task 3: Final verification and STATE update** — `ff9f059`
 
-**Plan metadata:** pending final docs commit
+**Plan metadata:** `13b445b` (docs: complete plan)
 
 ## Files Created/Modified
 
