@@ -1,5 +1,5 @@
 ---
-last_mapped_commit: d55a614
+last_mapped_commit: ecfaf08
 analysis_date: 2026-06-10
 focus: file-type-processing
 ---

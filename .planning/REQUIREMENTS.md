@@ -13,11 +13,11 @@
 
 ### File-Type Matrix（类型设定对照）
 
-- [ ] **TYPE-01**: PDF 类型说明：OCR 开关、表格提取、推荐分块策略与典型风险（扫描件、纯图 PDF）
-- [ ] **TYPE-02**: Word 类型说明：`structured` 表格提取、标题分块适用场景
-- [ ] **TYPE-03**: Excel 类型说明：`text-only`、续行合并、`paragraph-first`、表头块过滤、不适用 semantic 分块
-- [ ] **TYPE-04**: TXT/Markdown 类型说明：编码检测、段落分块参数建议
-- [ ] **TYPE-05**: 各类型「错误设定示例」与「预期分块质量问题」对照（运营可读）
+- [x] **TYPE-01**: PDF 类型说明：OCR 开关、表格提取、推荐分块策略与典型风险（扫描件、纯图 PDF）
+- [x] **TYPE-02**: Word 类型说明：`structured` 表格提取、标题分块适用场景
+- [x] **TYPE-03**: Excel 类型说明：`text-only`、续行合并、`paragraph-first`、表头块过滤、不适用 semantic 分块
+- [x] **TYPE-04**: TXT/Markdown 类型说明：编码检测、段落分块参数建议
+- [x] **TYPE-05**: 各类型「错误设定示例」与「预期分块质量问题」对照（运营可读）
 
 ### Library Presets（库预设）
 
@@ -65,11 +65,11 @@
 | PIPE-01 | Phase 1 | Complete |
 | PIPE-02 | Phase 1 | Complete |
 | PIPE-03 | Phase 1 | Complete |
-| TYPE-01 | Phase 2 | Pending |
-| TYPE-02 | Phase 2 | Pending |
-| TYPE-03 | Phase 2 | Pending |
-| TYPE-04 | Phase 2 | Pending |
-| TYPE-05 | Phase 2 | Pending |
+| TYPE-01 | Phase 2 | Complete |
+| TYPE-02 | Phase 2 | Complete |
+| TYPE-03 | Phase 2 | Complete |
+| TYPE-04 | Phase 2 | Complete |
+| TYPE-05 | Phase 2 | Complete |
 | PRESET-01 | Phase 3 | Pending |
 | PRESET-02 | Phase 3 | Pending |
 | PRESET-03 | Phase 3 | Pending |
@@ -89,4 +89,4 @@
 
 ---
 *Requirements defined: 2026-06-10*
-*Last updated: 2026-06-10 after initial definition*
+*Last updated: 2026-06-10 after Phase 2 completion (TYPE-01–05)*
