@@ -62,7 +62,7 @@ focus: file-type-processing
 |-------------|---------|--------|
 | TYPE-01 | §2 PDF 行组 | Covered |
 | TYPE-02 | §2 Word 行组 | Covered |
-| TYPE-03 | §2 Excel 行组 + 附录 B | Placeholder（Plan 02） |
+| TYPE-03 | §2 Excel 行组 + 附录 B | Covered |
 | TYPE-04 | §2 TXT/Markdown 行组 | Placeholder（Plan 02） |
 | TYPE-05 | §4 类型反模式 | Placeholder（Plan 03） |
 
@@ -112,14 +112,27 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 | `DocumentParseOptions.java` L43–47 | `requiresHtmlPipeline()`：`tableExtraction != TEXT_ONLY` 或 image/formula 非 SKIP | Word **`structured`** 触发条件 |
 | `OcrFallbackPolicy.java` L11–17 | PDF/image MIME + 提取字符数 < `min-extracted-chars-to-skip`（默认 32） | 扫描 PDF OCR 回退判定 |
 | `application.yml` L59–67 | `ingest.ocr.enabled`、`data-path`、`min-extracted-chars-to-skip: 32` | OCR 引擎 vs 库级 `parsing.ocrEnabled` 区分 |
-| **Excel** · `parsing.tableExtraction` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Excel** · `cleaning.removeDuplicateParagraphs` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Excel** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Excel** · `chunkSize` / `chunkOverlap` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Excel** · `minParagraphLength` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Excel** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | （Plan 02 填充） | （Plan 02 填充） |
-| **Excel** · 子场景（周报 xlsx） | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
-| **Excel** · 续行 / 表头（管道内启发式） | —（`TabularContinuationNormalizer`） | （Plan 02 填充） | （Plan 02 填充） |
+
+> **Excel 目标态（D-08）：** 表格类文件在目标态应走**结构化文档处理**（行列对象入库），方能在分块/向量化层保证数据准确可控。**v1 过渡推荐（D-09）：** 运营仍用 **`text-only` + `paragraph-first` + `IndexingChunkFilter`**；差距详表见 [附录 B](#appendix-b)。
+
+### 开发参考：Excel 解析与分块锚点 {#dev-reference}
+
+| 路径 | 行为 | 矩阵关联 |
+|------|------|----------|
+| `DocumentParseService.java` L95–107 | xlsx 始终 `extractPlainWithTika` — **`structured` 不生效** | Excel **`text-only`** 唯一路径 |
+| `TableExtractionMode.java` L8–9 | `STRUCTURED` 枚举值；仅 HTML 管道消费 | Excel **禁止 structured** 依据 |
+| `TabularContinuationNormalizer.java` L19–44 | 合并 Tika Excel 单元格内换行续行 | Excel 续行 / 表头行 |
+| `IndexingChunkFilter.java` L11–22 | `removeHeaderOnlyChunks` 过滤纯表头块 | Excel 表头过滤产出列 |
+| `IndexingService.java` L157–158 | 分块后调用 `IndexingChunkFilter` | 入库与预览共用过滤链 |
+| `ChunkPreviewServiceTest.java` | 杜鹏飞周报 fixture：`chunkSize=500`, `overlap=120` → rawTotalChunks=4, filteredOutCount=1, totalChunks=3 | 周报 xlsx 块数基准（D-12 脚注） |
+| **Excel** · `parsing.tableExtraction` | **`text-only`**（v1 唯一有效路径；xlsx 始终 `extractPlainWithTika`） | Tika tab 分隔纯文本 → `parsed.txt` | **禁止** **`structured`**：对 xlsx 无收益、错误预期（见 [附录 B](#appendix-b)） |
+| **Excel** · `cleaning.removeDuplicateParagraphs` | **`true`**（默认） | 去重 tab 行段落 | 关闭 → 重复表头/续行进入索引 |
+| **Excel** · `chunkingStrategy` | **`paragraph-first`** | tab 行段落块（`\t` 分隔列） | **禁止** **`semantic`**：续行/表头语义误判、跨行切断 |
+| **Excel** · `chunkSize` / `chunkOverlap` | 周报基准 **`500`** / **`120`**（`ChunkPreviewServiceTest` 杜鹏飞 fixture） | 3–4 块/文档（chunkSize=500 时） | 过小 → 单行拆块；过大 → 多表同块 |
+| **Excel** · `minParagraphLength` | **`30`**（默认）；续行密集时可酌情降低 | 过滤极短 tab 行 | 过高 → 有效数据行丢失 |
+| **Excel** · `IndexingChunkFilter` | —（**非 config_json**，入库启发式） | `removeHeaderOnlyChunks` 去掉「序号\t类别\t…」纯表头块 | 表头块占比过高时仍有检索噪声 |
+| **Excel** · 子场景（**周报 xlsx**） | 同上 + **同质语义单库**（仅周报类 xlsx） | 3–4 chunks/doc（chunkSize=500）；`IndexingChunkFilter` 过滤 1 表头块 → 3 块入库 | **推荐** 周报专用库；**禁止** 周报 + 报销混库（ROADMAP **周报 xlsx** 锚点） |
+| **Excel** · 续行 / 表头（管道内启发式） | —（`TabularContinuationNormalizer`） | 合并单元格内换行续行 → 同一 tab 数据行；再 `paragraph-first` 分块 | 续行与主体分离 → 召回失败；见 `TabularContinuationNormalizer.joinContinuations` |
 | **TXT** · `parsing.autoDetectEncoding` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
 | **TXT** · `cleaning.removeDuplicateParagraphs` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
 | **TXT** · `chunkingStrategy` | （Plan 02 填充） | （Plan 02 填充） | （Plan 02 填充） |
@@ -189,9 +202,24 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ---
 
-## 附录 B 结构化 Excel 差距
+## 附录 B 结构化 Excel 差距 {#appendix-b} {#ops-guide}
 
-（Plan 03 填充 — 目标态 vs v1 差距详表）
+> **D-08–D-10：** 目标态 structured ingest 需另立里程碑；**v1 不承诺 POI / 双轨实现**。运营按 §2 Excel 行组的过渡推荐配置即可。
+
+| 维度 | 目标态（D-08） | v1 现状（D-09） | 过渡推荐 | Backlog |
+|------|---------------|----------------|----------|---------|
+| Excel ingest | 结构化文档处理 → 行列对象 → 分块/向量准确可控 | Tika tab 纯文本 → `TabularContinuationNormalizer` → `paragraph-first` → `IndexingChunkFilter` | **`text-only` + `paragraph-first`** | Apache POI 行对象、双轨模型 — [PROJECT.md Out of Scope](../PROJECT.md) |
+| `tableExtraction: structured` | 表格行列对象入库 | **仅 HTML 管道**（Word/PDF-derived HTML）；xlsx 走 `extractPlainWithTika` | Excel **不适用 structured** | `HtmlTableExtractionProcessor.java` / `DocumentParseService.java` |
+| 结构化查询 | SQL/行级 API、QueryRouter 分流 | 向量 + regex RAG 补偿（`RagWeeklyReport*Support`） | 文档描述路径 only | [INGEST-PIPELINE.md 附录 B.3](./INGEST-PIPELINE.md) 结构化双轨 + QueryRouter |
+| 表头 / 续行 | Schema 级行列边界 | 启发式：`TabularContinuationNormalizer` + `IndexingChunkFilter` | 保持默认 cleaning + 过滤链 | [CONCERNS.md](../codebase/CONCERNS.md) Tech Debt — Excel table extraction |
+
+**显式 backlog 引用（D-10）：**
+
+- **PROJECT Out of Scope：** 双轨结构化事实层（`document_record`）与查询分流；全新 Excel POI 解析器 — 本里程碑不做完整 schema 入库
+- **INGEST-PIPELINE 附录 B.3：** 结构化双轨 + QueryRouter 目标态 backlog
+- **CONCERNS Tech Debt：** `Excel table extraction limited to plain Tika text` — `STRUCTURED` applies only to HTML pipeline; fix approach: Apache POI — deferred
+
+**勿误导：** v1 将 `parsing.tableExtraction` 设为 `structured` **不会**改善 xlsx 解析质量；运营应使用 §2 Excel 行的 **`text-only`** 推荐值。
 
 ---
 
