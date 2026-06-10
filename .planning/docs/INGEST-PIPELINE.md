@@ -43,8 +43,8 @@ focus: ingest-pipeline
 | Requirement | Section | Status |
 |-------------|---------|--------|
 | PIPE-01 | §2 建库流程 | Plan 01-01 |
-| PIPE-02 | §3 单文档入库流程 | Plan 01-02 |
-| PIPE-03 | §4 阶段·类·API 对照 | Plan 01-02 |
+| PIPE-02 | §3 单文档入库流程 | Plan 01-02 ✓ |
+| PIPE-03 | §4 阶段·类·API 对照 | Plan 01-02 ✓ |
 
 ### 按文件类型处理
 
@@ -250,7 +250,51 @@ sequenceDiagram
 
 ## §4 阶段·类·API 对照（PIPE-03）
 
-（Plan 02 Task 2 填充）
+开发对照表：从 UI 操作映射到 HTTP 端点、Controller 方法与后端服务类。路径已与 `@RequestMapping` 注解核对（2026-06-10）。
+
+### 4.1 阶段·HTTP·类·前端矩阵
+
+| 阶段 | HTTP Method + Path | Controller#method | 后端服务类 | 前端 `api/*.js` 函数 | UI 入口组件 |
+|------|-------------------|-------------------|-----------|---------------------|------------|
+| 建库列表 | `GET /api/v1/vector-libraries` | `VectorLibraryController#list` | `VectorLibraryService` | `library.js` `listVectorLibraries` | `VectorLibrariesView` |
+| 建库 | `POST /api/v1/vector-libraries` | `VectorLibraryController#create` | `VectorLibraryService` | `library.js` `createVectorLibrary` | `CreateLibraryWizard` |
+| 库设置 | `PUT /api/v1/vector-libraries/{libraryId}` | `VectorLibraryController#updateSettings` | `VectorLibraryService` | `library.js` `updateVectorLibrarySettings` | `EditLibrarySettingsDrawer`, `IngestView` |
+| 上传约束 | `GET /api/v1/documents/upload-constraints` | `DocumentController#uploadConstraints` | `UploadService` | `ingest.js` `getUploadConstraints` | `IngestView` |
+| 解析预览 | `POST /api/v1/documents/parse-preview` | `DocumentController#parsePreview` | `ParsePreviewService` | `ingest.js` `parsePreview` | `IngestView` |
+| 分块预览 | `POST /api/v1/index/chunk-preview` | `IndexAdminController#chunkPreview` | `ChunkPreviewService` | `chunk.js` `previewChunks` | `IngestView`, `CreateLibraryWizard` |
+| 单文件上传 | `POST /api/v1/documents/upload` | `DocumentController#upload` | `UploadService` → `DocumentIngestor` | `ingest.js` `uploadDocument`（query: `documentMetadata`） | `IngestView` |
+| 批量上传 | `POST /api/v1/documents/upload/batch` | `DocumentController#uploadBatch` | `UploadService` → `DocumentIngestor` | `ingest.js` `uploadDocumentsBatch` | `IngestView` |
+| 人工审核入库 | `POST /api/v1/documents/{docId}/approve-index` | `DocumentController#approveIndex` | `DocumentIndexApprovalService` | `ingest.js` `approveDocumentIndex` | —（`governance.ingestReviewMode=manual-review`） |
+| 已入库分块 | `GET /api/v1/documents/{docId}/chunks` | `DocumentController#listChunks` | `DocumentChunkQueryService` | `ingest.js` `getDocumentChunks` | `DocumentChunksView`（质量验收锚点） |
+| 全库重索引 | `POST /api/v1/index/rebuild-library` | `IndexAdminController#rebuildLibrary` | `LibraryRebuildService` | `vector.js` `rebuildLibrary` | —（lockPipeline 硬锁后的手动补救） |
+
+### 4.2 组件职责表
+
+| Component | Responsibility | File |
+|-----------|----------------|------|
+| `CreateLibraryWizard` | 五步向导收集库配置并 POST 建库 | `frontend/knowbase-ui/src/components/CreateLibraryWizard.vue` |
+| `EditLibrarySettingsDrawer` | 库设置编辑；`lockPipeline` 时禁用管道字段 | `frontend/knowbase-ui/src/components/EditLibrarySettingsDrawer.vue` |
+| `IngestView` | 采集入口：上传、双 API 预览、`documentMetadata`、`overrideChunk` UI | `frontend/knowbase-ui/src/views/IngestView.vue` |
+| `LibraryConfigResolver` | 从 `config_json` 解析各阶段规则 | `knowbase-service/.../library/service/LibraryConfigResolver.java` |
+| `DocumentIngestor` | 上传校验、写 `doc_metadata`、存 raw、触发管道 | `knowbase-service/.../ingest/service/DocumentIngestor.java` |
+| `DocumentPipelineService` | afterCommit 异步解析/规范化/清洗、写 `parsed.txt`、触发索引 | `knowbase-service/.../ingest/service/DocumentPipelineService.java` |
+| `DocumentIndexCoordinator` | 接收 `DocumentReadyForIndexEvent`，调度 `IndexingService` | `knowbase-service/.../platform/DocumentIndexCoordinator.java` |
+| `IndexingService` | 读 `parsed.txt` → 分块 → 过滤 → 嵌入 → `document_chunk` | `knowbase-service/.../vector/service/IndexingService.java` |
+| `IndexingChunkFilter` | 过滤表头-only 低价值块 | `knowbase-service/.../vector/chunk/IndexingChunkFilter.java` |
+| `ChunkMetadataBuilder` | 合并 mimeType/docType/`custom_metadata_json` 到 chunk metadata | `knowbase-service/.../vector/retrieval/ChunkMetadataBuilder.java` |
+| `ParsePreviewService` | 解析预览（extract-only，不入库） | `knowbase-service/.../ingest/service/ParsePreviewService.java` |
+| `ChunkPreviewService` | 分块预览（不入库、不写 `document_chunk`） | `knowbase-service/.../vector/service/ChunkPreviewService.java` |
+
+### 4.3 预览 API 分叉
+
+`IngestView.runIngestPreview` 依次调用**两个独立 API**，均**不持久化** chunk：
+
+1. `parsePreview(file, libraryId)` → `POST /api/v1/documents/parse-preview`（`ParsePreviewService`）
+2. `fetchChunkPreview(buildChunkPreviewBody(parsed.text))` → `POST /api/v1/index/chunk-preview`（`ChunkPreviewService`）
+
+与正式入库 `POST /documents/upload` → `DocumentPipelineService` → `IndexingService` 路径不同。预览与入库的路径差异及块数不一致详见 §4.4。
+
+**目标态：** Phase 4 **PARITY** 要求预览规则 = 入库规则。完整四锚点差距表见附录 A（Plan 03）；PARITY 需求见 `.planning/REQUIREMENTS.md` backlog。
 
 ---
 
