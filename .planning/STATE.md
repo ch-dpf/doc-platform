@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: planning
-stopped_at: Completed 03-03-PLAN.md — ready for Phase 4 preview parity
-last_updated: "2026-06-10T06:56:03.250Z"
+status: completed
+stopped_at: Completed 04-03-PLAN.md — Phase 4 preview-index-parity complete
+last_updated: "2026-06-10T12:00:00.000Z"
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 18
-  completed_plans: 12
-  percent: 20
+  completed_plans: 15
+  percent: 33
 ---
 
 # Project State
@@ -38,7 +38,7 @@ See: `.planning/PROJECT.md` (updated 2026-06-10)
 | 1 | 全链路流程梳理 | Complete（文档已交付） |
 | 2 | 文件类型设定矩阵 | Complete（文档已交付） |
 | 3 | 库类型预设 | Complete |
-| 4 | 预览与入库一致性 | Pending |
+| 4 | 预览与入库一致性 | Complete |
 | 5 | 配置 UX 与保存可靠性 | Pending |
 
 ## Context
@@ -53,4 +53,5 @@ See: `.planning/PROJECT.md` (updated 2026-06-10)
 - Initialized via `/gsd-new-project` after `/gsd-map-codebase`
 - User priority: 建库/入库流程梳理，设定对分块质量的影响，非 RAG 补丁
 - **2026-06-10:** Phase 3 complete — libraryPresets.js, vitest audit, PRESET-01–04 verified
-- **Stopped at:** Completed 03-03-PLAN.md — ready for Phase 4 preview parity
+- **2026-06-10:** Phase 4 complete — LibraryChunkPipeline, parity tests, IngestView/wizard UI alignment (commits 7561964–df1bc66)
+- **Stopped at:** Completed 04-03-PLAN.md — Phase 4 preview-index-parity complete
