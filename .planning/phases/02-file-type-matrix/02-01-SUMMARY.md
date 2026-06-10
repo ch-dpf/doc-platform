@@ -69,7 +69,7 @@ Each task was committed atomically:
 2. **Task 2: Three-tier defaults table (D-14)** - `a26295a` (docs)
 3. **Task 3: Main matrix skeleton with pipeline row keys** - `ef0527e` (docs)
 
-**Plan metadata:** pending (SUMMARY commit)
+**Plan metadata:** `dc99d3a` (docs: complete plan)
 
 ## Files Created/Modified
 
