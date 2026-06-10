@@ -409,13 +409,97 @@ flowchart TD
 
 ## §7 分块质量准则
 
-（Plan 03 填充）
+分块质量分两层：**北极星指标**（长期目标）与 **v1 工程验收层**（本里程碑可检验）。两者不可混用——运营验收以 v1 层为准，产品愿景以北极星为准（D-16、D-17）。
+
+### 7.1 北极星：RAG 可答率（D-16）
+
+**定义：** 单个 chunk 内包含**足够自洽的事实**，使下游 RAG 在合理检索命中该块时，能够生成**正确、完整**的回答。
+
+**特征（文档级描述，非 v1 自动化门禁）：**
+
+- 块内信息可独立理解，不依赖未出现在同块或相邻块中的关键上下文
+- 表格类内容：行级事实（责任人、项目、状态、说明）与表头语义在同一块或可关联块中可还原
+- 叙述类内容：段落主题完整，不在句中或列表项中间被硬切
+
+**边界：** RAG 可答率**不纳入 v1 工程验收**（D-02）。v2 可定义 GATE-01/02 门禁准则，见附录 B（D-19）。
+
+### 7.2 v1 验收层：检索可召回
+
+v1 里程碑以**检索可召回**为可检验标准——块进入向量/BM25 索引后，运营或开发能通过检索或 chunk 列表 API 找到预期事实，且块形态符合下列准则：
+
+| 准则 | 说明 | 检验方式 |
+|------|------|----------|
+| **块自洽** | 块文本可独立阅读，关键字段不无故缺失 | `GET …/documents/{docId}/chunks` 或检索预览 |
+| **非纯表头** | 索引块不以「序号\t类别\t…」类表头行为主内容 | `IndexingChunkFilter` 过滤 + chunk 内容抽查 |
+| **关键事实不无故跨块断裂** | 同一工作项的续行、说明段不与主体行分离到不可关联的块 | 反模式样本：杜鹏飞周报（§8） |
+| **预览=入库（目标态）** | 预览块数与规则应与正式入库一致 | **现状未满足** — 见 §4.4、§8、附录 A；Phase 4 PARITY |
+
+**现状说明：** 「预览=入库」为目标态（D-14），v1 因 `overrideChunk` 仅预览、双 API 路径差异**尚未达成**。验收时勿将 `chunk-preview` 返回的 `totalChunks` 直接等同于 `document_chunk` 行数。
+
+### 7.3 IndexingChunkFilter 角色
+
+入库前，`IndexingService` 在 `ChunkingService.chunk` 之后调用 `IndexingChunkFilter.removeHeaderOnlyChunks`，移除 `WeeklyReportChunkHeuristics.isHeaderOnlyChunk` 判定为**纯表头**的低价值块。
+
+```java
+// IndexingChunkFilter.java — 若全部被判定为表头，保留原列表，避免文档完全无向量
+return kept.isEmpty() ? List.copyOf(chunks) : kept;
+```
+
+**运营含义：**
+
+- 正常情况：表头行不会单独进入向量索引，减少检索命中「序号/类别/责任人」列名而无数据行的噪声
+- **Fallback：** 若启发式误杀导致「全部被滤除」，系统**回退保留全部块**，避免文档零向量——此时表头块仍可能可被检索到（见 §8 反模式「表头块占比过高」）
+
+预览路径 `ChunkPreviewService` 同样应用该过滤器，并返回 `rawTotalChunks` / `filteredOutCount` / `totalChunks` 供 UI 展示。
+
+### 7.4 ChunkMetadataBuilder 与检索收窄
+
+每个 `document_chunk` 的 `metadata` JSONB 由 `ChunkMetadataBuilder.build` 写入，供 hybrid 检索与 `metadataFilterFields` 过滤：
+
+| 字段 | 来源 | 用途 |
+|------|------|------|
+| `mimeType` | `doc_metadata.mime_type` | 按 MIME 收窄检索 |
+| `fileName` | `doc_metadata.file_name` | 展示与按文件名过滤 |
+| `docType` | 由扩展名/MIME 推导（pdf/word/excel/…） | 库级 `retrieval.metadataFilterFields` 白名单 |
+| 自定义键值 | `doc_metadata.custom_metadata_json`（采集 `documentMetadata`） | 语义标签，如 `semanticType=weekly-report`（D-06） |
+
+**v1 语义：** `documentMetadata` **仅**进入 chunk metadata 供检索过滤，**不**改变 parse/chunk 管道参数。
+
+### 7.5 按文件类型的细表（Phase 2 引用）
+
+Phase 1 **不**展开 PDF/Word/Excel/TXT/Markdown 逐类型推荐设定矩阵（D-17）。各类型「推荐 / 禁止」设定、产出形态与类型专属反模式见 Phase 2 交付物 [`.planning/docs/FILE-TYPE-PROCESSING.md`](./FILE-TYPE-PROCESSING.md)（待创建，TYPE-01–05）。
+
+**Phase 1 通用建议（跨类型）：**
+
+- 表格型 Excel 周报：`parsing.tableExtraction: text-only` + `chunkingStrategy: paragraph-first`（非 semantic）
+- 扫描 PDF：`parsing.ocrEnabled: true` 且 tessdata 可用
+- 异质语义文档：按 §6 决策树拆库，勿混库
 
 ---
 
 ## §8 反模式对照
 
-（Plan 03 填充）
+下列为运营与开发在配置、采集、建库时**最常见**的错误模式。格式对齐 `.planning/codebase/CONCERNS.md` Tech Debt 条目，便于与代码库已知问题交叉检索（D-18）。
+
+| 反模式 | 错误设定/行为 | 症状 | 代码锚点 | 正确做法（目标态 / Phase 引用） |
+|--------|--------------|------|----------|--------------------------------|
+| **预览≠入库** | 开启 `overrideChunkEnabled` 或信任 UI「仅本次预览与入库」文案 | 预览显示 N 块，入库 `document_chunk` 为 M 块（N≠M）；运营以为已验证入库结果 | `IngestView.vue`（`:531` 文案、`:1132` override 仅进 preview body）；`ingest.js` `uploadParams` 不传 chunkSize；`IndexingService` 仅 `chunkingFor(libraryId)` | **目标态：** Phase 4 **PARITY-01–04** — 预览规则=入库规则；**现状：** 以 `GET …/documents/{docId}/chunks` 为准，勿信预览块数 |
+| **杜鹏飞周报 xlsx** | 错误分块策略（如 semantic）、忽略表头过滤认知，或 `tableExtraction: structured` 误以为对 xlsx 生效 | 检索命中纯表头块；或漏召回工作项行；续行与主体分离 | `ChunkPreviewServiceTest.previewUsesIndexingChunkFilterAndLibraryChunkParams` — 杜鹏飞 fixture；`IndexingChunkFilter.java`；`DocumentParseService`（Excel 走 Tika 纯文本） | **`paragraph-first` + `text-only`**；表头由 `IndexingChunkFilter` 过滤。**测试基准**（`chunkSize=500`, `chunkOverlap=120`）：`rawTotalChunks=4`, `filteredOutCount=1`, `totalChunks=3`[^dupengfei-count] |
+| **扫描 PDF OCR 关闭** | 库或系统级 `parsing.ocrEnabled=false` 上传图片型 PDF | 解析文本为空或乱码；0 chunk 或无效向量 | `DocumentParseService.java`；`DocumentOcrService.java`；`infra/tesseract/README.md` | 开启 OCR + 运行 `scripts/setup-tesseract.ps1` 部署 tessdata；Phase 2 TYPE 矩阵对扫描 PDF 有专项说明 |
+| **异质语义混库** | 周报 xlsx 与报销 xlsx 建在同一垂直库 | 检索噪声大；问答混淆不同业务语义 | CONTEXT **D-10**；`ChunkMetadataBuilder` 语义标签仅过滤不拆库 | 按**语义主轴**拆库（§6.2）；同质语义才混合 MIME |
+| **Excel 误开 structured 表格** | `parsing.tableExtraction: structured` 用于 xlsx | 无结构化收益；运营误以为 Excel 会按行列对象入库 | `DocumentParseService.java`（structured 仅 HTML 管道）；`HtmlTableExtractionProcessor.java` | 保持 **`text-only`**；Excel 结构化 ingest 为 backlog（CONCERNS Tech Debt）；详见 Phase 2 **TYPE-03** |
+
+[^dupengfei-count]: **参数脚注（RESEARCH Assumption A1）：** 单元测试在 `chunkSize=500` 下过滤 1 个表头块得 **3 块**。用户在生产参数下手工验证 **4 块均可召回**——差异来自 `chunkSize` / `minParagraphLength` / 库级配置组合。验收以「检索可召回关键事实（杜鹏飞工作项、说明续行）」为准，非固定块数 magic number。
+
+**Files（汇总）：**
+
+- `frontend/knowbase-ui/src/views/IngestView.vue`
+- `frontend/knowbase-ui/src/api/ingest.js`
+- `knowbase-service/src/main/java/com/knowbase/vector/service/IndexingService.java`
+- `knowbase-service/src/main/java/com/knowbase/vector/service/ChunkPreviewService.java`
+- `knowbase-service/src/test/java/com/knowbase/vector/service/ChunkPreviewServiceTest.java`
+- `knowbase-service/src/main/java/com/knowbase/vector/chunk/IndexingChunkFilter.java`
+- `knowbase-service/src/main/java/com/knowbase/ingest/service/DocumentParseService.java`
 
 ---
 
