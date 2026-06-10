@@ -65,7 +65,7 @@ completed: 2026-06-10
 2. **Task 2: PIPE-03 stage/class/API matrix** — `1edf8d0`
 3. **Task 3: Preview vs index current gaps (D-14)** — `5e5a2c3`
 
-**Plan metadata:** pending (docs commit via gsd-tools)
+**Plan metadata:** `07b5017` (docs: complete plan)
 
 ## Files Created/Modified
 
