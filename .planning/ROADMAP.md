@@ -37,6 +37,8 @@ Plans:
 
 **Requirements:** TYPE-01 … TYPE-05
 
+**Plans:** 3 plans
+
 **Key deliverables:**
 
 - `.planning/docs/FILE-TYPE-PROCESSING.md` 含设定→产出→质量三列表
@@ -45,6 +47,12 @@ Plans:
 **Success criteria:**
 
 - 周报 xlsx、扫描 pdf、制度 docx 各有明确「推荐 / 禁止」设定说明
+
+Plans:
+
+- [ ] 02-01-PLAN.md — scaffold, dual TOC, §3 三层默认值, §2 矩阵骨架
+- [ ] 02-02-PLAN.md — TYPE-01–04 五行组矩阵行, 附录 A MIME, 附录 B Excel 差距
+- [ ] 02-03-PLAN.md — TYPE-05 类型反模式, 附录 C 字段路径, 交叉引用, §9 验收, STATE 更新
 
 ---
 
