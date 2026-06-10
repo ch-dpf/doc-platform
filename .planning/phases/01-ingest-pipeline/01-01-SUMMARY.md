@@ -65,7 +65,7 @@ completed: 2026-06-10
 2. **Task 2: Library type decision tree and three-tier config matrix** — `5fe8f5d`
 3. **Task 3: PIPE-01 library creation flow** — `a360a08`
 
-**Plan metadata:** pending final docs commit
+**Plan metadata:** `eab4360` (docs: complete plan)
 
 ## Files Created/Modified
 

@@ -1,0 +1,113 @@
+﻿{
+    "libraryId":  "c0d71ca5-fbd5-492c-b525-d7dccb404590",
+    "tenantId":  "demo",
+    "name":  "å¨æ¥ç¥è¯åº",
+    "description":  "",
+    "status":  "ACTIVE",
+    "config":  {
+                   "metadataDbType":  "postgresql",
+                   "embeddingProvider":  "ollama",
+                   "embeddingModel":  "nomic-embed-text",
+                   "embeddingDimension":  768,
+                   "chunkingStrategy":  "paragraph-first",
+                   "chunkSize":  900,
+                   "chunkOverlap":  100,
+                   "minChunkSize":  80,
+                   "maxChunkSize":  1200,
+                   "minParagraphLength":  30,
+                   "normalizeBeforeChunk":  true,
+                   "semanticSimilarityThreshold":  0.0,
+                   "textNormalizationEnabled":  true,
+                   "textNormalization":  {
+                                             "enabled":  true,
+                                             "collapseBlankLines":  true,
+                                             "trimLines":  true,
+                                             "removeControlChars":  true,
+                                             "normalizeUnicodeSpaces":  true,
+                                             "dropNoiseLines":  true,
+                                             "minLineLength":  2,
+                                             "linePatternsToDrop":  [
+                                                                        "^\\d{1,4}$",
+                                                                        "^ç¬¬\\s*\\d+\\s*é¡µ$",
+                                                                        "^Page\\s+\\d+\\s+of\\s+\\d+$",
+                                                                        "^-{3,}$",
+                                                                        "^_{3,}$"
+                                                                    ]
+                                         },
+                   "ingestSourceMode":  "upload",
+                   "allowedMimeTypes":  [
+                                            "application/pdf",
+                                            "application/msword",
+                                            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                            "text/plain",
+                                            "text/markdown",
+                                            "text/x-markdown",
+                                            "application/vnd.ms-excel",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                        ],
+                   "configVersion":  1,
+                   "tags":  [
+
+                            ],
+                   "wizardMode":  "advanced",
+                   "ingestAccess":  {
+                                        "accessMode":  "upload-and-folder",
+                                        "supportedFileTypes":  [
+                                                                   "pdf",
+                                                                   "word",
+                                                                   "txt",
+                                                                   "markdown",
+                                                                   "excel"
+                                                               ],
+                                        "capacityLimits":  {
+                                                               "maxDocuments":  10000,
+                                                               "maxTotalSizeBytes":  10737418240,
+                                                               "maxChunkEntries":  500000
+                                                           },
+                                        "versionPolicy":  {
+                                                              "enabled":  true,
+                                                              "updateStrategy":  "keep-history"
+                                                          }
+                                    },
+                   "parsing":  {
+                                   "ocrEnabled":  false,
+                                   "tableExtraction":  "text-only",
+                                   "imageExtraction":  "skip",
+                                   "formulaExtraction":  "skip",
+                                   "autoDetectEncoding":  true,
+                                   "defaultLanguage":  "zh-CN"
+                               },
+                   "cleaning":  {
+                                    "removeHeaderFooter":  true,
+                                    "removeWatermark":  true,
+                                    "removeDuplicateParagraphs":  true,
+                                    "maskPhone":  false,
+                                    "maskIdCard":  false,
+                                    "stopwordFilter":  false
+                                },
+                   "retrieval":  {
+                                     "hybridSearchEnabled":  true,
+                                     "rerankEnabled":  true,
+                                     "rerankModel":  "",
+                                     "metadataFilterFields":  [
+
+                                                              ],
+                                     "similarityThreshold":  0.5,
+                                     "retainChunkMetadata":  true
+                                 },
+                   "governance":  {
+                                      "ingestReviewMode":  "auto",
+                                      "inheritLibraryPermissions":  true,
+                                      "retentionDays":  0,
+                                      "archivePolicy":  "none",
+                                      "complianceTags":  [
+
+                                                         ],
+                                      "auditLogEnabled":  true
+                                  }
+               },
+    "documentCount":  20,
+    "chunkCount":  78,
+    "createdAt":  "2026-06-08T06:12:19.920318Z",
+    "updatedAt":  "2026-06-08T06:13:14.402659Z"
+}

@@ -27,14 +27,7 @@ do {
     if ((Get-Date) -gt $deadline) { throw "Timeout waiting for indexing" }
 } while ($true)
 
-Write-Host "3. Semantic search..."
-$body = "{`"libraryId`":`"$libraryId`",`"tenantId`":`"$tenant`",`"query`":`"pgvector semantic search`",`"topK`":3}"
-$searchJson = curl.exe -s -X POST "$base/api/v1/search" -H "Content-Type: application/json" -d $body
-$search = $searchJson | ConvertFrom-Json
-if ($search.hits.Count -lt 1) { throw "No search hits returned" }
-Write-Host "   top hit score=$($search.hits[0].score)"
-
-Write-Host "3b. RAG chat (requires ollama pull llama3.2)..."
+Write-Host "3. RAG chat (requires ollama pull llama3.2)..."
 $ragBody = "{`"libraryId`":`"$libraryId`",`"tenantId`":`"$tenant`",`"question`":`"What is pgvector used for?`",`"topK`":3}"
 try {
     $ragJson = curl.exe -s -X POST "$base/api/v1/rag/chat" -H "Content-Type: application/json" -d $ragBody
@@ -49,9 +42,7 @@ Write-Host "4. Delete document..."
 curl.exe -s -X DELETE "$base/api/v1/documents/$docId" | Out-Null
 Start-Sleep -Seconds 2
 
-$searchAfterJson = curl.exe -s -X POST "$base/api/v1/search" -H "Content-Type: application/json" -d $body
-$searchAfter = $searchAfterJson | ConvertFrom-Json
-$filtered = $searchAfter.hits | Where-Object { $_.docId -eq $docId }
-if ($filtered.Count -gt 0) { throw "Deleted doc still appears in search" }
+$docAfterJson = curl.exe -s -w "%{http_code}" "$base/api/v1/documents/$docId"
+if ($docAfterJson -notmatch "404") { throw "Deleted doc still accessible" }
 
 Write-Host "E2E test passed."

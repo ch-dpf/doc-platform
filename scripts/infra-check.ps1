@@ -41,6 +41,17 @@ Test-Step "Ollama chat (RAG)" {
     if (-not ($tags.models.name -match "llama3.2")) { throw "llama3.2 missing (ollama pull llama3.2)" }
 }
 
+$repoRoot = Split-Path $PSScriptRoot -Parent
+$tessDir = Join-Path $repoRoot "infra\tesseract\tessdata"
+$chiSim = Join-Path $tessDir "chi_sim.traineddata"
+if (Test-Path $chiSim) {
+    Test-Step "OCR tessdata (chi_sim)" {
+        if ((Get-Item $chiSim).Length -lt 40MB) { throw "chi_sim.traineddata too small" }
+    }
+} else {
+    Write-Host "OCR tessdata (chi_sim) ... SKIP (run .\scripts\setup-tesseract.ps1 if OCR needed)"
+}
+
 Write-Host ""
 if ($ok) {
     Write-Host "All checks passed. Start knowbase-service next."

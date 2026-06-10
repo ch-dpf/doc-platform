@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.knowbase.vector.mapper.DocumentChunkMapper">
+
+    <delete id="deleteByDocId">
+        DELETE FROM document_chunk WHERE doc_id = #{docId}
+    </delete>
+
+    <delete id="deleteByDocIdAndVersion">
+        DELETE FROM document_chunk
+        WHERE doc_id = #{docId} AND version = #{version}
+    </delete>
+
+    <delete id="deleteByLibraryId">
+        DELETE FROM document_chunk WHERE library_id = #{libraryId}
+    </delete>
+
+    <select id="countByLibraryId" resultType="int">
+        SELECT COUNT(*) FROM document_chunk WHERE library_id = #{libraryId}
+    </select>
+
+    <select id="countByDocIdAndVersion" resultType="int">
+        SELECT COUNT(*) FROM document_chunk
+        WHERE doc_id = #{docId} AND version = #{version}
+    </select>
+
+    <insert id="insertChunk">
+        INSERT INTO document_chunk
+        (chunk_id, library_id, doc_id, tenant_id, version, chunk_index, content, metadata, embedding)
+        VALUES
+        (#{chunkId}, #{libraryId}, #{docId}, #{tenantId}, #{version}, #{chunkIndex}, #{content},
+         <choose>
+             <when test="metadataJson != null">#{metadataJson}::jsonb,</when>
+             <otherwise>NULL,</otherwise>
+         </choose>
+         #{embedding,typeHandler=com.knowbase.vector.mybatis.PGvectorTypeHandler})
+    </insert>
+
+    <select id="listByDocIdAndVersion" resultType="com.knowbase.vector.dto.DocumentChunkRow">
+        SELECT chunk_index AS chunkIndex, content
+        FROM document_chunk
+        WHERE doc_id = #{docId}
+          AND version = #{version}
+        ORDER BY chunk_index ASC
+    </select>
+
+    <select id="countByDocVersions" resultType="com.knowbase.vector.dto.DocChunkCountRow">
+        SELECT doc_id AS docId, version, COUNT(*)::int AS chunkCount
+        FROM document_chunk
+        WHERE
+        <foreach collection="pairs" item="pair" separator=" OR ">
+            (doc_id = #{pair.docId} AND version = #{pair.version})
+        </foreach>
+        GROUP BY doc_id, version
+    </select>
+
+    <select id="listByDocIdAndVersionPaged" resultType="com.knowbase.vector.dto.DocumentChunkRow">
+        SELECT chunk_index AS chunkIndex, content
+        FROM document_chunk
+        WHERE doc_id = #{docId}
+          AND version = #{version}
+        ORDER BY chunk_index ASC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="search" resultType="com.knowbase.vector.dto.SearchHit">
+        SELECT chunk_id AS chunkId,
+               doc_id AS docId,
+               tenant_id AS tenantId,
+               version,
+               chunk_index AS chunkIndex,
+               content,
+               1 - (embedding &lt;=&gt; #{embedding,typeHandler=com.knowbase.vector.mybatis.PGvectorTypeHandler}) AS score
+        FROM document_chunk
+        WHERE library_id = #{libraryId}
+          AND tenant_id = #{tenantId}
+        <if test="docIds != null and docIds.size() &gt; 0">
+            AND doc_id IN
+            <foreach collection="docIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+        <if test="metadataFilters != null and metadataFilters.size() &gt; 0">
+            <foreach collection="metadataFilters" item="clause">
+                AND metadata->>#{clause.field} = #{clause.value}
+            </foreach>
+        </if>
+        ORDER BY embedding &lt;=&gt; #{embedding,typeHandler=com.knowbase.vector.mybatis.PGvectorTypeHandler},
+                 chunk_id ASC
+        LIMIT #{topK}
+    </select>
+
+    <select id="keywordSearch" resultType="com.knowbase.vector.dto.SearchHit">
+        SELECT chunk_id AS chunkId,
+               doc_id AS docId,
+               tenant_id AS tenantId,
+               version,
+               chunk_index AS chunkIndex,
+               content,
+               ts_rank_cd(to_tsvector('simple', content), plainto_tsquery('simple', #{query})) AS score
+        FROM document_chunk
+        WHERE library_id = #{libraryId}
+          AND tenant_id = #{tenantId}
+          AND to_tsvector('simple', content) @@ plainto_tsquery('simple', #{query})
+        <if test="docIds != null and docIds.size() &gt; 0">
+            AND doc_id IN
+            <foreach collection="docIds" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
+        <if test="metadataFilters != null and metadataFilters.size() &gt; 0">
+            <foreach collection="metadataFilters" item="clause">
+                AND metadata->>#{clause.field} = #{clause.value}
+            </foreach>
+        </if>
+        ORDER BY score DESC, chunk_id ASC
+        LIMIT #{topK}
+    </select>
+</mapper>

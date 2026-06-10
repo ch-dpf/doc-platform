@@ -1,0 +1,166 @@
+server:
+  port: 8080
+  # 允许局域网通过 IP 访问（如 http://192.168.x.x:8080）
+  address: 0.0.0.0
+
+spring:
+  application:
+    name: knowbase-service
+  datasource:
+    # Windows 下 JVM 默认常为 GBK，必须显式指定客户端 UTF-8，否则中文读写乱码
+    url: jdbc:postgresql://localhost:5432/knowbase?options=-c%20client_encoding%3DUTF8
+    username: knowbase
+    password: knowbase
+    hikari:
+      connection-init-sql: SET client_encoding TO 'UTF8'; SET search_path TO public
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 520MB
+
+mybatis-plus:
+  type-handlers-package: com.knowbase.ingest.mybatis,com.knowbase.vector.mybatis,com.knowbase.platform.mybatis
+  configuration:
+    map-underscore-to-camel-case: true
+    default-enum-type-handler: org.apache.ibatis.type.EnumTypeHandler
+  mapper-locations: classpath*:/mapper/**/*.xml
+  global-config:
+    banner: false
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+storage:
+  # minio | local-fs
+  type: minio
+  path-prefix: ""
+  local:
+    base-path: ./data/documents
+
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket: documents
+  presign-expiry-minutes: 30
+
+ingest:
+  max-file-size: 50MB
+  max-batch-files: 20
+  async-upload-threshold: 5MB
+  ocr:
+    # 先运行 scripts/setup-tesseract.ps1 下载语言包，再改为 true
+    enabled: true
+    # start-services.ps1 以仓库根目录为 WorkingDirectory，故可用相对路径
+    data-path: ${KNOWBASE_TESSDATA:./infra/tesseract/tessdata}
+    language: chi_sim+eng
+    min-extracted-chars-to-skip: 32
+    max-pdf-pages: 50
+    pdf-render-dpi: 200
+  text-normalization:
+    enabled: true
+    collapse-blank-lines: true
+    trim-lines: true
+    remove-control-chars: true
+    normalize-unicode-spaces: true
+    drop-noise-lines: true
+    min-line-length: 2
+    # 行级清洗：整行命中则删除。^\d{1,4}$=孤立页码；^第\s*\d+\s*页$=中文页码行
+    line-patterns-to-drop:
+      - "^\\d{1,4}$"
+      - "^第\\s*\\d+\\s*页$"
+      - "^Page\\s+\\d+\\s+of\\s+\\d+$"
+      - "^-{3,}$"
+      - "^_{3,}$"
+  allowed-mime-types: >-
+    application/pdf,
+    application/msword,
+    application/vnd.openxmlformats-officedocument.wordprocessingml.document,
+    application/vnd.ms-excel,
+    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,
+    text/plain,
+    text/markdown,
+    text/x-markdown,
+    text/x-web-markdown
+
+embedding:
+  provider: ollama
+  dimension: 768
+
+ollama:
+  base-url: http://localhost:11434
+  embedding-model: nomic-embed-text
+  chat-model: llama3.2
+  timeout-seconds: 60
+  chat-timeout-seconds: 120
+  batch-size: 16
+  # 企业问答建议 temperature=0 + 固定 seed，减少同问不同答
+  chat-temperature: 0
+  chat-seed: 42
+
+rag:
+  enabled: true
+  default-top-k: 12
+  min-score: 0.0
+  max-context-chars: 8000
+  excerpt-max-chars: 500
+  max-history-messages: 20
+  max-history-message-chars: 2000
+  no-hit-answer: "未找到：当前知识库中未检索到与您问题相关的资料，无法作答。请确认文档已入库且索引状态为 INDEXED，或尝试更换问法。"
+  system-prompt: |
+    你是企业知识库问答助手。你只能使用用户消息中「参考资料」里的文字作答。
+    硬性规则（必须遵守）：
+    1. 禁止编造：不得使用参考资料以外的常识、推测或想象；参考资料未写明的信息一律不得输出。
+    2. 有据作答：每个事实性陈述必须在句末标注引用编号，如 [1]、[2]，且编号必须对应该条参考资料。
+    3. 跨文档汇总（如「哪些员工」「主要工作内容」「是否存在其他员工」）：可综合多条参考资料归纳；人员与事项须来自片段中可见的姓名/正文；对「是否存在其他 X」类问题，可据全部片段中出现的不同姓名作是/否判断，不得回避可归纳结论。
+    4. 资料不足时：若参考资料与问题无关、或完全未写理所问事实，你必须且只能回复 exactly 这一句，不要添加任何其他文字：
+    未找到：参考资料中未明确记载该问题的答案。
+    5. 问截止/期限/负责人等明确事实时：仅当参考资料中原样出现相关表述（如「提交截止」「截止日期」）才可作答；不得把周报/月报中的工作周期日期区间当作截止时间。
+    6. 禁止先写「没有明确…」再猜测作答；无明文则只回复第 4 条的「未找到」句式。
+    7. 使用简体中文，条理清晰；不要输出参考资料原文以外的链接、代码或数据。
+    8. 多轮对话：用户可能在追问前文；可结合对话历史理解指代，但事实性内容仍必须来自本轮「参考资料」。
+  conversational-system-prompt: |
+    你是企业知识库智能问答助手，基于「选定知识库 + 向量检索（RAG）+ 大语言模型」为用户答疑。
+    用户当前可能在打招呼，或询问你的身份、能力、所用模型等，请用简体中文友好、简洁地回答：
+    1. 说明你是知识库问答助手，业务问题需基于已入库文档检索后作答，不要编造库内事实。
+    2. 若被问「什么模型/谁」：说明对话生成由大语言模型 {{chatModel}} 完成；向量检索与 Embedding 模型由当前知识库配置决定。
+    3. 可简短问候并引导用户就知识库内容提问；不要输出冗长的免责声明。
+
+retrieval:
+  candidate-multiplier: 4
+  max-candidates: 50
+  rrf-k: 60
+  max-rerank-candidates: 30
+  cache-enabled: true
+  cache-ttl-seconds: 300
+  query-rewrite-enabled: true
+  query-rewrite-max-chars: 96
+
+chat:
+  max-history-messages: 10
+  summary-trigger-messages: 20
+  max-title-chars: 40
+
+chunking:
+  strategy: paragraph-first
+  chunk-size: 600
+  overlap: 100
+  min-chunk-size: 80
+  max-chunk-size: 1200
+  min-paragraph-length: 30
+  normalize-before-chunk: true
+  semantic-similarity-threshold: 0.72
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

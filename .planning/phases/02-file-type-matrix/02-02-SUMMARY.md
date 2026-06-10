@@ -72,7 +72,7 @@ Each task was committed atomically:
 2. **Task 2: Excel matrix rows and Appendix B (TYPE-03)** - `48647bd` (docs)
 3. **Task 3: TXT/Markdown rows and Appendix A (TYPE-04)** - `be64583` (docs)
 
-**Plan metadata:** `dab9f9e` (docs: complete plan)
+**Plan metadata:** `885a5c0` (docs: complete plan)
 
 ## Files Created/Modified
 

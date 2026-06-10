@@ -15,6 +15,9 @@ logs/
 # Local FS storage (storage.type=local-fs)
 data/
 
+# Tesseract language packs (download via scripts/setup-tesseract.ps1)
+infra/tesseract/tessdata/*.traineddata
+
 # Frontend
 frontend/*/node_modules/
 frontend/*/dist/
