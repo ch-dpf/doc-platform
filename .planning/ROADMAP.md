@@ -37,7 +37,7 @@ Plans:
 
 **Requirements:** TYPE-01 … TYPE-05
 
-**Plans:** 3/3 plans complete
+**Plans:** 3/6 plans complete (3 gap closure pending)
 
 **Key deliverables:**
 
@@ -53,6 +53,9 @@ Plans:
 - [x] 02-01-PLAN.md — scaffold, dual TOC, §3 三层默认值, §2 矩阵骨架
 - [x] 02-02-PLAN.md — TYPE-01–04 五行组矩阵行, 附录 A MIME, 附录 B Excel 差距
 - [x] 02-03-PLAN.md — TYPE-05 类型反模式, 附录 C 字段路径, 交叉引用, §9 验收, STATE 更新
+- [ ] 02-04-PLAN.md — gap: §2 单表矩阵结构修复 (CR-01)
+- [ ] 02-05-PLAN.md — gap: 唯一锚点 + INGEST-PIPELINE 双向链接 (CR-02)
+- [ ] 02-06-PLAN.md — gap: 附录 C REINDEX_FIELDS 范围与 minParagraphLength 锚点 (WR-01/WR-02)
 
 ---
 
