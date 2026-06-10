@@ -1,5 +1,5 @@
 ---
-last_mapped_commit: 0bb941f
+last_mapped_commit: 6dafbc9
 analysis_date: 2026-06-10
 focus: ingest-pipeline
 ---
@@ -54,7 +54,112 @@ Phase 1 **不**展开 PDF/Word/Excel/TXT/Markdown 逐类型矩阵（D-17）。�
 
 ## §2 建库流程（PIPE-01）
 
-（Plan 01-01 Task 3 填充）
+建库将运营在向导中填写的规则持久化为 `vector_library.config_json`，后续 ingest 管道各阶段通过 `LibraryConfigResolver.*For(libraryId)` 读取。
+
+### 2.1 端到端流程
+
+```mermaid
+flowchart LR
+    subgraph Client["Browser — Vue SPA"]
+        Wiz["CreateLibraryWizard"]
+        Edit["EditLibrarySettingsDrawer"]
+    end
+    subgraph API["knowbase-service"]
+        VLC["VectorLibraryController"]
+        VLS["VectorLibraryService"]
+        LCR["LibraryConfigResolver"]
+    end
+    subgraph DB["PostgreSQL"]
+        VL[("vector_library.config_json")]
+    end
+    subgraph Runtime["首次入库及后续"]
+        DPS["DocumentPipelineService"]
+        IS["IndexingService"]
+    end
+
+    Wiz -->|POST /api/v1/vector-libraries| VLC
+    Edit -->|PUT /api/v1/vector-libraries/{id}| VLC
+    VLC --> VLS
+    VLS -->|create / updateSettings| VL
+    VL --> LCR
+    LCR --> DPS
+    LCR --> IS
+```
+
+### 2.2 向导步骤 ↔ config_json 字段
+
+来源：`frontend/knowbase-ui/src/utils/libraryDefaults.js` — `WIZARD_STEPS` + `defaultLibraryConfig()`。
+
+| Wizard 步骤 | 主要 config_json 路径 | 库默认示例值 |
+|-------------|----------------------|-------------|
+| **1 基础信息** | `name`, `description`（API 顶层）；`tags` | `tags: []` |
+| **2 数据类型与容量** | `ingestAccess.supportedFileTypes`, `ingestAccess.capacityLimits.*`, `ingestAccess.versionPolicy.*`, `ingestSourceMode` | `supportedFileTypes: ['pdf','word','txt','markdown','excel']`; `maxDocuments: 10000` |
+| **3 文档处理规则** | `parsing.*`, `cleaning.*`, `textNormalizationEnabled`, `textNormalization.*`, `chunkingStrategy`, `chunkSize`, `chunkOverlap`, `minChunkSize`, `maxChunkSize`, `minParagraphLength`, `normalizeBeforeChunk`, `semanticSimilarityThreshold` | `parsing.ocrEnabled: false`, `tableExtraction: 'text-only'`; `chunkingStrategy: 'paragraph-first'`, `chunkSize: 500` |
+| **4 索引与检索** | `embeddingProvider`, `embeddingModel`, `embeddingDimension`, `retrieval.*` | `embeddingModel: 'nomic-embed-text'`, `embeddingDimension: 768`; `hybridSearchEnabled: true` |
+| **5 治理与安全** | `governance.*` | `ingestReviewMode: 'auto'` |
+
+前端提交：`buildCreatePayload()` 合并 `defaultLibraryConfig(wizardMode)` → `createVectorLibrary()` → `POST /api/v1/vector-libraries`。
+
+后端持久化：
+
+```java
+// VectorLibraryService.create
+VectorLibraryConfig cfg = request.config() != null ? request.config() : defaultConfig();
+lib.setConfigJson(JsonSupport.toJson(cfg));
+mapper.insert(lib);
+```
+
+### 2.3 config_json → LibraryConfigResolver 生效点
+
+| Resolver 方法 | 配置路径组 | 主要消费方 |
+|---------------|-----------|-----------|
+| `config(libraryId)` | 全量 JSONB | 解析入口 |
+| `parseOptionsFor(libraryId)` | `parsing.*` | `DocumentParseService`, `DocumentPipelineService`, `ParsePreviewService` |
+| `normalizationFor(libraryId)` | `textNormalization.*` | `DocumentPipelineService`, `ChunkPreviewService` |
+| `cleaningFor(libraryId)` | `cleaning.*` | `DocumentPipelineService`, `IndexingService`, `ChunkPreviewService` |
+| `chunkingFor(libraryId)` | `chunkingStrategy`, `chunkSize`, … | `IndexingService` → `ChunkingService`, `ChunkPreviewService` |
+| `embeddingFor(libraryId)` | `embeddingProvider/Model/Dimension` | `LibraryEmbeddingService` |
+| `retrievalFor(libraryId)` | `retrieval.*` | `VectorSearchService`, `RagRetrievalService`, `ChunkMetadataBuilder` |
+| `allowedMimeTypes(libraryId)` | `ingestAccess.supportedFileTypes` | `UploadService`, `DocumentIngestor` |
+| `capacityLimitsFor(libraryId)` | `ingestAccess.capacityLimits.*` | `LibraryCapacityValidator` |
+| `versionPolicyFor(libraryId)` | `ingestAccess.versionPolicy.*` | `DocumentIngestor` |
+| `requiresManualReview(libraryId)` | `governance.ingestReviewMode` | `DocumentIngestor.resolveIndexRequested` |
+
+### 2.4 数据流（建库 → 首次入库）
+
+1. 运营在 `CreateLibraryWizard` 填写各步骤表单（或 `EditLibrarySettingsDrawer` 后续修改）。
+2. 前端 `buildCreatePayload()` 组装 `{ tenantId, name, description, tags, config }`。
+3. `POST /api/v1/vector-libraries` → `VectorLibraryController.create` → `VectorLibraryService.create`。
+4. 服务端将 `VectorLibraryConfig` 序列化为 JSONB 写入 `vector_library.config_json`。
+5. 首次文档上传时，`DocumentIngestor` / `DocumentPipelineService` / `IndexingService` 调用 `LibraryConfigResolver.*For(libraryId)` 读取对应规则。
+6. 解析、清洗、分块、嵌入各阶段均从 resolver 获取库级配置（现状无采集级覆盖）。
+7. 配置变更走 `PUT /api/v1/vector-libraries/{id}` → `updateSettings`；若库内已有文档/chunk 则触发 `lockPipeline`（见 2.5）。
+8. Chunk 元数据与检索规则在索引阶段由 `retrievalFor` / `ChunkMetadataBuilder` 生效。
+
+### 2.5 当前差距
+
+| 差距 | 现状 | 目标态（D-15） |
+|------|------|----------------|
+| **lockPipeline** | `documentCount > 0 \|\| chunkCount > 0` 时 **硬锁**：`VectorLibraryConfigMerger` 跳过 parsing/cleaning/chunking/embedding 更新 | **软锁定**：允许修改管道规则，但必须触发**全库重索引**任务 + UI 强警告 |
+| **库类型轴** | 向导仅有 quick/advanced 模式，**无**垂直/通用库类型选择 UI | 决策树（§6）为文档-only，Phase 3 预设 + 类型轴 |
+| **重索引** | 手动 `POST /api/v1/index/rebuild-library` 可部分补救 | 配置变更自动触发重索引任务（backlog） |
+
+```java
+// VectorLibraryService.updateSettings
+boolean lockPipeline = documentCount > 0 || chunkCount > 0;
+VectorLibraryConfigMerger.mergeSafeFields(existing, request.config(), lockPipeline);
+```
+
+### 代码锚点
+
+- `frontend/knowbase-ui/src/components/CreateLibraryWizard.vue` — 建库向导
+- `frontend/knowbase-ui/src/components/EditLibrarySettingsDrawer.vue` — 库设置与 lockPipeline UI
+- `frontend/knowbase-ui/src/utils/libraryDefaults.js` — `WIZARD_STEPS`, `defaultLibraryConfig`, `buildCreatePayload`
+- `frontend/knowbase-ui/src/api/library.js` — `createVectorLibrary`, `updateVectorLibrarySettings`
+- `knowbase-service/.../VectorLibraryController.java` — `POST/PUT /api/v1/vector-libraries`
+- `knowbase-service/.../VectorLibraryService.java` — `create`, `updateSettings`
+- `knowbase-service/.../LibraryConfigResolver.java` — 运行时配置解析
+- `knowbase-service/.../VectorLibraryConfigMerger.java` — lockPipeline 合并逻辑
 
 ---
 
