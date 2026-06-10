@@ -368,3 +368,48 @@ ROADMAP Phase 2 成功标准：**周报 xlsx、扫描 pdf、制度 docx 各有�
 | FILE-TYPE-PROCESSING §4 | INGEST-PIPELINE §8 | 每类型行链回 §8 具名条目或 §2 |
 | INGEST-PIPELINE §7.5 | FILE-TYPE-PROCESSING §2 | `#ops-matrix` |
 | INGEST-PIPELINE §8 | FILE-TYPE-PROCESSING §2/§4 | `#ops-matrix` / `#ops-anti-patterns` |
+
+---
+
+## §10 库类型预设（Phase 3） {#library-presets}
+
+Phase 3 在 `frontend/knowbase-ui/src/utils/libraryPresets.js` 定义四套命名预设，建库向导 Step 1 可选套用；`libraryPresetId` 写入 `config_json` 供编辑页展示来源。完整 overrides 见源码，本文仅列目录与附录 A 对照。
+
+### 10.1 预设目录
+
+| id | 中文名 | summary | supportedFileTypes | ROADMAP 锚点 |
+|----|--------|---------|-------------------|--------------|
+| `weekly-report-excel` | 周报 Excel 库 | 同质周报 xlsx：paragraph-first + text-only | `excel` | [§2 周报 xlsx 子场景](#ops-matrix)（TYPE-03） |
+| `policy-longform` | 制度 / 长文库 | 制度 docx / 长 PDF：heading-level + Word structured 表格 | `word`, `pdf` | [§2 制度 docx 行](#ops-matrix)（TYPE-02） |
+| `scan-reimbursement` | 报销扫描库 | 扫描 PDF / 图片型单据：开启 OCR | `pdf` | [§2 扫描 pdf 行](#ops-matrix)（TYPE-01） |
+| `general-mixed` | 通用混合库 | 五种类型均衡默认 | `pdf`, `word`, `txt`, `markdown`, `excel` | 通用混合库（D-09） |
+
+**代码入口：**
+
+- 预设定义与套用：`libraryPresets.js` — `LIBRARY_PRESETS`, `applyLibraryPreset`, `syncLibraryPresetIdOnEdit`
+- 建库 UI：`CreateLibraryWizard.vue` — Step 1 预设卡片
+- 编辑 UI：`EditLibrarySettingsDrawer.vue` — `presetLabel` tag + 保存前 drift 同步
+- 后端持久化：`VectorLibraryConfig.libraryPresetId` + `VectorLibraryConfigMerger.mergeSafeFields`
+
+### 10.2 附录 A 对齐表
+
+每预设相对 [附录 A](#appendix-a) 主 fileType 的关键字段（垂直库可覆盖 MIME 默认值，见 D-07 第 2 层）：
+
+| preset id | 主 fileType | chunkingStrategy | parsing 关键字段 | cleaning 关键字段 | 附录 A 备注 |
+|-----------|-------------|------------------|------------------|-------------------|-------------|
+| `weekly-report-excel` | excel | `paragraph-first` | `tableExtraction: text-only`, `ocrEnabled: false` | `removeDuplicateParagraphs: true` | 同附录 A excel 行 |
+| `scan-reimbursement` | pdf | `paragraph-first` | `ocrEnabled: true`, `tableExtraction: text-only` | `removeHeaderFooter: true` | 扫描 PDF 库覆盖附录 A pdf 行 `ocrEnabled: false` → **true** |
+| `policy-longform` | word | `heading-level` | `tableExtraction: structured`, `ocrEnabled: false` | `removeHeaderFooter: true` | 同附录 A word 行；库含 pdf 时 pdf 亦用 `heading-level`（垂直库覆盖） |
+| `general-mixed` | 五类型 | `paragraph-first` | `tableExtraction: text-only`, `ocrEnabled: false` | 向导默认 | 各 MIME 按附录 A 基线；单库统一配置 |
+
+### 10.3 自动化审计
+
+| 模块 | 路径 | 作用 |
+|------|------|------|
+| 期望值表 | `appendixAPresetAudit.js` | `APPENDIX_A_EXPECTATIONS`, `ROADMAP_ANCHOR_EXPECTATIONS` |
+| 前端单测 | `libraryPresets.test.js` | 4 预设完整性、锚点对齐、`syncLibraryPresetIdOnEdit` |
+| 后端往返 | `VectorLibraryConfigPresetTest.java` | `libraryPresetId` JSON 序列化 |
+| Merger | `VectorLibraryConfigMergerTest.java` | 编辑保存 preset id 合并 |
+
+运行：`cd frontend/knowbase-ui && npm test`；`cd knowbase-service && mvn test -Dtest=VectorLibraryConfigPresetTest,VectorLibraryConfigMergerTest`
+

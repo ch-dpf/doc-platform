@@ -393,10 +393,10 @@ flowchart TD
     D --> F[MIME 自动默认 + documentMetadata 语义标签]
     C --> G[向导 Step 2-5 微调]
     D --> G
-    G --> H[Phase 3 预设套用<br/>见 ROADMAP Phase 3]
+    G --> H[预设套用<br/>libraryPresets.js]
 ```
 
-> **Phase 3 占位：** 预设（周报库、制度文档库等）由 Phase 3 `libraryPresets.js` + 向导 UI 交付；本文不展开预设定义。
+> **Phase 3 已交付：** 四套库类型预设由 [`libraryPresets.js`](../../frontend/knowbase-ui/src/utils/libraryPresets.js) 定义；[`CreateLibraryWizard.vue`](../../frontend/knowbase-ui/src/components/CreateLibraryWizard.vue) Step 1 可选预设并调用 `applyLibraryPreset`；[`EditLibrarySettingsDrawer.vue`](../../frontend/knowbase-ui/src/components/EditLibrarySettingsDrawer.vue) 展示 `presetLabel` tag，保存时 `syncLibraryPresetIdOnEdit` 同步 `libraryPresetId`。预设字段与 [FILE-TYPE-PROCESSING.md §10](./FILE-TYPE-PROCESSING.md#library-presets) / 附录 A 对齐；自动化审计见 `libraryPresets.test.js`。
 
 ### 6.2 启发式清单（D-10、D-11）
 
@@ -580,7 +580,7 @@ if (lockPipelineConfig) {
 | Phase | 需求 ID | 交付物 | 与 Phase 1 文档关系 |
 |-------|---------|--------|---------------------|
 | **Phase 2** | TYPE-01–05 | `.planning/docs/FILE-TYPE-PROCESSING.md` | §7.5 引用；§8 Excel/PDF 反模式 cross-ref |
-| **Phase 3** | PRESET-01–04 | `libraryPresets.js` + 向导预设 UI | §6 决策树「预设套用」落点 |
+| **Phase 3** | PRESET-01–04 | `libraryPresets.js` + 向导预设 UI + 编辑页 preset tag | §6 决策树「预设套用」落点；[FILE-TYPE-PROCESSING §10](./FILE-TYPE-PROCESSING.md#library-presets) | Complete |
 | **Phase 4** | PARITY-01–04 | 预览=入库工程落地 | §4.4、§8、附录 A.2/A.3 差距关闭 |
 | **Phase 5** | CFG-01–02 | 配置 diff UX、保存可靠性 | `libraryConfig.js` `diffLibraryConfig` |
 
