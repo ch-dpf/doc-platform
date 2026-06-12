@@ -56,7 +56,32 @@ export async function ragChatStream(body, handlers = {}) {
   }
 }
 
-/** POST /api/v1/index/rebuild-library — 按当前库规则批量重索引 */
+/** GET /api/v1/index/rebuild-library/candidates — 批量重索引候选统计 */
+export function getRebuildCandidates(params) {
+  return client.get('/api/v1/index/rebuild-library/candidates', { params })
+}
+
+/** POST /api/v1/index/rebuild-library — 按当前库规则批量重索引；可选 chunkProfileId 仅处理该档 */
 export function rebuildLibrary(body) {
   return client.post('/api/v1/index/rebuild-library', body)
+}
+
+/** GET /api/v1/index/batch-jobs/{jobId} — 批量任务进度 */
+export function getBatchJob(jobId) {
+  return client.get(`/api/v1/index/batch-jobs/${jobId}`)
+}
+
+/** GET /api/v1/index/batch-jobs — 知识库最近批量任务 */
+export function listBatchJobs(params) {
+  return client.get('/api/v1/index/batch-jobs', { params })
+}
+
+/** POST /api/v1/index/batch-jobs/{jobId}/retry — 重试失败项 */
+export function retryBatchJob(jobId) {
+  return client.post(`/api/v1/index/batch-jobs/${jobId}/retry`)
+}
+
+/** GET /api/v1/index/batch-jobs/{jobId}/failed-items — 失败文档列表 */
+export function getBatchJobFailedItems(jobId) {
+  return client.get(`/api/v1/index/batch-jobs/${jobId}/failed-items`)
 }

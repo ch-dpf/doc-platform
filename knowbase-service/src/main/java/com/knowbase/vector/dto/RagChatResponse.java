@@ -14,7 +14,9 @@ public record RagChatResponse(
         /** 本轮用于向量检索的语句（追问时可能与 question 不同） */
         String searchQuery,
         /** 是否为对话/元问题（打招呼、询问助手身份等），未使用知识库检索 */
-        boolean conversational
+        boolean conversational,
+        /** 检索链路 trace（debug）；未走检索时为 null */
+        RagRetrievalTrace retrievalTrace
 ) {
     public RagChatResponse(
             String answer,
@@ -22,7 +24,7 @@ public record RagChatResponse(
             int retrievedCount,
             boolean usedLlm,
             boolean found) {
-        this(answer, citations, retrievedCount, usedLlm, found, 0, null, false);
+        this(answer, citations, retrievedCount, usedLlm, found, 0, null, false, null);
     }
 
     public RagChatResponse(
@@ -33,6 +35,18 @@ public record RagChatResponse(
             boolean found,
             int historyUsed,
             String searchQuery) {
-        this(answer, citations, retrievedCount, usedLlm, found, historyUsed, searchQuery, false);
+        this(answer, citations, retrievedCount, usedLlm, found, historyUsed, searchQuery, false, null);
+    }
+
+    public RagChatResponse(
+            String answer,
+            List<RagCitation> citations,
+            int retrievedCount,
+            boolean usedLlm,
+            boolean found,
+            int historyUsed,
+            String searchQuery,
+            boolean conversational) {
+        this(answer, citations, retrievedCount, usedLlm, found, historyUsed, searchQuery, conversational, null);
     }
 }

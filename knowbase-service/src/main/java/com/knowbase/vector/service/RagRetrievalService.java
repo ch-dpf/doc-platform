@@ -3,6 +3,9 @@ package com.knowbase.vector.service;
 
 
 import com.knowbase.ingest.support.DocMetadataStore;
+import com.knowbase.pipeline.config.ChunkProfileService;
+import com.knowbase.library.service.LibraryConfigResolver;
+import com.knowbase.vector.retrieval.RetrievalTopKResolver;
 
 import com.knowbase.vector.config.RagProperties;
 
@@ -10,11 +13,14 @@ import com.knowbase.vector.dto.RagChatMessage;
 
 import com.knowbase.vector.dto.RagChatRequest;
 
+import com.knowbase.vector.dto.RagRetrievalTrace;
 import com.knowbase.vector.dto.RagRetrievalPreviewHit;
 
 import com.knowbase.vector.dto.RagRetrievalPreviewRequest;
 
 import com.knowbase.vector.dto.RagRetrievalPreviewResponse;
+
+import com.knowbase.vector.dto.RagRetrievalTrace;
 
 import com.knowbase.vector.dto.RagSearchTrace;
 
@@ -74,7 +80,8 @@ public class RagRetrievalService {
 
     private final RagQueryRewriteService queryRewriteService;
 
-
+    private final LibraryConfigResolver libraryConfigResolver;
+    private final ChunkProfileService chunkProfileService;
 
     public RagRetrievalService(
 
@@ -88,7 +95,10 @@ public class RagRetrievalService {
 
             DocMetadataStore docMetadataStore,
 
-            RagQueryRewriteService queryRewriteService) {
+            RagQueryRewriteService queryRewriteService,
+
+            LibraryConfigResolver libraryConfigResolver,
+            ChunkProfileService chunkProfileService) {
 
         this.searchService = searchService;
 
@@ -102,23 +112,57 @@ public class RagRetrievalService {
 
         this.queryRewriteService = queryRewriteService;
 
+        this.libraryConfigResolver = libraryConfigResolver;
+        this.chunkProfileService = chunkProfileService;
     }
 
 
 
     public record RetrievalResult(
-
             List<SearchHit> hits,
-
             String conversationQuery,
-
             String searchQuery,
-
             String keywordQuery,
-
             int effectiveTopK,
+            boolean cacheHit,
+            List<SearchHit> preRerankHits,
+            boolean rerankEnabled,
+            String rerankModel,
+            boolean hybridUsed) {}
 
-            boolean cacheHit) {}
+    public RagRetrievalTrace buildTrace(UUID libraryId, RetrievalResult result) {
+        List<SearchHit> allHits = new ArrayList<>(result.hits());
+        if (result.preRerankHits() != null) {
+            for (SearchHit hit : result.preRerankHits()) {
+                if (allHits.stream().noneMatch(h -> h.chunkId().equals(hit.chunkId()))) {
+                    allHits.add(hit);
+                }
+            }
+        }
+        Map<UUID, String> fileNames = resolveFileNames(allHits);
+        String preRerankScoreLabel = result.hybridUsed() ? "RRF 融合分" : "向量相似度";
+        String finalScoreLabel = result.rerankEnabled() ? "重排余弦分" : preRerankScoreLabel;
+        List<RagRetrievalPreviewHit> previewHits = toPreviewHits(libraryId, result.hits(), fileNames);
+        List<RagRetrievalPreviewHit> preRerankHits = toPreviewHits(
+                libraryId,
+                result.preRerankHits() != null ? result.preRerankHits() : List.of(),
+                fileNames);
+        return new RagRetrievalTrace(
+                result.conversationQuery(),
+                result.searchQuery(),
+                result.keywordQuery(),
+                result.effectiveTopK(),
+                result.cacheHit(),
+                result.rerankEnabled(),
+                result.rerankModel(),
+                preRerankScoreLabel,
+                finalScoreLabel,
+                previewHits.size(),
+                preRerankHits.size(),
+                previewHits,
+                preRerankHits,
+                null);
+    }
 
 
 
@@ -159,36 +203,41 @@ public class RagRetrievalService {
                 request.filter());
 
         if (cached != null) {
-
             return new RetrievalResult(
-
-                    cached.hits(), conversationQuery, searchQuery, keywordQuery, effectiveTopK, true);
-
+                    cached.hits(),
+                    conversationQuery,
+                    searchQuery,
+                    keywordQuery,
+                    effectiveTopK,
+                    true,
+                    List.of(),
+                    false,
+                    null,
+                    false);
         }
 
-
-
-        List<SearchHit> hits = retrieveUncached(request, searchQuery, keywordQuery, effectiveTopK);
-
+        PreviewTraceResult traceResult = retrieveUncachedWithTrace(
+                request, searchQuery, keywordQuery, effectiveTopK);
         retrievalCache.put(
-
                 request.libraryId(),
-
                 request.tenantId(),
-
                 searchQuery,
-
                 keywordQuery,
-
                 effectiveTopK,
-
                 request.minScore(),
-
                 request.filter(),
-
-                hits);
-
-        return new RetrievalResult(hits, conversationQuery, searchQuery, keywordQuery, effectiveTopK, false);
+                traceResult.hits());
+        return new RetrievalResult(
+                traceResult.hits(),
+                conversationQuery,
+                searchQuery,
+                keywordQuery,
+                effectiveTopK,
+                false,
+                traceResult.preRerankHits(),
+                traceResult.rerankEnabled(),
+                traceResult.rerankModel(),
+                traceResult.hybridUsed());
 
     }
 
@@ -197,24 +246,21 @@ public class RagRetrievalService {
     public RagRetrievalPreviewResponse preview(RagRetrievalPreviewRequest request) {
 
         RagChatRequest ragRequest = new RagChatRequest(
-
                 request.libraryId(),
-
                 request.tenantId(),
-
                 request.question(),
-
                 request.topK(),
-
                 request.minScore(),
-
                 request.filter(),
-
                 null,
+                request.history(),
+                request.includeAllChunkProfiles(),
+                request.chunkProfileIds());
 
-                request.history());
-
-        int topK = request.topK() != null ? request.topK() : ragProperties.getDefaultTopK();
+        int topK = RetrievalTopKResolver.resolve(
+                request.topK(),
+                libraryConfigResolver.retrievalFor(request.libraryId()),
+                ragProperties);
 
         int effectiveTopK = resolveEffectiveTopK(request.question(), topK);
 
@@ -246,9 +292,11 @@ public class RagRetrievalService {
 
         String finalScoreLabel = traceResult.rerankEnabled() ? "重排余弦分" : preRerankScoreLabel;
 
-        List<RagRetrievalPreviewHit> preRerankHits = toPreviewHits(traceResult.preRerankHits(), fileNames);
+        List<RagRetrievalPreviewHit> preRerankHits =
+                toPreviewHits(request.libraryId(), traceResult.preRerankHits(), fileNames);
 
-        List<RagRetrievalPreviewHit> previewHits = toPreviewHits(traceResult.hits(), fileNames);
+        List<RagRetrievalPreviewHit> previewHits =
+                toPreviewHits(request.libraryId(), traceResult.hits(), fileNames);
 
         return new RagRetrievalPreviewResponse(
 
@@ -417,7 +465,8 @@ public class RagRetrievalService {
 
 
 
-    private List<RagRetrievalPreviewHit> toPreviewHits(List<SearchHit> hits, Map<UUID, String> fileNames) {
+    private List<RagRetrievalPreviewHit> toPreviewHits(
+            UUID libraryId, List<SearchHit> hits, Map<UUID, String> fileNames) {
 
         List<RagRetrievalPreviewHit> previewHits = new ArrayList<>();
 
@@ -441,7 +490,10 @@ public class RagRetrievalService {
 
                     promptBuilder.excerpt(hit.content()),
 
-                    WeeklyReportWorkItemExtractor.isHeaderOnlyChunk(hit.content())));
+                    WeeklyReportWorkItemExtractor.isHeaderOnlyChunk(hit.content()),
+
+                    hit.chunkProfileId(),
+                    chunkProfileService.isPrimaryProfile(libraryId, hit.chunkProfileId())));
 
         }
 
@@ -520,7 +572,14 @@ public class RagRetrievalService {
 
         }
 
-        return new SearchRequest(request.libraryId(), request.tenantId(), searchQuery, topK, filter);
+        return new SearchRequest(
+                request.libraryId(),
+                request.tenantId(),
+                searchQuery,
+                topK,
+                filter,
+                request.includeAllChunkProfiles(),
+                request.chunkProfileIds());
 
     }
 

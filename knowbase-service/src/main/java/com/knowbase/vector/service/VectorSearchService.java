@@ -2,6 +2,7 @@ package com.knowbase.vector.service;
 
 import com.knowbase.library.config.RetrievalRulesSettings;
 import com.knowbase.library.service.LibraryConfigResolver;
+import com.knowbase.pipeline.config.ChunkProfileService;
 import com.knowbase.vector.config.RagProperties;
 import com.knowbase.vector.config.RetrievalProperties;
 import com.knowbase.vector.dto.RagSearchTrace;
@@ -35,6 +36,7 @@ public class VectorSearchService {
     private final ChunkRerankService chunkRerankService;
     private final RetrievalProperties retrievalProperties;
     private final RagProperties ragProperties;
+    private final ChunkProfileService chunkProfileService;
 
     public VectorSearchService(
             DocumentChunkMapper chunkMapper,
@@ -42,13 +44,15 @@ public class VectorSearchService {
             LibraryConfigResolver libraryConfigResolver,
             ChunkRerankService chunkRerankService,
             RetrievalProperties retrievalProperties,
-            RagProperties ragProperties) {
+            RagProperties ragProperties,
+            ChunkProfileService chunkProfileService) {
         this.chunkMapper = chunkMapper;
         this.libraryEmbeddingService = libraryEmbeddingService;
         this.libraryConfigResolver = libraryConfigResolver;
         this.chunkRerankService = chunkRerankService;
         this.retrievalProperties = retrievalProperties;
         this.ragProperties = ragProperties;
+        this.chunkProfileService = chunkProfileService;
     }
 
     public SearchResponse search(SearchRequest request) {
@@ -91,6 +95,10 @@ public class VectorSearchService {
         Map<String, String> metadataRequest = request.filter() != null ? request.filter().metadata() : null;
         List<MetadataFilterClause> metadataFilters =
                 MetadataFilterResolver.resolve(metadataRequest, retrieval);
+        List<String> chunkProfileIds = chunkProfileService.resolveRetrievalProfileIds(
+                request.libraryId(),
+                Boolean.TRUE.equals(request.includeAllChunkProfiles()),
+                request.chunkProfileIds());
 
         float[] queryVector = libraryEmbeddingService.embed(request.libraryId(), request.query());
         List<SearchHit> vectorHits = chunkMapper.search(
@@ -99,7 +107,8 @@ public class VectorSearchService {
                 queryVector,
                 candidateK,
                 docFilter,
-                metadataFilters);
+                metadataFilters,
+                chunkProfileIds);
         Map<UUID, Double> vectorScoresByChunkId = toScoreMap(vectorHits);
 
         List<SearchHit> hits;
@@ -117,7 +126,8 @@ public class VectorSearchService {
                     keywordQuery,
                     candidateK,
                     docFilter,
-                    metadataFilters);
+                    metadataFilters,
+                    chunkProfileIds);
             hits = HybridSearchFusion.mergeByReciprocalRankFusion(
                     vectorHits,
                     keywordHits,

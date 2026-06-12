@@ -57,7 +57,9 @@ public class ChunkRerankService {
                     hit.version(),
                     hit.chunkIndex(),
                     hit.content(),
-                    score));
+                    score,
+                    hit.parentContext(),
+                    hit.chunkProfileId()));
         }
         rescored.sort(Comparator.comparingDouble(SearchHit::score).reversed());
         if (rescored.size() <= topK) {

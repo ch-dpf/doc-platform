@@ -35,6 +35,26 @@ CREATE TABLE IF NOT EXISTS upload_task (
 
 CREATE INDEX IF NOT EXISTS idx_upload_task_library ON upload_task(library_id);
 
+-- 库级批量任务（重索引 / 分块档归档）
+CREATE TABLE IF NOT EXISTS library_batch_job (
+    job_id             UUID PRIMARY KEY,
+    library_id         UUID NOT NULL REFERENCES vector_library(library_id) ON DELETE CASCADE,
+    tenant_id          VARCHAR(64) NOT NULL,
+    job_type           VARCHAR(32) NOT NULL,
+    chunk_profile_id   VARCHAR(32),
+    status             VARCHAR(32) NOT NULL,
+    total_count        INT NOT NULL DEFAULT 0,
+    completed_count    INT NOT NULL DEFAULT 0,
+    failed_count       INT NOT NULL DEFAULT 0,
+    last_error         TEXT,
+    failed_doc_ids     JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_library_batch_job_library
+    ON library_batch_job(library_id, created_at DESC);
+
 -- 文档元数据
 CREATE TABLE IF NOT EXISTS doc_metadata (
     doc_id           UUID PRIMARY KEY,
@@ -53,19 +73,23 @@ CREATE TABLE IF NOT EXISTS doc_metadata (
     index_requested  BOOLEAN NOT NULL DEFAULT TRUE,
     index_status     VARCHAR(32),
     deleted          BOOLEAN NOT NULL DEFAULT FALSE,
-    custom_metadata  JSONB,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    custom_metadata       JSONB,
+    ingest_profile_json   JSONB,
+    ingest_report_json    JSONB,
+    content_signals_json  JSONB,
+    chunk_profile_id      VARCHAR(32),
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_doc_library ON doc_metadata(library_id);
+CREATE INDEX IF NOT EXISTS idx_doc_chunk_profile
+    ON doc_metadata(library_id, chunk_profile_id)
+    WHERE deleted = FALSE AND chunk_profile_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_doc_tenant ON doc_metadata(tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_checksum_library_tenant
     ON doc_metadata(library_id, tenant_id, checksum_sha256)
     WHERE deleted = FALSE AND source_type = 'UPLOAD';
-CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_source_url_library_tenant
-    ON doc_metadata(library_id, tenant_id, source_url)
-    WHERE deleted = FALSE AND source_type = 'CRAWL' AND source_url IS NOT NULL;
 -- 向量索引
 CREATE TABLE IF NOT EXISTS processed_event (
     idempotency_key VARCHAR(256) PRIMARY KEY,
@@ -140,20 +164,21 @@ VALUES (
     '00000000-0000-0000-0000-000000000001',
     'demo',
     '默认知识库',
-    '系统预置知识库，兼容历史数据',
+    '系统预置演示知识库',
     '{
+      "configVersion": 1,
       "metadataDbType": "postgresql",
+      "ingestSourceMode": "upload",
       "embeddingProvider": "ollama",
       "embeddingModel": "nomic-embed-text",
       "embeddingDimension": 768,
-      "chunkingStrategy": "paragraph-first",
-      "chunkSize": 600,
-      "chunkOverlap": 100,
-      "minChunkSize": 80,
-      "maxChunkSize": 1200,
-      "minParagraphLength": 30,
-      "normalizeBeforeChunk": true,
-      "textNormalizationEnabled": true
+      "chunkSize": 500,
+      "chunkOverlap": 120,
+      "tags": [],
+      "ingestAccess": {
+        "accessMode": "upload-and-folder",
+        "supportedFileTypes": ["pdf", "word", "txt", "markdown", "excel"]
+      }
     }'::jsonb
 )
 ON CONFLICT (library_id) DO UPDATE SET

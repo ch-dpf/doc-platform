@@ -71,6 +71,8 @@
                version,
                chunk_index AS chunkIndex,
                content,
+               metadata->>'parentContext' AS parentContext,
+               metadata->>'chunkProfileId' AS chunkProfileId,
                1 - (embedding &lt;=&gt; #{embedding,typeHandler=com.knowbase.vector.mybatis.PGvectorTypeHandler}) AS score
         FROM document_chunk
         WHERE library_id = #{libraryId}
@@ -86,6 +88,12 @@
                 AND metadata->>#{clause.field} = #{clause.value}
             </foreach>
         </if>
+        <if test="chunkProfileIds != null and chunkProfileIds.size() &gt; 0">
+            AND metadata->>'chunkProfileId' IN
+            <foreach collection="chunkProfileIds" item="profileId" open="(" separator="," close=")">
+                #{profileId}
+            </foreach>
+        </if>
         ORDER BY embedding &lt;=&gt; #{embedding,typeHandler=com.knowbase.vector.mybatis.PGvectorTypeHandler},
                  chunk_id ASC
         LIMIT #{topK}
@@ -98,6 +106,8 @@
                version,
                chunk_index AS chunkIndex,
                content,
+               metadata->>'parentContext' AS parentContext,
+               metadata->>'chunkProfileId' AS chunkProfileId,
                ts_rank_cd(to_tsvector('simple', content), plainto_tsquery('simple', #{query})) AS score
         FROM document_chunk
         WHERE library_id = #{libraryId}
@@ -114,7 +124,42 @@
                 AND metadata->>#{clause.field} = #{clause.value}
             </foreach>
         </if>
+        <if test="chunkProfileIds != null and chunkProfileIds.size() &gt; 0">
+            AND metadata->>'chunkProfileId' IN
+            <foreach collection="chunkProfileIds" item="profileId" open="(" separator="," close=")">
+                #{profileId}
+            </foreach>
+        </if>
         ORDER BY score DESC, chunk_id ASC
         LIMIT #{topK}
     </select>
+
+    <update id="backfillChunkProfileMetadata">
+        UPDATE document_chunk
+        SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('chunkProfileId', #{chunkProfileId})
+        WHERE doc_id = #{docId}
+          AND version = #{version}
+    </update>
+
+    <select id="findDistinctChunkProfileIds" resultType="java.lang.String">
+        SELECT DISTINCT metadata->>'chunkProfileId'
+        FROM document_chunk
+        WHERE library_id = #{libraryId}
+          AND tenant_id = #{tenantId}
+          AND metadata->>'chunkProfileId' IS NOT NULL
+          AND metadata->>'chunkProfileId' &lt;&gt; ''
+    </select>
+
+    <delete id="deleteOrphanChunksForProfile">
+        DELETE FROM document_chunk c
+        WHERE c.library_id = #{libraryId}
+          AND c.tenant_id = #{tenantId}
+          AND c.metadata->>'chunkProfileId' = #{chunkProfileId}
+          AND NOT EXISTS (
+              SELECT 1 FROM doc_metadata d
+              WHERE d.library_id = c.library_id
+                AND d.deleted = false
+                AND d.chunk_profile_id = #{chunkProfileId}
+          )
+    </delete>
 </mapper>

@@ -45,6 +45,9 @@
                     </el-form-item>
                     <el-form-item label="Top K">
                       <el-slider v-model="chatSettings.topK" :min="1" :max="30" show-input />
+                      <p v-if="libraryDefaultTopK" class="qa-field-hint">
+                        库默认 {{ libraryDefaultTopK }}，本会话可覆盖
+                      </p>
                     </el-form-item>
                     <el-form-item label="最低相似度">
                       <el-input-number
@@ -56,7 +59,15 @@
                         controls-position="right"
                         class="full-width"
                       />
-                      <span class="hint-inline">0 表示不过滤</span>
+                    </el-form-item>
+                    <el-form-item label="检索范围">
+                      <el-switch
+                        v-model="chatSettings.includeAllChunkProfiles"
+                        inline-prompt
+                        active-text="全部分块档"
+                        inactive-text="仅主档"
+                      />
+                      <p class="qa-field-hint">默认仅检索库主分块档；开启后可跨历史分块档检索</p>
                     </el-form-item>
                     <el-form-item label="限定文档">
                       <el-input
@@ -75,7 +86,6 @@
                       >
                         预览 RAG 检索
                       </el-button>
-                      <span class="hint-inline">与问答相同检索链路；预览不走缓存，可看重排前后分数</span>
                     </el-form-item>
                   </el-form>
                 </el-collapse-item>
@@ -142,10 +152,6 @@
                     :label="`重排前候选 (${retrievalPreview.preRerankHitCount || 0})`"
                     name="before"
                   >
-                    <p class="qa-retrieval-preview__hint">
-                      主检索路径（改写后向量查询）在重排前的 Top 候选，分数为
-                      {{ retrievalPreview.preRerankScoreLabel || '检索分' }}。
-                    </p>
                     <el-table
                       :data="retrievalPreview.preRerankHits || []"
                       size="small"
@@ -194,22 +200,12 @@
                 </button>
               </div>
 
-              <p class="qa-sidebar-tip">
-                服务端持久化上下文记忆；混合检索 + LLM 流式生成回答。
-              </p>
             </aside>
 
             <main class="qa-chat">
               <div ref="chatScrollRef" class="qa-chat__messages">
                 <div v-if="!messages.length" class="qa-chat__empty">
-                  <el-empty description="选择知识库后开始提问" :image-size="96">
-                    <template #description>
-                      <p class="qa-empty-title">知识库 RAG 问答</p>
-                      <p class="qa-empty-desc">
-                        系统将检索与问题相关的文档片段，并调用大语言模型生成带引用的回答。
-                      </p>
-                    </template>
-                  </el-empty>
+                  <el-empty description="选择知识库后开始提问" :image-size="96" />
                 </div>
 
                 <div
@@ -281,9 +277,143 @@
                         <el-table-column prop="score" label="分数" width="72">
                           <template #default="{ row }">{{ row.score?.toFixed(4) }}</template>
                         </el-table-column>
-                        <el-table-column prop="docId" label="docId" width="108" show-overflow-tooltip />
+                        <el-table-column label="文档" min-width="120" show-overflow-tooltip>
+                          <template #default="{ row }">
+                            <button
+                              v-if="row.docId"
+                              type="button"
+                              class="qa-link-btn"
+                              @click="openCitation(row)"
+                            >
+                              {{ row.fileName || shortId(row.docId) }}
+                            </button>
+                            <span v-else>—</span>
+                          </template>
+                        </el-table-column>
+                        <el-table-column label="块" width="56">
+                          <template #default="{ row }">
+                            <button
+                              v-if="row.docId"
+                              type="button"
+                              class="qa-link-btn"
+                              @click="openCitation(row)"
+                            >
+                              #{{ row.chunkIndex }}
+                            </button>
+                            <span v-else>—</span>
+                          </template>
+                        </el-table-column>
+                        <el-table-column label="分块档" width="88" show-overflow-tooltip>
+                          <template #default="{ row }">
+                            <el-tag
+                              v-if="row.chunkProfileId"
+                              size="small"
+                              :type="row.primaryProfile ? 'success' : 'warning'"
+                              effect="plain"
+                              :title="row.chunkProfileId"
+                            >
+                              {{ row.primaryProfile ? '主档' : '非主' }}
+                            </el-tag>
+                            <span v-else>—</span>
+                          </template>
+                        </el-table-column>
                         <el-table-column prop="excerpt" label="摘录" show-overflow-tooltip />
                       </el-table>
+                    </div>
+
+                    <div
+                      v-if="msg.role === 'assistant' && msg.retrievalTrace && !msg.loading"
+                      class="qa-trace"
+                    >
+                      <button type="button" class="qa-trace__toggle" @click="toggleTrace(msg.id)">
+                        <el-icon><DataAnalysis /></el-icon>
+                        检索 trace
+                        <el-tag v-if="msg.retrievalTrace.cacheHit" size="small" type="info">缓存</el-tag>
+                        <el-icon class="qa-citations__chevron" :class="{ 'is-open': expandedTrace.has(msg.id) }">
+                          <ArrowDown />
+                        </el-icon>
+                      </button>
+                      <div v-show="expandedTrace.has(msg.id)" class="qa-trace__panel">
+                        <p class="qa-trace__meta">
+                          追问语句：{{ msg.retrievalTrace.conversationQuery || '—' }}
+                          <br />
+                          向量检索：{{ msg.retrievalTrace.searchQuery || '—' }}
+                          <br />
+                          关键字：{{ msg.retrievalTrace.keywordQuery || '—' }}
+                          <br />
+                          Top-K {{ msg.retrievalTrace.effectiveTopK }}，命中 {{ msg.retrievalTrace.hitCount }} 条
+                          <span v-if="msg.retrievalTrace.rerankEnabled">
+                            · 重排 {{ msg.retrievalTrace.rerankModel || '库级模型' }}
+                          </span>
+                        </p>
+                        <el-alert
+                          v-if="traceHeaderWarning(msg.retrievalTrace)"
+                          type="warning"
+                          :closable="false"
+                          show-icon
+                          :title="traceHeaderWarning(msg.retrievalTrace)"
+                          class="qa-trace__warn"
+                        />
+                        <el-table
+                          :data="msg.retrievalTrace.hits || []"
+                          size="small"
+                          stripe
+                          max-height="180"
+                        >
+                          <el-table-column prop="rank" label="#" width="36" />
+                          <el-table-column
+                            prop="score"
+                            :label="msg.retrievalTrace.finalScoreLabel || '分数'"
+                            width="88"
+                          >
+                            <template #default="{ row }">{{ row.score?.toFixed(4) }}</template>
+                          </el-table-column>
+                          <el-table-column label="文档" min-width="100" show-overflow-tooltip>
+                            <template #default="{ row }">
+                              <button
+                                v-if="row.docId"
+                                type="button"
+                                class="qa-link-btn"
+                                @click="openTraceHit(row)"
+                              >
+                                {{ row.fileName || shortId(row.docId) }}
+                              </button>
+                            </template>
+                          </el-table-column>
+                          <el-table-column label="块" width="52">
+                            <template #default="{ row }">
+                              <button
+                                v-if="row.docId"
+                                type="button"
+                                class="qa-link-btn"
+                                @click="openTraceHit(row)"
+                              >
+                                #{{ row.chunkIndex }}
+                              </button>
+                            </template>
+                          </el-table-column>
+                          <el-table-column label="档" width="72" show-overflow-tooltip>
+                            <template #default="{ row }">
+                              <el-tag
+                                v-if="row.chunkProfileId"
+                                size="small"
+                                :type="row.primaryProfile ? 'success' : 'warning'"
+                                effect="plain"
+                                :title="row.chunkProfileId"
+                              >
+                                {{ row.primaryProfile ? '主' : '非主' }}
+                              </el-tag>
+                              <span v-else>—</span>
+                            </template>
+                          </el-table-column>
+                          <el-table-column label="表头" width="52">
+                            <template #default="{ row }">
+                              <el-tag v-if="row.headerOnlyChunk" size="small" type="warning">是</el-tag>
+                            </template>
+                          </el-table-column>
+                          <el-table-column prop="excerpt" label="摘录" min-width="100" show-overflow-tooltip />
+                        </el-table>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -300,7 +430,6 @@
                   @keydown.enter="onEnterKey"
                 />
                 <div class="qa-composer__actions">
-                  <span class="qa-composer__hint">{{ composerHint }}</span>
                   <el-button
                     type="primary"
                     round
@@ -320,30 +449,34 @@
 
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, ChatDotRound, Document, User } from '@element-plus/icons-vue'
+import { ArrowDown, ChatDotRound, DataAnalysis, Document, User } from '@element-plus/icons-vue'
 import {
   createConversation,
   conversationChatStream,
   listConversationMessages,
   listConversations
 } from '../api/conversation'
-import { listVectorLibraries } from '../api/library'
+import { getVectorLibrary, listVectorLibraries } from '../api/library'
+import { flattenLibraryConfig } from '../utils/libraryConfigView'
 import { ragRetrievalPreview, buildRetrievalPreviewPayload } from '../api/search'
 import { useLibraryContext } from '../composables/useLibraryContext'
 import PageCard from '../components/PageCard.vue'
 
 const route = useRoute()
+const router = useRouter()
 const { libraryId, tenantId, persist } = useLibraryContext()
 const libraries = ref([])
 const settingsOpen = ref(['advanced'])
+const libraryDefaultTopK = ref(null)
 
 const chatSettings = reactive({
   tenantId: tenantId.value,
   topK: 12,
   minScore: 0,
-  chatModel: ''
+  chatModel: '',
+  includeAllChunkProfiles: false
 })
 const docIdsText = ref('')
 const chatLoading = ref(false)
@@ -354,6 +487,7 @@ const currentConversationId = ref(null)
 const inputText = ref('')
 const chatScrollRef = ref(null)
 const expandedCitations = ref(new Set())
+const expandedTrace = ref(new Set())
 const skipLibraryWatch = ref(false)
 const previewLoading = ref(false)
 const retrievalPreview = ref(null)
@@ -385,12 +519,6 @@ const canSend = computed(
     && !chatLoading.value
 )
 
-const composerHint = computed(() => {
-  const turns = messages.value.filter((m) => m.role === 'user').length
-  if (!turns) return '首轮提问将基于知识库检索'
-  return `已进行 ${turns} 轮对话，追问将携带上下文`
-})
-
 function parseDocIds(text) {
   return text
     .split(/\r?\n/)
@@ -413,7 +541,32 @@ watch(
   }
 )
 
+async function syncRetrievalDefaultsFromLibrary(id) {
+  if (!id) {
+    libraryDefaultTopK.value = null
+    return
+  }
+  try {
+    const { data: lib } = await getVectorLibrary(id)
+    const flat = flattenLibraryConfig(lib)
+    const topK = flat.retrieval?.defaultTopK
+    if (topK > 0) {
+      libraryDefaultTopK.value = topK
+      chatSettings.topK = topK
+    } else {
+      libraryDefaultTopK.value = null
+    }
+    const threshold = flat.retrieval?.similarityThreshold
+    if (threshold > 0) {
+      chatSettings.minScore = threshold
+    }
+  } catch {
+    libraryDefaultTopK.value = null
+  }
+}
+
 watch(libraryId, async (next, prev) => {
+  await syncRetrievalDefaultsFromLibrary(next)
   if (skipLibraryWatch.value || !prev || next === prev || !messages.value.length) return
   try {
     await ElMessageBox.confirm('切换知识库将清空当前对话，是否继续？', '切换知识库', {
@@ -441,6 +594,55 @@ function toggleCitations(msgId) {
   if (next.has(msgId)) next.delete(msgId)
   else next.add(msgId)
   expandedCitations.value = next
+}
+
+function toggleTrace(msgId) {
+  const next = new Set(expandedTrace.value)
+  if (next.has(msgId)) next.delete(msgId)
+  else next.add(msgId)
+  expandedTrace.value = next
+}
+
+function shortId(id) {
+  if (!id) return '—'
+  const s = String(id)
+  return s.length > 10 ? `${s.slice(0, 8)}…` : s
+}
+
+function shortChunkProfile(id) {
+  if (!id) return '—'
+  const s = String(id)
+  return s.length > 14 ? `${s.slice(0, 12)}…` : s
+}
+
+function openCitation(citation) {
+  if (!citation?.docId) return
+  router.push({
+    name: 'documentChunks',
+    params: { docId: citation.docId },
+    query: {
+      libraryId: libraryId.value || undefined,
+      from: 'qa',
+      chunkIndex: citation.chunkIndex != null ? String(citation.chunkIndex) : undefined
+    }
+  })
+}
+
+function openTraceHit(hit) {
+  openCitation({ docId: hit.docId, chunkIndex: hit.chunkIndex })
+}
+
+function traceHeaderWarning(trace) {
+  const note = trace?.retrievalNote
+  if (note) return note
+  const hits = trace?.hits
+  if (!hits?.length) return ''
+  const headerCount = hits.filter((h) => h.headerOnlyChunk).length
+  if (headerCount === 0) return ''
+  if (headerCount >= Math.ceil(hits.length / 2)) {
+    return `命中 ${headerCount}/${hits.length} 条为表头块，建议调低相似度阈值并重索引。`
+  }
+  return ''
 }
 
 async function loadConversations() {
@@ -479,6 +681,7 @@ async function selectConversation(conversationId) {
   currentConversationId.value = conversationId
   messages.value = []
   expandedCitations.value = new Set()
+  expandedTrace.value = new Set()
   try {
     const { data } = await listConversationMessages(conversationId, chatSettings.tenantId.trim())
     messages.value = (data || []).map((m) => ({
@@ -486,8 +689,10 @@ async function selectConversation(conversationId) {
       role: m.role,
       content: m.content,
       citations: m.citations || [],
+      searchQuery: m.searchQuery,
       loading: false,
-      streaming: false
+      streaming: false,
+      retrievalTrace: null
     }))
     await scrollToBottom()
   } catch (e) {
@@ -499,6 +704,7 @@ async function startNewChat() {
   messages.value = []
   inputText.value = ''
   expandedCitations.value = new Set()
+  expandedTrace.value = new Set()
   currentConversationId.value = null
   retrievalPreview.value = null
 }
@@ -519,7 +725,8 @@ async function previewRetrieval() {
         topK: chatSettings.topK,
         minScore: chatSettings.minScore,
         docIds: parseDocIds(docIdsText.value),
-        messages: messages.value
+        messages: messages.value,
+        includeAllChunkProfiles: chatSettings.includeAllChunkProfiles
       })
     )
     retrievalPreview.value = data
@@ -567,7 +774,8 @@ async function sendMessage() {
     found: null,
     usedLlm: false,
     searchQuery: null,
-    historyUsed: 0
+    historyUsed: 0,
+    retrievalTrace: null
   }
 
   messages.value.push(userMsg, assistantMsg)
@@ -585,6 +793,9 @@ async function sendMessage() {
   }
   if (docIds.length) {
     payload.filter = { docIds }
+  }
+  if (chatSettings.includeAllChunkProfiles) {
+    payload.includeAllChunkProfiles = true
   }
 
   try {
@@ -604,6 +815,10 @@ async function sendMessage() {
         assistantMsg.conversational = event.conversational === true
         assistantMsg.searchQuery = event.searchQuery || question
         assistantMsg.historyUsed = event.historyUsed ?? 0
+        assistantMsg.retrievalTrace = event.retrievalTrace || null
+        if (assistantMsg.retrievalTrace) {
+          expandedTrace.value = new Set([...expandedTrace.value, assistantMsg.id])
+        }
         if (event.found === false && !event.conversational) {
           ElMessage.warning('未找到相关资料')
         }
@@ -632,7 +847,15 @@ onMounted(async () => {
   persist()
   const { data } = await listVectorLibraries({ tenantId: tenantId.value, page: 1, size: 200 })
   libraries.value = data.items || []
-  await loadConversations()
+  if (libraryId.value) {
+    await syncRetrievalDefaultsFromLibrary(libraryId.value)
+  }
+  if (route.query.new === '1') {
+    await startNewChat()
+    router.replace({ name: 'qa', query: route.query.libraryId ? { libraryId: route.query.libraryId } : {} })
+  } else {
+    await loadConversations()
+  }
 })
 
 watch(libraryId, () => {
@@ -662,6 +885,12 @@ watch(libraryId, () => {
 
 .qa-sidebar-form {
   margin-bottom: 8px;
+}
+
+.qa-field-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #94a3b8;
 }
 
 .qa-settings-collapse {
@@ -952,6 +1181,56 @@ watch(libraryId, () => {
 
 .qa-citations__table {
   margin-top: 8px;
+}
+
+.qa-link-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #2563eb;
+  font-size: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.qa-link-btn:hover {
+  text-decoration: underline;
+}
+
+.qa-trace {
+  margin-top: 10px;
+  text-align: left;
+}
+
+.qa-trace__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.qa-trace__panel {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.qa-trace__meta {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.qa-trace__warn {
+  margin-bottom: 8px;
 }
 
 .qa-composer {

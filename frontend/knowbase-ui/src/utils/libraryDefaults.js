@@ -6,100 +6,63 @@ export const FILE_TYPE_OPTIONS = [
   { value: 'excel', label: 'Excel' }
 ]
 
-import { DEFAULT_LINE_DROP_PATTERNS } from './textPatterns'
+/** 一期：与后端 ingest.allowed-mime-types 对齐的系统级支持类型 */
+export const SYSTEM_SUPPORTED_FILE_TYPES = FILE_TYPE_OPTIONS.map((o) => o.value)
 
-export const WIZARD_STEPS = [
-  { title: '基础信息' },
-  { title: '数据类型与容量' },
-  { title: '文档处理规则' },
-  { title: '索引与检索' },
-  { title: '治理与安全' }
-]
+/**
+ * 与 knowbase-service application.yml chunking.* 对齐的系统级分块合并规则（库级不可配置）。
+ */
+export const SYSTEM_CHUNKING_DEFAULTS = {
+  minChunkSize: 80,
+  maxChunkSize: 1200,
+  minParagraphLength: 30
+}
 
-const defaultTextNormalization = () => ({
-  enabled: true,
-  collapseBlankLines: true,
-  trimLines: true,
-  removeControlChars: true,
-  normalizeUnicodeSpaces: true,
-  dropNoiseLines: true,
-  minLineLength: 2,
-  linePatternsToDrop: [...DEFAULT_LINE_DROP_PATTERNS]
-})
+/** 库级分块大小滑块范围（与后端 LibraryIndexPipelineDto / ChunkPreviewRequest 一致） */
+export const LIBRARY_CHUNK_SIZE_RANGE = { min: 100, max: 8000, step: 50 }
+export const LIBRARY_CHUNK_OVERLAP_RANGE = { min: 0, max: 2000, step: 10 }
 
-export function defaultLibraryConfig(mode = 'quick') {
+/** 库配置表单默认结构（分块参数、向量化、检索） */
+export function defaultLibraryConfig() {
   return {
     configVersion: 1,
-    wizardMode: mode,
     metadataDbType: 'postgresql',
-    ingestSourceMode: 'upload',
     embeddingProvider: 'ollama',
     embeddingModel: 'nomic-embed-text',
     embeddingDimension: 768,
-    chunkingStrategy: 'paragraph-first',
     chunkSize: 500,
     chunkOverlap: 120,
-    minChunkSize: 80,
-    maxChunkSize: 1200,
-    minParagraphLength: 30,
-    normalizeBeforeChunk: true,
-    textNormalizationEnabled: true,
-    textNormalization: defaultTextNormalization(),
+    hierarchicalChunkingEnabled: true,
+    chunkDelimiter: '',
     tags: [],
-    ingestAccess: {
-      accessMode: 'upload-and-folder',
-      supportedFileTypes: ['pdf', 'word', 'txt', 'markdown', 'excel'],
-      capacityLimits: {
-        maxDocuments: 10000,
-        maxTotalSizeBytes: 10737418240,
-        maxChunkEntries: 500000
-      },
-      versionPolicy: {
-        enabled: true,
-        updateStrategy: 'keep-history'
-      }
-    },
-    parsing: {
-      ocrEnabled: false,
-      tableExtraction: 'text-only',
-      imageExtraction: 'skip',
-      formulaExtraction: 'skip',
-      autoDetectEncoding: true,
-      defaultLanguage: 'zh-CN'
-    },
-    cleaning: {
-      removeHeaderFooter: true,
-      removeWatermark: true,
-      removeDuplicateParagraphs: true,
-      maskPhone: false,
-      maskIdCard: false,
-      stopwordFilter: false
-    },
     retrieval: {
       hybridSearchEnabled: true,
       rerankEnabled: true,
       rerankModel: '',
       metadataFilterFields: [],
-      similarityThreshold: 0.4
+      similarityThreshold: 0.4,
+      defaultTopK: 12
     },
-    governance: {
-      ingestReviewMode: 'auto',
-      inheritLibraryPermissions: true,
-      retentionDays: 0,
-      archivePolicy: 'none',
-      complianceTags: [],
-      auditLogEnabled: true
-    }
+    primaryChunkProfileId: '',
+    allowCustomChunkProfiles: true,
+    maxActiveChunkProfiles: 5
   }
 }
 
-export function buildCreatePayload({ tenantId, name, description, tags, config, wizardMode }) {
-  const cfg = { ...defaultLibraryConfig(wizardMode), ...config, wizardMode }
+export function createEmptyLibraryForm() {
+  return {
+    name: '',
+    description: '',
+    tags: [],
+    config: defaultLibraryConfig()
+  }
+}
+
+export function buildCreatePayload({ tenantId, name, description, tags }) {
   return {
     tenantId,
     name: name.trim(),
-    description,
-    tags: tags || [],
-    config: cfg
+    description: description.trim(),
+    tags: tags || []
   }
 }

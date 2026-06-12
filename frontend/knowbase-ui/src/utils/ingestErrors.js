@@ -4,19 +4,19 @@
 export const INGEST_ERROR_CATALOG = {
   LIBRARY_DOCUMENT_LIMIT_EXCEEDED: {
     title: '文档数量已达上限',
-    hint: '可在「知识库配置 → 数据与容量」中提高文档数上限，或删除部分文档后再上传。'
+    hint: '请联系管理员调整租户配额，或删除部分文档后再上传。'
   },
   LIBRARY_SIZE_LIMIT_EXCEEDED: {
     title: '知识库总大小已达上限',
-    hint: '可在「知识库配置 → 数据与容量」中提高总大小上限，或删除大文件 / 历史版本后再上传。'
+    hint: '请联系管理员调整租户配额，或删除大文件 / 历史版本后再上传。'
   },
   LIBRARY_CHUNK_LIMIT_EXCEEDED: {
     title: '向量条目已达上限',
-    hint: '可在「知识库配置 → 数据与容量」中提高向量条目上限，或减少分块（调大块大小）后重试；也可删除部分已索引文档。'
+    hint: '请联系管理员调整租户配额，或在库配置中调大分块大小、删除部分已索引文档后重试。'
   },
   MIME_TYPE_NOT_ALLOWED: {
     title: '文件类型不在允许范围内',
-    hint: '请在「知识库配置 → 数据与容量 → 支持类型」中勾选对应格式，或更换为已支持的文件。'
+    hint: '请在「库配置 → 数据接入」中勾选对应文件类型，或更换为已支持的文件。'
   },
   FILE_TOO_LARGE: {
     title: '单个文件过大',
@@ -33,6 +33,18 @@ export const INGEST_ERROR_CATALOG = {
   UPLOAD_FAILED: {
     title: '上传失败',
     hint: '请稍后重试；若持续失败，请查看服务端日志。'
+  },
+  INGEST_PROFILE_NOT_ALLOWED: {
+    title: '不可使用分块数值覆盖',
+    hint: '库内已有文档时须与库配置一致；请在「库配置 → 分块向量化」调整，或清空库后重试。'
+  },
+  DUPLICATE_DIFFERENT_CHUNK_PROFILE: {
+    title: '相同内容已存在且分块参数不同',
+    hint: '不会覆盖库内原文档。请关闭「分块覆盖」使用库默认配置，或修改文件内容后重新上传。'
+  },
+  INGEST_PROFILE_INVALID: {
+    title: '分块覆盖参数无效',
+    hint: '仅可覆盖分块大小与重叠，且须在允许范围内。'
   }
 }
 

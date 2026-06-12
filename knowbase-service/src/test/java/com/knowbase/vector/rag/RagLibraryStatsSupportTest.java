@@ -3,6 +3,7 @@ package com.knowbase.vector.rag;
 import com.knowbase.library.config.VectorLibraryConfig;
 import com.knowbase.library.domain.LibraryStatus;
 import com.knowbase.library.dto.VectorLibraryResponse;
+import com.knowbase.library.support.LibraryConfigViewMapper;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -20,7 +21,7 @@ class RagLibraryStatsSupportTest {
                 "周报知识库",
                 "",
                 LibraryStatus.ACTIVE,
-                new VectorLibraryConfig(),
+                LibraryConfigViewMapper.toView(new VectorLibraryConfig()),
                 20,
                 78,
                 Instant.now(),
@@ -40,7 +41,7 @@ class RagLibraryStatsSupportTest {
                 "周报知识库",
                 "存放各部门周报与月报，供检索与问答。",
                 LibraryStatus.ACTIVE,
-                new VectorLibraryConfig(),
+                LibraryConfigViewMapper.toView(new VectorLibraryConfig()),
                 5,
                 20,
                 Instant.now(),
@@ -60,7 +61,7 @@ class RagLibraryStatsSupportTest {
                 "测试库",
                 "",
                 LibraryStatus.ACTIVE,
-                new VectorLibraryConfig(),
+                LibraryConfigViewMapper.toView(new VectorLibraryConfig()),
                 3,
                 0,
                 Instant.now(),

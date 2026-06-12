@@ -2,6 +2,7 @@ package com.knowbase.vector.service;
 
 import com.knowbase.vector.chunk.ChunkTextPreprocessor;
 import com.knowbase.vector.chunk.ChunkingStrategy;
+import com.knowbase.vector.chunk.DelimiterChunker;
 import com.knowbase.vector.chunk.FixedLengthChunker;
 import com.knowbase.vector.chunk.HeadingLevelChunker;
 import com.knowbase.vector.chunk.SemanticChunker;
@@ -46,12 +47,29 @@ public class ChunkingService {
             return List.of();
         }
 
+        if (effective.getCustomDelimiter() != null && !effective.getCustomDelimiter().isBlank()) {
+            return chunkWithDelimiter(normalized, effective);
+        }
+
         return switch (effective.getStrategy()) {
             case FIXED_CHAR -> FixedLengthChunker.chunk(normalized, effective);
             case HEADING_LEVEL -> chunkHeadingLevel(normalized, effective);
             case SEMANTIC -> semanticChunker.chunk(libraryId, normalized, effective);
             case PARAGRAPH_FIRST -> chunkParagraphFirst(normalized, effective);
         };
+    }
+
+    private List<String> chunkWithDelimiter(String text, ChunkingProperties props) {
+        List<String> segments = DelimiterChunker.splitSegments(text, props.getCustomDelimiter());
+        List<String> chunks = new ArrayList<>();
+        for (String segment : segments) {
+            if (segment.length() <= props.getChunkSize()) {
+                addIfValid(chunks, segment, props);
+            } else {
+                chunks.addAll(chunkParagraphFirst(segment, props));
+            }
+        }
+        return chunks;
     }
 
     private List<String> chunkHeadingLevel(String text, ChunkingProperties props) {

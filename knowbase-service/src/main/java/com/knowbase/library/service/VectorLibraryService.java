@@ -11,14 +11,20 @@ import com.knowbase.library.config.VectorLibraryConfigFactory;
 import com.knowbase.library.config.VectorLibraryConfigMerger;
 import com.knowbase.library.domain.LibraryStatus;
 import com.knowbase.library.domain.VectorLibrary;
+import com.knowbase.library.dto.ChunkProfileBackfillResponse;
 import com.knowbase.library.dto.CreateVectorLibraryRequest;
+import com.knowbase.library.dto.SetPrimaryChunkProfileRequest;
+import com.knowbase.library.dto.UpdateChunkGovernanceRequest;
 import com.knowbase.library.dto.DeleteVectorLibraryResponse;
-import com.knowbase.library.dto.UpdateVectorLibrarySettingsRequest;
+import com.knowbase.library.dto.UpdateLibraryBasicRequest;
+import com.knowbase.library.dto.UpdateLibraryIndexPipelineRequest;
+import com.knowbase.library.dto.UpdateLibraryRetrievalRequest;
 import com.knowbase.library.dto.VectorLibraryListItemResponse;
 import com.knowbase.library.dto.VectorLibraryListQuery;
 import com.knowbase.library.dto.VectorLibraryResponse;
 import com.knowbase.library.dto.VectorLibraryUpdateResponse;
 import com.knowbase.library.mapper.VectorLibraryMapper;
+import com.knowbase.pipeline.config.ChunkProfileService;
 import com.knowbase.platform.JsonSupport;
 import com.knowbase.vector.mapper.DocumentChunkMapper;
 import org.springframework.stereotype.Service;
@@ -43,18 +49,21 @@ public class VectorLibraryService {
     private final LibraryDeletionService libraryDeletionService;
     private final DocMetadataStore metadataStore;
     private final DocumentChunkMapper chunkMapper;
+    private final ChunkProfileService chunkProfileService;
 
     public VectorLibraryService(
             VectorLibraryMapper mapper,
             IngestProperties ingestProperties,
             LibraryDeletionService libraryDeletionService,
             DocMetadataStore metadataStore,
-            DocumentChunkMapper chunkMapper) {
+            DocumentChunkMapper chunkMapper,
+            ChunkProfileService chunkProfileService) {
         this.mapper = mapper;
         this.ingestProperties = ingestProperties;
         this.libraryDeletionService = libraryDeletionService;
         this.metadataStore = metadataStore;
         this.chunkMapper = chunkMapper;
+        this.chunkProfileService = chunkProfileService;
     }
 
     public PageResponse<VectorLibraryListItemResponse> list(VectorLibraryListQuery query) {
@@ -77,10 +86,59 @@ public class VectorLibraryService {
             result = mapper.selectPage(new Page<>(pageNum, pageSize), wrapper);
         }
 
+        String tenantId = query.tenantId().trim();
         List<VectorLibraryListItemResponse> items = result.getRecords().stream()
-                .map(VectorLibraryListItemResponse::from)
+                .map(lib -> VectorLibraryListItemResponse.from(lib, countPendingMigration(lib, tenantId)))
                 .toList();
         return new PageResponse<>(items, total, pageNum, pageSize);
+    }
+
+    private int countPendingMigration(VectorLibrary lib, String tenantId) {
+        VectorLibraryConfig cfg = JsonSupport.parseLibraryConfig(lib.getConfigJson());
+        String primary = cfg.getPrimaryChunkProfileId();
+        if (primary == null || primary.isBlank()) {
+            return 0;
+        }
+        return metadataStore.countParsedWithTextKeyNotOnPrimary(
+                lib.getLibraryId(), tenantId, primary.trim());
+    }
+
+    public List<com.knowbase.library.dto.ChunkProfileSummaryResponse> listChunkProfiles(UUID libraryId) {
+        require(libraryId);
+        return chunkProfileService.listProfiles(libraryId);
+    }
+
+    @Transactional
+    public VectorLibraryResponse setPrimaryChunkProfile(UUID libraryId, SetPrimaryChunkProfileRequest request) {
+        VectorLibrary lib = require(libraryId);
+        String profileId = request.chunkProfileId().trim();
+        chunkProfileService.requireExistingProfile(libraryId, profileId);
+        VectorLibraryConfig cfg = JsonSupport.parseLibraryConfig(lib.getConfigJson());
+        cfg.setPrimaryChunkProfileId(profileId);
+        persistConfigOnly(lib, cfg);
+        return get(libraryId);
+    }
+
+    @Transactional
+    public VectorLibraryResponse updateChunkGovernance(UUID libraryId, UpdateChunkGovernanceRequest request) {
+        VectorLibrary lib = require(libraryId);
+        VectorLibraryConfig cfg = JsonSupport.parseLibraryConfig(lib.getConfigJson());
+        cfg.setAllowCustomChunkProfiles(request.allowCustomChunkProfiles());
+        cfg.setMaxActiveChunkProfiles(request.maxActiveChunkProfiles());
+        persistConfigOnly(lib, cfg);
+        return get(libraryId);
+    }
+
+    @Transactional
+    public ChunkProfileBackfillResponse backfillChunkProfiles(UUID libraryId) {
+        require(libraryId);
+        return chunkProfileService.backfillLibrary(libraryId);
+    }
+
+    private void persistConfigOnly(VectorLibrary lib, VectorLibraryConfig cfg) {
+        lib.setConfigJson(JsonSupport.toJson(cfg));
+        lib.setUpdatedAt(Instant.now());
+        mapper.updateById(lib);
     }
 
     public VectorLibraryResponse get(UUID libraryId) {
@@ -117,22 +175,21 @@ public class VectorLibraryService {
 
     @Transactional
     public VectorLibraryResponse create(CreateVectorLibraryRequest request) {
-        VectorLibraryConfig cfg = request.config() != null ? request.config() : defaultConfig();
-        VectorLibraryConfigFactory.applyPhase2Defaults(cfg, ingestProperties.getAllowedMimeTypes(), cfg.getWizardMode());
+        VectorLibraryConfig cfg = defaultConfig();
+        VectorLibraryConfigFactory.applyDefaults(cfg, ingestProperties.getAllowedMimeTypes());
         if (request.tags() != null && !request.tags().isEmpty()) {
             cfg.setTags(request.tags());
         }
         cfg.setConfigVersion(1);
-        cfg.setAllowedMimeTypes(VectorLibraryConfigFactory.resolveMimeTypes(
-                cfg.getIngestAccess() != null ? cfg.getIngestAccess().getSupportedFileTypes() : null,
-                ingestProperties.getAllowedMimeTypes()));
+        syncAllowedMimeTypes(cfg);
 
         UUID libraryId = UUID.randomUUID();
+        chunkProfileService.refreshLibraryPrimary(cfg, libraryId);
         VectorLibrary lib = new VectorLibrary();
         lib.setLibraryId(libraryId);
         lib.setTenantId(request.tenantId().trim());
         lib.setName(request.name().trim());
-        lib.setDescription(request.description());
+        lib.setDescription(request.description().trim());
         lib.setStatus(LibraryStatus.ACTIVE);
         lib.setConfigJson(JsonSupport.toJson(cfg));
         lib.setDocumentCount(0);
@@ -146,41 +203,73 @@ public class VectorLibraryService {
     }
 
     @Transactional
-    public VectorLibraryUpdateResponse updateSettings(UUID libraryId, UpdateVectorLibrarySettingsRequest request) {
+    public VectorLibraryUpdateResponse updateBasic(UUID libraryId, UpdateLibraryBasicRequest request) {
         VectorLibrary lib = require(libraryId);
         lib.setName(request.name().trim());
-        lib.setDescription(request.description());
+        lib.setDescription(request.description().trim());
+
+        VectorLibraryConfig existing = JsonSupport.parseLibraryConfig(lib.getConfigJson());
+        VectorLibraryConfigMerger.mergeBasic(existing, request.tags());
+        syncAllowedMimeTypes(existing);
+
+        int documentCount = liveDocumentCount(libraryId);
+        int chunkCount = liveChunkCount(libraryId);
+        syncCountsIfNeeded(lib, documentCount, chunkCount);
+        return persistConfig(lib, existing, List.of(), documentCount, chunkCount);
+    }
+
+    @Transactional
+    public VectorLibraryUpdateResponse updateIndexPipeline(UUID libraryId, UpdateLibraryIndexPipelineRequest request) {
+        VectorLibrary lib = require(libraryId);
+        int documentCount = liveDocumentCount(libraryId);
+        int chunkCount = liveChunkCount(libraryId);
+        syncCountsIfNeeded(lib, documentCount, chunkCount);
+
+        if (chunkCount > 0) {
+            throw new PipelineConfigLockedException();
+        }
 
         VectorLibraryConfig existing = JsonSupport.parseLibraryConfig(lib.getConfigJson());
         String prevModel = existing.getEmbeddingModel();
         int prevDimension = existing.getEmbeddingDimension();
         String prevProvider = existing.getEmbeddingProvider();
 
-        if (request.config() != null) {
-            validateEmbeddingProvider(request.config().getEmbeddingProvider());
-        }
-        int documentCount = liveDocumentCount(libraryId);
-        int chunkCount = liveChunkCount(libraryId);
-        syncCountsIfNeeded(lib, documentCount, chunkCount);
-        boolean lockPipeline = documentCount > 0 || chunkCount > 0;
-        VectorLibraryConfigMerger.mergeSafeFields(existing, request.config(), lockPipeline);
+        VectorLibraryConfigMerger.mergeIndexPipeline(existing, request.indexPipeline());
         validateEmbeddingProvider(existing.getEmbeddingProvider());
-        syncAllowedMimeTypes(existing);
+        chunkProfileService.refreshLibraryPrimary(existing, libraryId);
 
         List<String> warnings = new ArrayList<>();
-        if (embeddingConfigChanged(prevModel, prevDimension, prevProvider, existing)
-                && chunkCount > 0) {
+        if (embeddingConfigChanged(prevModel, prevDimension, prevProvider, existing) && chunkCount > 0) {
             warnings.add(
                     "Embedding 模型、维度或提供方已变更：已有向量与检索可能不一致，请在文档库中对相关文档执行补偿重索引。");
         }
+        return persistConfig(lib, existing, warnings, documentCount, chunkCount);
+    }
 
-        existing.setConfigVersion(Math.max(1, existing.getConfigVersion()) + 1);
-        lib.setConfigJson(JsonSupport.toJson(existing));
+    @Transactional
+    public VectorLibraryUpdateResponse updateRetrieval(UUID libraryId, UpdateLibraryRetrievalRequest request) {
+        VectorLibrary lib = require(libraryId);
+        VectorLibraryConfig existing = JsonSupport.parseLibraryConfig(lib.getConfigJson());
+        VectorLibraryConfigMerger.mergeRetrieval(existing, request.retrieval());
+
+        int documentCount = liveDocumentCount(libraryId);
+        int chunkCount = liveChunkCount(libraryId);
+        syncCountsIfNeeded(lib, documentCount, chunkCount);
+        return persistConfig(lib, existing, List.of(), documentCount, chunkCount);
+    }
+
+    private VectorLibraryUpdateResponse persistConfig(
+            VectorLibrary lib,
+            VectorLibraryConfig cfg,
+            List<String> warnings,
+            int documentCount,
+            int chunkCount) {
+        cfg.setConfigVersion(Math.max(1, cfg.getConfigVersion()) + 1);
+        lib.setConfigJson(JsonSupport.toJson(cfg));
         lib.setUpdatedAt(Instant.now());
         mapper.updateById(lib);
-
         return new VectorLibraryUpdateResponse(
-                VectorLibraryResponse.from(require(libraryId), documentCount, chunkCount), warnings);
+                VectorLibraryResponse.from(require(lib.getLibraryId()), documentCount, chunkCount), warnings);
     }
 
     private int liveDocumentCount(UUID libraryId) {
@@ -248,13 +337,10 @@ public class VectorLibraryService {
     }
 
     private void syncAllowedMimeTypes(VectorLibraryConfig cfg) {
-        List<String> fileTypes =
-                cfg.getIngestAccess() != null ? cfg.getIngestAccess().getSupportedFileTypes() : null;
-        cfg.setAllowedMimeTypes(VectorLibraryConfigFactory.resolveMimeTypes(
-                fileTypes, ingestProperties.getAllowedMimeTypes()));
+        cfg.setAllowedMimeTypes(ingestProperties.getAllowedMimeTypes());
     }
 
     private VectorLibraryConfig defaultConfig() {
-        return VectorLibraryConfigFactory.quickDefaults(ingestProperties.getAllowedMimeTypes());
+        return VectorLibraryConfigFactory.defaults(ingestProperties.getAllowedMimeTypes());
     }
 }

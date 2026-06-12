@@ -14,7 +14,7 @@ focus: ingest-pipeline
 
 | 受众 | 锚点 | 推荐阅读章节 |
 |------|------|--------------|
-| 运营 | [#ops-guide](#ops-guide) | §6 库类型选型决策树、§7 分块质量准则、§8 反模式 |
+| 运营 | [#ops-guide](#ops-guide) | §6 建库与语义边界、§7 分块质量准则、§8 反模式 |
 | 开发 | [#dev-reference](#dev-reference) | §2 建库流程、§3 单文档入库流程、§5 三层配置矩阵、附录 A/B |
 
 ---
@@ -23,13 +23,13 @@ focus: ingest-pipeline
 
 ### 里程碑核心价值
 
-> **Core Value（PROJECT.md）：** 运营人员按文件类型选对库预设并完成采集后，**预览所见分块与入库结果一致**，且分块内容足以支撑后续检索与问答（不因错误设定导致表头块、续行拆开、OCR 缺失等问题）。
+> **Core Value（PROJECT.md）：** 运营人员按文件类型选对知识库与管道配置并完成采集后，**预览所见分块与入库结果一致**，且分块内容足以支撑后续检索与问答（不因错误设定导致表头块、续行拆开、OCR 缺失等问题）。
 
 ### 目标态 vs v1 交付边界（D-01、D-02）
 
 | 维度 | 目标态（文档叙述） | v1 里程碑交付 |
 |------|-------------------|---------------|
-| 库类型谱系 | 垂直专用库 + **通用混合库一等公民**（D-09） | 文档描述选型决策树与配置路径；预设 UI 见 Phase 3 |
+| 建库模型 | 多建平级知识库 + 库级管道配置（D-09） | 已实现；无「垂直/通用」库物种 preset；见 §6 |
 | 配置层级 | 系统 / 库默认 / 采集覆盖三层（D-03–D-07） | 配置矩阵标注「现状」列；采集 profile 未实现 |
 | 质量验收 | RAG 可答率为**北极星**（D-16） | v1 验收 = **检索可召回** + 反模式样本；**不**将 RAG 答对率纳入工程验收 |
 | 按类型细表 | 引用 Phase 2 `FILE-TYPE-PROCESSING.md`（D-17） | Phase 1 仅通用准则，不重复 per-type 矩阵 |
@@ -54,7 +54,7 @@ Phase 1 **不**展开 PDF/Word/Excel/TXT/Markdown 逐类型矩阵（D-17）。�
 
 ## §2 建库流程（PIPE-01）
 
-建库将运营在向导中填写的规则持久化为 `vector_library.config_json`，后续 ingest 管道各阶段通过 `LibraryConfigResolver.*For(libraryId)` 读取。
+建库采用**短表单**（名称/描述/标签）+ `defaultLibraryConfig()` 默认规则；管道深配在 `EditLibrarySettingsDrawer`。配置持久化为 `vector_library.config_json`，后续 ingest 通过 `LibraryConfigResolver.*For(libraryId)` 读取。
 
 ### 2.1 端到端流程
 
@@ -86,19 +86,16 @@ flowchart LR
     LCR --> IS
 ```
 
-### 2.2 向导步骤 ↔ config_json 字段
+### 2.2 建库与配置分工
 
-来源：`frontend/knowbase-ui/src/utils/libraryDefaults.js` — `WIZARD_STEPS` + `defaultLibraryConfig()`。
+| 阶段 | UI | 写入字段 |
+|------|-----|---------|
+| **建库** | `CreateLibraryWizard` 短表单 | API 顶层 `name` / `description` / `tags`；`config` = `defaultLibraryConfig()` |
+| **深配** | `EditLibrarySettingsDrawer` 多 Tab | `ingestAccess.*`, `parsing.*`, `cleaning.*`, `chunking*`, `retrieval.*`, `governance.*` 等 |
 
-| Wizard 步骤 | 主要 config_json 路径 | 库默认示例值 |
-|-------------|----------------------|-------------|
-| **1 基础信息** | `name`, `description`（API 顶层）；`tags` | `tags: []` |
-| **2 数据类型与容量** | `ingestAccess.supportedFileTypes`, `ingestAccess.capacityLimits.*`, `ingestAccess.versionPolicy.*`, `ingestSourceMode` | `supportedFileTypes: ['pdf','word','txt','markdown','excel']`; `maxDocuments: 10000` |
-| **3 文档处理规则** | `parsing.*`, `cleaning.*`, `textNormalizationEnabled`, `textNormalization.*`, `chunkingStrategy`, `chunkSize`, `chunkOverlap`, `minChunkSize`, `maxChunkSize`, `minParagraphLength`, `normalizeBeforeChunk`, `semanticSimilarityThreshold` | `parsing.ocrEnabled: false`, `tableExtraction: 'text-only'`; `chunkingStrategy: 'paragraph-first'`, `chunkSize: 500` |
-| **4 索引与检索** | `embeddingProvider`, `embeddingModel`, `embeddingDimension`, `retrieval.*` | `embeddingModel: 'nomic-embed-text'`, `embeddingDimension: 768`; `hybridSearchEnabled: true` |
-| **5 治理与安全** | `governance.*` | `ingestReviewMode: 'auto'` |
+来源：`frontend/knowbase-ui/src/utils/libraryDefaults.js` — `defaultLibraryConfig()` + `buildCreatePayload()`。
 
-前端提交：`buildCreatePayload()` 合并 `defaultLibraryConfig(wizardMode)` → `createVectorLibrary()` → `POST /api/v1/vector-libraries`。
+前端提交：`buildCreatePayload()` → `createVectorLibrary()` → `POST /api/v1/vector-libraries`。
 
 后端持久化：
 
@@ -127,7 +124,7 @@ mapper.insert(lib);
 
 ### 2.4 数据流（建库 → 首次入库）
 
-1. 运营在 `CreateLibraryWizard` 填写各步骤表单（或 `EditLibrarySettingsDrawer` 后续修改）。
+1. 运营在 `CreateLibraryWizard` 填写名称等基础信息（管道默认值由 `defaultLibraryConfig()` 写入）；深配在 `EditLibrarySettingsDrawer`。
 2. 前端 `buildCreatePayload()` 组装 `{ tenantId, name, description, tags, config }`。
 3. `POST /api/v1/vector-libraries` → `VectorLibraryController.create` → `VectorLibraryService.create`。
 4. 服务端将 `VectorLibraryConfig` 序列化为 JSONB 写入 `vector_library.config_json`。
@@ -141,7 +138,7 @@ mapper.insert(lib);
 | 差距 | 现状 | 目标态（D-15） |
 |------|------|----------------|
 | **lockPipeline** | `documentCount > 0 \|\| chunkCount > 0` 时 **硬锁**：`VectorLibraryConfigMerger` 跳过 parsing/cleaning/chunking/embedding 更新 | **软锁定**：允许修改管道规则，但必须触发**全库重索引**任务 + UI 强警告 |
-| **库类型轴** | 向导仅有 quick/advanced 模式，**无**垂直/通用库类型选择 UI | 决策树（§6）为文档-only，Phase 3 预设 + 类型轴 |
+| **建库 preset** | 已移除库物种 preset；向导直接 `libraryDefaults` | §6 运营指引；`mimeAwareDefaults` 控制 MIME 默认 |
 | **重索引** | 手动 `POST /api/v1/index/rebuild-library` 可部分补救 | 配置变更自动触发重索引任务（backlog） |
 
 ```java
@@ -152,9 +149,9 @@ VectorLibraryConfigMerger.mergeSafeFields(existing, request.config(), lockPipeli
 
 ### 代码锚点
 
-- `frontend/knowbase-ui/src/components/CreateLibraryWizard.vue` — 建库向导
+- `frontend/knowbase-ui/src/components/CreateLibraryWizard.vue` — 短表单建库
 - `frontend/knowbase-ui/src/components/EditLibrarySettingsDrawer.vue` — 库设置与 lockPipeline UI
-- `frontend/knowbase-ui/src/utils/libraryDefaults.js` — `WIZARD_STEPS`, `defaultLibraryConfig`, `buildCreatePayload`
+- `frontend/knowbase-ui/src/utils/libraryDefaults.js` — `defaultLibraryConfig`, `buildCreatePayload`
 - `frontend/knowbase-ui/src/api/library.js` — `createVectorLibrary`, `updateVectorLibrarySettings`
 - `knowbase-service/.../VectorLibraryController.java` — `POST/PUT /api/v1/vector-libraries`
 - `knowbase-service/.../VectorLibraryService.java` — `create`, `updateSettings`
@@ -261,7 +258,7 @@ sequenceDiagram
 | 库设置 | `PUT /api/v1/vector-libraries/{libraryId}` | `VectorLibraryController#updateSettings` | `VectorLibraryService` | `library.js` `updateVectorLibrarySettings` | `EditLibrarySettingsDrawer`, `IngestView` |
 | 上传约束 | `GET /api/v1/documents/upload-constraints` | `DocumentController#uploadConstraints` | `UploadService` | `ingest.js` `getUploadConstraints` | `IngestView` |
 | 解析预览 | `POST /api/v1/documents/parse-preview` | `DocumentController#parsePreview` | `ParsePreviewService` | `ingest.js` `parsePreview` | `IngestView` |
-| 分块预览 | `POST /api/v1/index/chunk-preview` | `IndexAdminController#chunkPreview` | `ChunkPreviewService` | `chunk.js` `previewChunks` | `IngestView`, `CreateLibraryWizard` |
+| 分块预览 | `POST /api/v1/index/chunk-preview` | `IndexAdminController#chunkPreview` | `ChunkPreviewService` | `chunk.js` `previewChunks` | `IngestView` |
 | 单文件上传 | `POST /api/v1/documents/upload` | `DocumentController#upload` | `UploadService` → `DocumentIngestor` | `ingest.js` `uploadDocument`（query: `documentMetadata`） | `IngestView` |
 | 批量上传 | `POST /api/v1/documents/upload/batch` | `DocumentController#uploadBatch` | `UploadService` → `DocumentIngestor` | `ingest.js` `uploadDocumentsBatch` | `IngestView` |
 | 人工审核入库 | `POST /api/v1/documents/{docId}/approve-index` | `DocumentController#approveIndex` | `DocumentIndexApprovalService` | `ingest.js` `approveDocumentIndex` | —（`governance.ingestReviewMode=manual-review`） |
@@ -272,7 +269,7 @@ sequenceDiagram
 
 | Component | Responsibility | File |
 |-----------|----------------|------|
-| `CreateLibraryWizard` | 五步向导收集库配置并 POST 建库 | `frontend/knowbase-ui/src/components/CreateLibraryWizard.vue` |
+| `CreateLibraryWizard` | 短表单建库并 POST | `frontend/knowbase-ui/src/components/CreateLibraryWizard.vue` |
 | `EditLibrarySettingsDrawer` | 库设置编辑；`lockPipeline` 时禁用管道字段 | `frontend/knowbase-ui/src/components/EditLibrarySettingsDrawer.vue` |
 | `IngestView` | 采集入口：上传、双 API 预览、`documentMetadata`、`overrideChunk` UI | `frontend/knowbase-ui/src/views/IngestView.vue` |
 | `LibraryConfigResolver` | 从 `config_json` 解析各阶段规则 | `knowbase-service/.../library/service/LibraryConfigResolver.java` |
@@ -326,6 +323,8 @@ function uploadParams(libraryId, tenantId, autoIndex, documentMetadata) {
 
 ## §5 三层配置矩阵
 
+> **v2 扩展：** MIME 上层 **ContentFamily** + 解析后 **ContentSignals** 二次路由见 [CONTENT-FAMILY-SIGNALS.md](./CONTENT-FAMILY-SIGNALS.md)。
+
 配置边界遵循 D-03–D-07：行 = 规则项，列 = 系统级 / 库默认 / 采集覆盖（目标态）/ 现状。单元格标注 **必须** / **默认** / **可覆盖** / **禁止**。
 
 ### 5.1 规则矩阵
@@ -341,10 +340,10 @@ function uploadParams(libraryId, tenantId, autoIndex, documentMetadata) {
 | 元数据过滤白名单 | `retrieval.metadataFilterFields` | — | **必须** 库内统一 | 禁止 | 库级 | `retrievalFor(libraryId)` |
 | 容量上限 | `ingestAccess.capacityLimits.*` | — | **必须** 库内统一 | 禁止 | 库级 | `capacityLimitsFor(libraryId)` |
 | 版本策略 | `ingestAccess.versionPolicy.*` | — | **必须** 库内统一 | 禁止 | 库级 | `versionPolicyFor(libraryId)` |
-| 解析规则 | `parsing.*` | — | **默认** | **可覆盖** OCR/chunk 等（ingest profile） | **库级 only** | `parseOptionsFor(libraryId)` |
-| 文本规范化 | `textNormalizationEnabled`, `textNormalization.*` | **默认** 全局 `TextNormalizationProperties` | **默认** | 目标态可覆盖 | 库级 | `normalizationFor(libraryId)` |
-| 内容清洗 | `cleaning.*` | — | **默认** | **可覆盖** | **库级 only** | `cleaningFor(libraryId)` |
-| 分块策略 | `chunkingStrategy`, `chunkSize`, `chunkOverlap`, `minChunkSize`, `maxChunkSize`, `minParagraphLength`, `normalizeBeforeChunk`, `semanticSimilarityThreshold` | **默认** `chunking.semantic-similarity-threshold` 兜底 | **默认** | **可覆盖** | **库级 only**；预览可 `overrideChunk`（仅预览） | `chunkingFor(libraryId)` |
+| 解析规则 | `PlatformPipelineDefaults` + `MimeTypePipelineDefaults` | **必须** 代码/MIME 权威 | 禁止 | 禁止（ingest profile 仅分块） | 代码/MIME | `EffectiveConfigResolver.forIngest` |
+| 文本规范化 | `ingest.text-normalization.*` | **必须** 系统开关 + 细则 | 禁止 | 禁止 | 系统固定 | `EffectiveConfigResolver` / `normalizationFor` |
+| 内容清洗 | `MimeTypePipelineDefaults`（按类型） | **必须** 代码/MIME | 禁止 | 禁止 | 代码/MIME | `EffectiveConfigResolver` |
+| 分块策略 | `chunkingStrategy`, `chunkSize`, `chunkOverlap`, `minChunkSize`, `maxChunkSize`, `minParagraphLength`, `semanticSimilarityThreshold` | **默认** `chunking.normalize-before-chunk`、`chunking.semantic-similarity-threshold` | **默认** | **可覆盖**（ingest profile 分块） | 库级分块参数 | `chunkingFor(libraryId)` |
 | 入库审核模式 | `governance.ingestReviewMode` | — | **默认** | 禁止 | 库级 | `requiresManualReview(libraryId)` |
 | 语义标签 | `documentMetadata`（采集参数） | — | — | **可覆盖** 写入 `custom_metadata_json` | **仅检索过滤**，不驱动解析/分块管道（D-06） | — → `ChunkMetadataBuilder` |
 | 上传模式 | `ingestSourceMode` | — | **必须** | 禁止 | 库级；`crawl` 库禁止上传 | `isUploadAllowed(libraryId)` |
@@ -358,9 +357,8 @@ function uploadParams(libraryId, tenantId, autoIndex, documentMetadata) {
 | Resolver 方法 | 配置路径组 | 主要消费方 |
 |---------------|-----------|-----------|
 | `config(libraryId)` | 全量 `config_json` | 所有阶段入口 |
-| `parseOptionsFor(libraryId)` | `parsing.*` | `DocumentParseService`, `DocumentPipelineService`, `ParsePreviewService` |
-| `normalizationFor(libraryId)` | `textNormalization.*` | `DocumentPipelineService`, `ChunkPreviewService` |
-| `cleaningFor(libraryId)` | `cleaning.*` | `DocumentPipelineService`, `IndexingService`, `ChunkPreviewService` |
+| `EffectiveConfigResolver.forIngest` / `forDocument` | MIME 解析/清洗 + 库分块 | `DocumentPipelineService`, `LibraryChunkPipeline`, `ParsePreviewService` |
+| `normalizationFor(libraryId)` | `textNormalizationEnabled` + 系统细则 | `DocumentPipelineService`, `LibraryChunkPipeline` |
 | `chunkingFor(libraryId)` | `chunkingStrategy`, `chunkSize`, … | `IndexingService` → `ChunkingService`, `ChunkPreviewService` |
 | `embeddingFor(libraryId)` | `embeddingProvider/Model/Dimension` | `LibraryEmbeddingService`（`IndexingService` 内） |
 | `retrievalFor(libraryId)` | `retrieval.*` | `VectorSearchService`, `RagRetrievalService`; `retainChunkMetadata` → `ChunkMetadataBuilder` |
@@ -378,32 +376,33 @@ function uploadParams(libraryId, tenantId, autoIndex, documentMetadata) {
 
 ---
 
-## §6 库类型选型决策树
+## §6 建库与语义边界（运营指引）
 
-库类型谱系（D-08–D-12）：**垂直专用库**（同质语义，可混合文件类型）与 **通用混合库**（多类型多语义）均为目标态一等公民（D-09）。
+产品**不设**「垂直专用库 / 通用混合库」库物种枚举（D-08–D-12 已废止该二分）。与主流 RAG 一致：运营通过**多建平级知识库** + 库级管道配置（`libraryDefaults.js` / 向导 Step 2–5）表达业务边界。
 
 ### 6.1 决策流程
 
 ```mermaid
 flowchart TD
     A[业务场景] --> B{同质语义 + 同问答模式?}
-    B -->|是| C[垂直专用库]
-    B -->|否| D[通用混合库]
-    C --> E[允许混合 MIME<br/>靠 parsing 默认分化]
-    D --> F[MIME 自动默认 + documentMetadata 语义标签]
-    C --> G[向导 Step 2-5 微调]
-    D --> G
-    G --> H[预设套用<br/>libraryPresets.js]
+    B -->|是| C[单独建库并精调管道]
+    B -->|否| D{可接受混存单库?}
+    D -->|是| E[单库 + documentMetadata 标签<br/>+ 检索 metadata 过滤]
+    D -->|否| F[按语义主轴拆多库]
+    C --> G[设置页配置管道]
+    E --> G
+    F --> G
+    G --> H[libraryDefaults 默认 + 设置页深配]
 ```
 
-> **Phase 3 已交付：** 四套库类型预设由 [`libraryPresets.js`](../../frontend/knowbase-ui/src/utils/libraryPresets.js) 定义；[`CreateLibraryWizard.vue`](../../frontend/knowbase-ui/src/components/CreateLibraryWizard.vue) Step 1 可选预设并调用 `applyLibraryPreset`；[`EditLibrarySettingsDrawer.vue`](../../frontend/knowbase-ui/src/components/EditLibrarySettingsDrawer.vue) 展示 `presetLabel` tag，保存时 `syncLibraryPresetIdOnEdit` 同步 `libraryPresetId`。预设字段与 [FILE-TYPE-PROCESSING.md §10](./FILE-TYPE-PROCESSING.md#library-presets) / 附录 A 对齐；自动化审计见 `libraryPresets.test.js`。
+> **实现：** [`CreateLibraryWizard.vue`](../../frontend/knowbase-ui/src/components/CreateLibraryWizard.vue) 短表单 + [`libraryDefaults.js`](../../frontend/knowbase-ui/src/utils/libraryDefaults.js) 默认 config；库级可调 **分块/向量化/检索** 在 [`EditLibrarySettingsDrawer.vue`](../../frontend/knowbase-ui/src/components/EditLibrarySettingsDrawer.vue)。解析/清洗由 [`MimeTypePipelineDefaults`](../../knowbase-service/src/main/java/com/knowbase/pipeline/config/MimeTypePipelineDefaults.java) 按 MIME 自动生效；OCR 见 `ingest.ocr.enabled`。
 
 ### 6.2 启发式清单（D-10、D-11）
 
-- **同质语义 + 混合类型 → 同垂直库：** 例：周报 xlsx + 周报 pdf 导出 → **同一垂直专用库**；靠 MIME 感知默认（Excel→`text-only`+`paragraph-first`；PDF→OCR 按需）分化处理。
-- **异质语义 + 同扩展名 → 拆库：** 例：周报 xlsx vs 报销 xlsx → **应拆为两个库**（语义主轴不同，问答模式不同）。
-- **不以扩展名为唯一依据：** 建库决策以**业务语义 + 问答模式**为主轴，扩展名/MIME 仅影响解析默认，不决定库边界。
-- **通用混合库（D-09）：** 目标态通过 MIME 自动默认 + 采集 `documentMetadata` 语义标签（如 `semanticType=weekly-report`）+ 库级检索配置，力争分块质量可支撑 RAG；v1 文档描述路径，**MIME 自动默认引擎未实现**（Phase 2/3 backlog）。
+- **同质语义 + 混合 MIME → 同一库：** 例：周报 xlsx + 周报 pdf 导出 → **同一周报库**；入库时按 MIME 自动分化 parsing/chunking（Excel→`text-only`+`paragraph-first`；PDF 扫描件依赖系统 OCR 开关）。
+- **异质语义 + 同扩展名 → 拆库或打标签：** 例：周报 xlsx vs 报销 xlsx → **优先两个库**；若坚持单库则必须上传 `documentMetadata`（如 `semanticType`）并在检索侧过滤。
+- **不以扩展名为唯一依据：** 建库以**业务语义 + 问答模式**为主轴；扩展名/MIME 影响解析默认，不单独决定库边界。
+- **MIME 运行时默认：** `MimeTypePipelineDefaults` 为唯一权威；库 `config_json` 不再存储 `parsing`/`cleaning`。
 
 ---
 
@@ -486,7 +485,7 @@ Phase 1 **不**展开 PDF/Word/Excel/TXT/Markdown 逐类型推荐设定矩阵（
 | **预览≠入库** | 开启 `overrideChunkEnabled` 或信任 UI「仅本次预览与入库」文案 | 预览显示 N 块，入库 `document_chunk` 为 M 块（N≠M）；运营以为已验证入库结果 | `IngestView.vue`（`:531` 文案、`:1132` override 仅进 preview body）；`ingest.js` `uploadParams` 不传 chunkSize；`IndexingService` 仅 `chunkingFor(libraryId)` | **目标态：** Phase 4 **PARITY-01–04** — 预览规则=入库规则；**现状：** 以 `GET …/documents/{docId}/chunks` 为准，勿信预览块数 |
 | **杜鹏飞周报 xlsx** | 错误分块策略（如 semantic）、忽略表头过滤认知，或 `tableExtraction: structured` 误以为对 xlsx 生效 | 检索命中纯表头块；或漏召回工作项行；续行与主体分离 | `ChunkPreviewServiceTest.previewUsesIndexingChunkFilterAndLibraryChunkParams` — 杜鹏飞 fixture；`IndexingChunkFilter.java`；`DocumentParseService`（Excel 走 Tika 纯文本） | **`paragraph-first` + `text-only`**；表头由 `IndexingChunkFilter` 过滤。**测试基准**（`chunkSize=500`, `chunkOverlap=120`）：`rawTotalChunks=4`, `filteredOutCount=1`, `totalChunks=3`[^dupengfei-count] |
 | **扫描 PDF OCR 关闭** | 库或系统级 `parsing.ocrEnabled=false` 上传图片型 PDF | 解析文本为空或乱码；0 chunk 或无效向量 | `DocumentParseService.java`；`DocumentOcrService.java`；`infra/tesseract/README.md` | 开启 OCR + 运行 `scripts/setup-tesseract.ps1` 部署 tessdata；详见 [FILE-TYPE-PROCESSING.md §2 PDF 扫描件行](./FILE-TYPE-PROCESSING.md#ops-matrix) 与 [§4 类型反模式](./FILE-TYPE-PROCESSING.md#ops-anti-patterns) |
-| **异质语义混库** | 周报 xlsx 与报销 xlsx 建在同一垂直库 | 检索噪声大；问答混淆不同业务语义 | CONTEXT **D-10**；`ChunkMetadataBuilder` 语义标签仅过滤不拆库 | 按**语义主轴**拆库（§6.2）；同质语义才混合 MIME |
+| **异质语义混库** | 周报 xlsx 与报销 xlsx 建在同一业务库且不打标签 | 检索噪声大；问答混淆不同业务语义 | CONTEXT **D-10**；`ChunkMetadataBuilder` 语义标签仅过滤不拆库 | 按**语义主轴**拆库（§6.2），或单库 + `documentMetadata` 过滤 |
 | **Excel 误开 structured 表格** | `parsing.tableExtraction: structured` 用于 xlsx | 无结构化收益；运营误以为 Excel 会按行列对象入库 | `DocumentParseService.java`（structured 仅 HTML 管道）；`HtmlTableExtractionProcessor.java` | 保持 **`text-only`**；详见 [FILE-TYPE-PROCESSING.md §2 Excel 行](./FILE-TYPE-PROCESSING.md#ops-matrix)、[附录 B](./FILE-TYPE-PROCESSING.md#appendix-b) 与 [§4 类型反模式](./FILE-TYPE-PROCESSING.md#ops-anti-patterns) |
 
 [^dupengfei-count]: **参数脚注（RESEARCH Assumption A1）：** 单元测试在 `chunkSize=500` 下过滤 1 个表头块得 **3 块**。用户在生产参数下手工验证 **4 块均可召回**——差异来自 `chunkSize` / `minParagraphLength` / 库级配置组合。验收以「检索可召回关键事实（杜鹏飞工作项、说明续行）」为准，非固定块数 magic number。
@@ -580,7 +579,7 @@ if (lockPipelineConfig) {
 | Phase | 需求 ID | 交付物 | 与 Phase 1 文档关系 |
 |-------|---------|--------|---------------------|
 | **Phase 2** | TYPE-01–05 | `.planning/docs/FILE-TYPE-PROCESSING.md` | §7.5 引用；§8 Excel/PDF 反模式 cross-ref |
-| **Phase 3** | PRESET-01–04 | `libraryPresets.js` + 向导预设 UI + 编辑页 preset tag | §6 决策树「预设套用」落点；[FILE-TYPE-PROCESSING §10](./FILE-TYPE-PROCESSING.md#library-presets) | Complete |
+| **Phase 3** | PRESET-01–04（**已废止库物种 preset**） | `mimeAwareDefaults` + `libraryDefaults.js`；原 `libraryPresets.js` 已删除 | §6 运营指引；[FILE-TYPE-PROCESSING §10](./FILE-TYPE-PROCESSING.md#library-presets) | Superseded |
 | **Phase 4** | PARITY-01–04 | 预览=入库工程落地 | §4.4、§8、附录 A.2/A.3 差距关闭 |
 | **Phase 5** | CFG-01–02 | 配置 diff UX、保存可靠性 | `libraryConfig.js` `diffLibraryConfig` |
 
@@ -639,7 +638,7 @@ if (lockPipelineConfig) {
 
 ROADMAP Phase 1 成功标准：**新人可据文档从「建库」追到 `document_chunk` 写入而无歧义**。下列五步可在**不打开 Java/Vue 源码**的情况下完成追溯（每步引用本文章节）。
 
-1. **建库字段从哪来？** — 阅读 [§2.2 向导步骤 ↔ config_json 字段](#22-向导步骤--config_json-字段)，对照 `CreateLibraryWizard` 五步与 `defaultLibraryConfig()` 默认形状；确认 `POST /api/v1/vector-libraries` 持久化路径见 [§2.4](#24-数据流建库--首次入库)。
+1. **建库字段从哪来？** — 阅读 [§2.2 建库与配置分工](#22-建库与配置分工)，对照 `CreateLibraryWizard` 短表单与 `defaultLibraryConfig()`；深配字段见 `EditLibrarySettingsDrawer`；确认 `POST /api/v1/vector-libraries` 路径见 [§2.4](#24-数据流建库--首次入库)。
 
 2. **config_json 如何生效？** — 查 [§2.3 config_json → LibraryConfigResolver 生效点](#23-config_json--libraryconfigresolver-生效点) 与 [§5.2 Resolver 方法 → 消费方](#52-resolver-方法--消费方)；理解 `*For(libraryId)` 为运行时唯一来源（现状无采集覆盖，见 [§5 当前差距](#当前差距-1)）。
 

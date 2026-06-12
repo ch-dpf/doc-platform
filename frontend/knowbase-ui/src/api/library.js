@@ -18,13 +18,68 @@ export function getVectorLibrary(libraryId) {
   return client.get(`/api/v1/vector-libraries/${libraryId}`)
 }
 
+/** GET 按文件类型的生效分块策略摘要（只读） */
+export function getChunkStrategySummary(libraryId) {
+  return client.get(`/api/v1/vector-libraries/${libraryId}/chunk-strategy-summary`)
+}
+
+/** GET 知识库活跃分块档列表 */
+export function listChunkProfiles(libraryId) {
+  return client.get(`/api/v1/vector-libraries/${libraryId}/chunk-profiles`)
+}
+
+export function setPrimaryChunkProfile(libraryId, chunkProfileId) {
+  return client.put(`/api/v1/vector-libraries/${libraryId}/chunk-profiles/primary`, {
+    chunkProfileId
+  })
+}
+
+export function updateChunkGovernance(libraryId, body) {
+  return client.put(`/api/v1/vector-libraries/${libraryId}/chunk-governance`, body)
+}
+
+export function backfillChunkProfiles(libraryId) {
+  return client.post(`/api/v1/vector-libraries/${libraryId}/chunk-profiles/backfill`)
+}
+
+/** GET 迁移到主档候选统计 */
+export function getMigrationCandidates(libraryId, params) {
+  return client.get(`/api/v1/vector-libraries/${libraryId}/chunk-profiles/migration-candidates`, {
+    params
+  })
+}
+
+/** POST 一键迁移到主档 */
+export function migrateToPrimary(libraryId, body) {
+  return client.post(`/api/v1/vector-libraries/${libraryId}/chunk-profiles/migrate-to-primary`, body)
+}
+
+/** GET 归档候选预览 */
+export function getArchiveCandidates(libraryId, params) {
+  return client.get(`/api/v1/vector-libraries/${libraryId}/chunk-profiles/archive-candidates`, {
+    params
+  })
+}
+
+/** POST 归档分块档（软删除该档文档并清理向量） */
+export function archiveChunkProfile(libraryId, body) {
+  return client.post(`/api/v1/vector-libraries/${libraryId}/chunk-profiles/archive`, body)
+}
+
 export function createVectorLibrary(body) {
   return client.post('/api/v1/vector-libraries', body)
 }
 
-/** PUT /api/v1/vector-libraries/{libraryId} — 名称、描述与知识库配置 */
-export function updateVectorLibrarySettings(libraryId, body) {
-  return client.put(`/api/v1/vector-libraries/${libraryId}`, body)
+export function updateLibraryBasic(libraryId, body) {
+  return client.put(`/api/v1/vector-libraries/${libraryId}/basic`, body)
+}
+
+export function updateLibraryIndexPipeline(libraryId, body) {
+  return client.put(`/api/v1/vector-libraries/${libraryId}/index-pipeline`, body)
+}
+
+export function updateLibraryRetrieval(libraryId, body) {
+  return client.put(`/api/v1/vector-libraries/${libraryId}/retrieval`, body)
 }
 
 export function deleteVectorLibrary(libraryId, tenantId) {

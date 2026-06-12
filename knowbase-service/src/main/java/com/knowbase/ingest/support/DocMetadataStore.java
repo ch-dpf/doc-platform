@@ -1,6 +1,7 @@
 package com.knowbase.ingest.support;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.knowbase.ingest.domain.DocMetadata;
@@ -37,11 +38,6 @@ public class DocMetadataStore {
                 mapper.findByLibraryTenantChecksum(libraryId, tenantId, checksumSha256));
     }
 
-    public Optional<DocMetadata> findByLibraryTenantSourceUrl(
-            UUID libraryId, String tenantId, String sourceUrl) {
-        return Optional.ofNullable(mapper.findByLibraryTenantSourceUrl(libraryId, tenantId, sourceUrl));
-    }
-
     public Optional<DocMetadata> findByDocIdAndDeletedFalse(UUID docId) {
         return Optional.ofNullable(mapper.findByDocIdAndDeletedFalse(docId));
     }
@@ -74,14 +70,50 @@ public class DocMetadataStore {
     }
 
     public List<DocMetadata> findParsedWithTextKey(UUID libraryId, String tenantId) {
-        return mapper.selectList(new LambdaQueryWrapper<DocMetadata>()
+        return findParsedWithTextKey(libraryId, tenantId, null);
+    }
+
+    public List<DocMetadata> findParsedWithTextKey(UUID libraryId, String tenantId, String chunkProfileId) {
+        LambdaQueryWrapper<DocMetadata> wrapper = new LambdaQueryWrapper<DocMetadata>()
                 .eq(DocMetadata::getLibraryId, libraryId)
                 .eq(DocMetadata::getTenantId, tenantId)
                 .eq(DocMetadata::isDeleted, false)
                 .eq(DocMetadata::getParseStatus, ParseStatus.PARSED)
                 .isNotNull(DocMetadata::getParsedTextKey)
-                .ne(DocMetadata::getParsedTextKey, "")
-                .orderByDesc(DocMetadata::getUpdatedAt));
+                .ne(DocMetadata::getParsedTextKey, "");
+        if (chunkProfileId != null && !chunkProfileId.isBlank()) {
+            wrapper.eq(DocMetadata::getChunkProfileId, chunkProfileId.trim());
+        }
+        return mapper.selectList(wrapper.orderByDesc(DocMetadata::getUpdatedAt));
+    }
+
+    public List<DocMetadata> findParsedWithTextKeyNotOnPrimary(
+            UUID libraryId, String tenantId, String primaryChunkProfileId) {
+        return mapper.selectList(
+                parsedNotOnPrimaryWrapper(libraryId, tenantId, primaryChunkProfileId)
+                        .orderByDesc(DocMetadata::getUpdatedAt));
+    }
+
+    public int countParsedWithTextKeyNotOnPrimary(
+            UUID libraryId, String tenantId, String primaryChunkProfileId) {
+        Long count = mapper.selectCount(parsedNotOnPrimaryWrapper(libraryId, tenantId, primaryChunkProfileId));
+        return count != null ? count.intValue() : 0;
+    }
+
+    private static LambdaQueryWrapper<DocMetadata> parsedNotOnPrimaryWrapper(
+            UUID libraryId, String tenantId, String primaryChunkProfileId) {
+        LambdaQueryWrapper<DocMetadata> wrapper = new LambdaQueryWrapper<DocMetadata>()
+                .eq(DocMetadata::getLibraryId, libraryId)
+                .eq(DocMetadata::getTenantId, tenantId.trim())
+                .eq(DocMetadata::isDeleted, false)
+                .eq(DocMetadata::getParseStatus, ParseStatus.PARSED)
+                .isNotNull(DocMetadata::getParsedTextKey)
+                .ne(DocMetadata::getParsedTextKey, "");
+        if (primaryChunkProfileId != null && !primaryChunkProfileId.isBlank()) {
+            String primary = primaryChunkProfileId.trim();
+            wrapper.and(w -> w.ne(DocMetadata::getChunkProfileId, primary).or().isNull(DocMetadata::getChunkProfileId));
+        }
+        return wrapper;
     }
 
     public void deleteByDocId(UUID docId) {
@@ -96,6 +128,25 @@ public class DocMetadataStore {
         return mapper.selectList(new LambdaQueryWrapper<DocMetadata>()
                 .eq(DocMetadata::getLibraryId, libraryId)
                 .eq(DocMetadata::getTenantId, tenantId)
+                .eq(DocMetadata::isDeleted, false)
+                .orderByDesc(DocMetadata::getUpdatedAt));
+    }
+
+    public List<DocMetadata> findActiveByChunkProfile(UUID libraryId, String tenantId, String chunkProfileId) {
+        return mapper.selectList(new LambdaQueryWrapper<DocMetadata>()
+                .eq(DocMetadata::getLibraryId, libraryId)
+                .eq(DocMetadata::getTenantId, tenantId.trim())
+                .eq(DocMetadata::isDeleted, false)
+                .eq(DocMetadata::getChunkProfileId, chunkProfileId.trim())
+                .orderByDesc(DocMetadata::getUpdatedAt));
+    }
+
+    public List<DocMetadata> findActiveByIds(Collection<UUID> docIds) {
+        if (docIds == null || docIds.isEmpty()) {
+            return List.of();
+        }
+        return mapper.selectList(new LambdaQueryWrapper<DocMetadata>()
+                .in(DocMetadata::getDocId, docIds)
                 .eq(DocMetadata::isDeleted, false)
                 .orderByDesc(DocMetadata::getUpdatedAt));
     }
@@ -128,8 +179,48 @@ public class DocMetadataStore {
         return result;
     }
 
+    public List<DocMetadata> findAnyByDocIds(Collection<UUID> docIds) {
+        if (docIds == null || docIds.isEmpty()) {
+            return List.of();
+        }
+        return mapper.selectList(new LambdaQueryWrapper<DocMetadata>().in(DocMetadata::getDocId, docIds));
+    }
+
     public long sumSizeBytesByLibraryId(UUID libraryId) {
         return mapper.sumSizeBytesByLibraryId(libraryId);
+    }
+
+    public int countDistinctChunkProfiles(UUID libraryId) {
+        return mapper.countDistinctChunkProfiles(libraryId);
+    }
+
+    public boolean existsChunkProfileId(UUID libraryId, String chunkProfileId) {
+        if (chunkProfileId == null || chunkProfileId.isBlank()) {
+            return false;
+        }
+        return mapper.existsChunkProfileId(libraryId, chunkProfileId);
+    }
+
+    public List<ChunkProfileStatsRow> listChunkProfileStats(UUID libraryId) {
+        return mapper.listChunkProfileStats(libraryId).stream()
+                .map(row -> new ChunkProfileStatsRow(row.chunkProfileId(), row.docCount(), row.chunkCount()))
+                .toList();
+    }
+
+    public List<DocMetadata> findMissingChunkProfile(UUID libraryId) {
+        return mapper.findMissingChunkProfile(libraryId);
+    }
+
+    public record ChunkProfileStatsRow(String chunkProfileId, int docCount, int chunkCount) {}
+
+    /** 显式写入 ingest_profile_json（含置 null），避免 updateById 默认跳过 null 字段。 */
+    public void updateIngestProfileJson(UUID docId, String ingestProfileJson) {
+        mapper.update(
+                null,
+                new LambdaUpdateWrapper<DocMetadata>()
+                        .eq(DocMetadata::getDocId, docId)
+                        .set(DocMetadata::getIngestProfileJson, ingestProfileJson)
+                        .set(DocMetadata::getUpdatedAt, Instant.now()));
     }
 
     public void save(DocMetadata doc) {

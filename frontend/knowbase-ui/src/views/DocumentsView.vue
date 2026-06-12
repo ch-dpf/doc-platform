@@ -82,14 +82,57 @@
             <el-table-column label="文件名" min-width="200">
               <template #default="{ row }">
                 <span class="name-link">{{ row.fileName }}</span>
+                <el-tag
+                  v-if="row.ingestReport?.multiGranularity"
+                  size="small"
+                  type="success"
+                  effect="plain"
+                  class="doc-gate-tag"
+                  title="多粒度索引：子块检索 + 父段 RAG 上下文"
+                >
+                  多粒度
+                </el-tag>
+                <el-tag
+                  v-if="row.ingestReport?.headerOnlyRatioWarning"
+                  size="small"
+                  type="warning"
+                  effect="plain"
+                  class="doc-gate-tag"
+                >
+                  GATE-01
+                </el-tag>
               </template>
             </el-table-column>
             <el-table-column label="大小" min-width="88" align="center">
               <template #default="{ row }">{{ formatFileSize(row.sizeBytes) }}</template>
             </el-table-column>
-            <el-table-column label="分块" min-width="64" align="center">
+            <el-table-column label="分块" min-width="96" align="center">
               <template #default="{ row }">
-                <span v-if="row.indexStatus === 'INDEXED'">{{ row.chunkCount ?? 0 }}</span>
+                <template v-if="row.indexStatus === 'INDEXED'">
+                  <span>{{ row.chunkCount ?? row.ingestReport?.finalChunkCount ?? 0 }}</span>
+                  <span
+                    v-if="row.ingestReport?.filteredOutCount > 0"
+                    class="list-filtered-hint"
+                    :title="`原始 ${row.ingestReport.rawChunkCount} 块，过滤 ${row.ingestReport.filteredOutCount} 块`"
+                  >
+                    (-{{ row.ingestReport.filteredOutCount }})
+                  </span>
+                </template>
+                <span v-else class="list-empty">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="分块档" min-width="120" align="center">
+              <template #default="{ row }">
+                <template v-if="row.chunkProfileId">
+                  <el-tag
+                    size="small"
+                    :type="row.primaryProfile ? 'success' : 'warning'"
+                    effect="plain"
+                    :title="row.chunkProfileId"
+                  >
+                    {{ row.primaryProfile ? '主档' : '非主' }}
+                  </el-tag>
+                </template>
                 <span v-else class="list-empty">—</span>
               </template>
             </el-table-column>
@@ -148,11 +191,41 @@
             >
               <header class="library-card__head">
                 <h3 class="library-card__title" :title="row.fileName">{{ row.fileName }}</h3>
+                <el-tag
+                  v-if="row.ingestReport?.multiGranularity"
+                  size="small"
+                  type="success"
+                  effect="plain"
+                >
+                  多粒度
+                </el-tag>
+                <el-tag
+                  v-if="row.ingestReport?.headerOnlyRatioWarning"
+                  size="small"
+                  type="warning"
+                  effect="plain"
+                >
+                  GATE-01
+                </el-tag>
               </header>
               <p class="library-card__summary">
                 <span>{{ formatFileSize(row.sizeBytes) }}</span>
                 <span class="library-card__dot">·</span>
-                <span>分块 {{ row.indexStatus === 'INDEXED' ? (row.chunkCount ?? 0) : '—' }}</span>
+                <span>
+                  分块
+                  {{
+                    row.indexStatus === 'INDEXED'
+                      ? (row.chunkCount ?? row.ingestReport?.finalChunkCount ?? 0)
+                      : '—'
+                  }}
+                </span>
+                <span
+                  v-if="row.ingestReport?.filteredOutCount > 0"
+                  class="library-card__dot"
+                >·</span>
+                <span v-if="row.ingestReport?.filteredOutCount > 0" class="list-filtered-hint">
+                  过滤 {{ row.ingestReport.filteredOutCount }}
+                </span>
                 <span class="library-card__dot">·</span>
                 <span>v{{ row.version }}</span>
               </p>
@@ -220,26 +293,62 @@
       append-to-body
       @closed="onBatchReindexClosed"
     >
-      <el-alert
-        type="warning"
-        :closable="false"
-        show-icon
-        title="将按当前知识库配置，对已解析文档重新分块并向量化（异步任务）"
-        style="margin-bottom: 12px"
-      />
-      <p class="batch-reindex-desc">
-        适用场景：变更知识库配置（清洗、分块、Embedding）后，使库内已有文档与最新配置保持一致。
-      </p>
-      <el-descriptions v-if="batchReindexSummary" :column="1" border size="small">
+      <p class="batch-reindex-desc">按当前知识库配置，对已解析文档重新分块并向量化。</p>
+      <el-form label-width="96px" size="small" class="batch-reindex-form">
+        <el-form-item label="分块档范围">
+          <el-select
+            v-model="batchReindexProfileId"
+            clearable
+            placeholder="全库已解析文档"
+            style="width: 100%"
+            :loading="batchReindexProfilesLoading"
+            @change="refreshRebuildCandidates"
+          >
+            <el-option label="全库（不限分块档）" value="" />
+            <el-option
+              v-for="p in batchReindexProfiles"
+              :key="p.chunkProfileId"
+              :label="`${p.primary ? '【主档】' : ''}${p.chunkProfileId}（${p.docCount} 篇）`"
+              :value="p.chunkProfileId"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <el-descriptions v-if="batchReindexSummary && !activeBatchJob" :column="1" border size="small">
         <el-descriptions-item label="知识库">{{ batchReindexSummary.libraryName }}</el-descriptions-item>
         <el-descriptions-item label="租户 ID">{{ filters.tenantId }}</el-descriptions-item>
-        <el-descriptions-item label="可重索引文档">
-          已解析且存有 parsed.txt 的文档（预估由服务端统计）
+        <el-descriptions-item label="候选文档">
+          {{ batchReindexSummary.candidateCount ?? '—' }} 篇（已解析且存有 parsed.txt）
+        </el-descriptions-item>
+        <el-descriptions-item v-if="batchReindexProfileId" label="分块档">
+          <code>{{ batchReindexProfileId }}</code>
         </el-descriptions-item>
       </el-descriptions>
+      <div v-if="activeBatchJob" class="batch-reindex-progress">
+        <p class="batch-reindex-progress__title">
+          {{ batchJobTypeLabel(activeBatchJob.jobType) }}
+          · {{ batchJobStatusLabel(activeBatchJob.status) }}
+        </p>
+        <el-progress
+          :percentage="activeBatchJob.progressPercent"
+          :status="batchJobProgressStatus(activeBatchJob.status)"
+        />
+        <p class="batch-reindex-progress__meta">
+          {{ activeBatchJob.completedCount }} / {{ activeBatchJob.totalCount }} 完成
+          <span v-if="activeBatchJob.failedCount">，{{ activeBatchJob.failedCount }} 失败</span>
+        </p>
+      </div>
       <template #footer>
-        <el-button round @click="batchReindexVisible = false">取消</el-button>
-        <el-button type="primary" round :loading="batchReindexLoading" @click="submitBatchReindex">
+        <el-button round @click="batchReindexVisible = false">
+          {{ activeBatchJob ? '关闭' : '取消' }}
+        </el-button>
+        <el-button
+          v-if="!activeBatchJob"
+          type="primary"
+          round
+          :loading="batchReindexLoading"
+          @click="submitBatchReindex"
+        >
           提交批量重索引
         </el-button>
       </template>
@@ -248,14 +357,21 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref, watch } from 'vue'
+import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Grid, List, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listDocuments, deleteDocument, purgeDocument, approveDocumentIndex } from '../api/ingest'
-import { listVectorLibraries } from '../api/library'
-import { rebuildLibrary } from '../api/vector'
+import { listChunkProfiles, listVectorLibraries } from '../api/library'
+import { getRebuildCandidates, rebuildLibrary } from '../api/vector'
+import { useBatchJobPoll } from '../composables/useBatchJobPoll'
 import { useLibraryContext } from '../composables/useLibraryContext'
+import {
+  batchJobProgressStatus,
+  batchJobStatusLabel,
+  batchJobTypeLabel
+} from '../utils/batchJobDisplay'
+import { BATCH_JOB_DONE_EVENT } from '../utils/batchJobEvents'
 import PageCard from '../components/PageCard.vue'
 import {
   documentStatusType,
@@ -285,6 +401,10 @@ const size = ref(20)
 const batchReindexVisible = ref(false)
 const batchReindexLoading = ref(false)
 const batchReindexSummary = ref(null)
+const batchReindexProfileId = ref('')
+const batchReindexProfiles = ref([])
+const batchReindexProfilesLoading = ref(false)
+const { activeJob: activeBatchJob, start: startBatchJobPoll, stop: stopBatchJobPoll } = useBatchJobPoll()
 
 const DOC_VIEW_MODE_KEY = 'docListViewMode'
 const viewMode = ref(localStorage.getItem(DOC_VIEW_MODE_KEY) === 'card' ? 'card' : 'list')
@@ -407,16 +527,58 @@ async function hardPurge(row) {
   load(page.value)
 }
 
-function openBatchReindexDialog() {
+async function loadBatchReindexProfiles() {
+  if (!libraryId.value) return
+  batchReindexProfilesLoading.value = true
+  try {
+    const { data } = await listChunkProfiles(libraryId.value)
+    batchReindexProfiles.value = data || []
+  } catch {
+    batchReindexProfiles.value = []
+  } finally {
+    batchReindexProfilesLoading.value = false
+  }
+}
+
+async function refreshRebuildCandidates() {
+  if (!libraryId.value || !filters.tenantId?.trim()) return
+  try {
+    const params = {
+      libraryId: libraryId.value,
+      tenantId: filters.tenantId.trim()
+    }
+    if (batchReindexProfileId.value) {
+      params.chunkProfileId = batchReindexProfileId.value
+    }
+    const { data } = await getRebuildCandidates(params)
+    if (batchReindexSummary.value) {
+      batchReindexSummary.value.candidateCount = data.candidateCount
+    }
+  } catch {
+    if (batchReindexSummary.value) {
+      batchReindexSummary.value.candidateCount = null
+    }
+  }
+}
+
+async function openBatchReindexDialog() {
   const lib = libraries.value.find((l) => l.libraryId === libraryId.value)
+  batchReindexProfileId.value = ''
   batchReindexSummary.value = {
-    libraryName: lib?.name || libraryId.value || '—'
+    libraryName: lib?.name || libraryId.value || '—',
+    candidateCount: null
   }
   batchReindexVisible.value = true
+  await loadBatchReindexProfiles()
+  await refreshRebuildCandidates()
 }
 
 function onBatchReindexClosed() {
+  stopBatchJobPoll()
+  activeBatchJob.value = null
   batchReindexSummary.value = null
+  batchReindexProfileId.value = ''
+  batchReindexProfiles.value = []
 }
 
 async function submitBatchReindex() {
@@ -426,18 +588,36 @@ async function submitBatchReindex() {
   }
   batchReindexLoading.value = true
   try {
-    const { data } = await rebuildLibrary({
+    const body = {
       libraryId: libraryId.value,
       tenantId: filters.tenantId.trim()
-    })
-    if (data.candidateCount > 0) {
+    }
+    if (batchReindexProfileId.value) {
+      body.chunkProfileId = batchReindexProfileId.value
+    }
+    const { data } = await rebuildLibrary(body)
+    if (data.candidateCount > 0 && data.jobId) {
       ElMessage.success(data.message || `已提交 ${data.candidateCount} 个文档的重索引任务`)
+      startBatchJobPoll(data.jobId, {
+        onDone: async (job) => {
+          if (job.status === 'COMPLETED') {
+            ElMessage.success('批量重索引已完成')
+          } else if (job.status === 'PARTIAL') {
+            ElMessage.warning(`批量重索引部分失败（${job.failedCount} 项）`)
+          } else if (job.status === 'FAILED') {
+            ElMessage.error(job.lastError || '批量重索引失败')
+          }
+          await load(page.value)
+        }
+      })
+    } else if (data.candidateCount > 0) {
+      ElMessage.success(data.message || `已提交 ${data.candidateCount} 个文档的重索引任务`)
+      batchReindexVisible.value = false
+      await load(page.value)
     } else {
       ElMessage.warning(data.message || '没有可重索引的文档')
+      batchReindexVisible.value = false
     }
-    batchReindexVisible.value = false
-    router.replace({ path: '/documents' })
-    await load(page.value)
   } finally {
     batchReindexLoading.value = false
   }
@@ -475,13 +655,27 @@ watch(
   { immediate: true }
 )
 
+function onBatchJobDone(event) {
+  const job = event?.detail
+  if (!job?.libraryId || !libraryId.value) return
+  if (job.libraryId !== libraryId.value) return
+  if (job.jobType === 'MIGRATE' || job.jobType === 'REBUILD' || job.jobType === 'ARCHIVE') {
+    load(page.value)
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener(BATCH_JOB_DONE_EVENT, onBatchJobDone)
   await loadLibraries()
   if (route.query.libraryId && typeof route.query.libraryId === 'string') {
     libraryId.value = route.query.libraryId
     persist()
   }
   await load(1)
+})
+
+onUnmounted(() => {
+  window.removeEventListener(BATCH_JOB_DONE_EVENT, onBatchJobDone)
 })
 </script>
 
@@ -494,6 +688,15 @@ onMounted(async () => {
 .stat-chip strong {
   color: #0f172a;
 }
+.doc-gate-tag {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.list-filtered-hint {
+  margin-left: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+}
 .library-table--fixed {
   width: 100%;
 }
@@ -505,5 +708,23 @@ onMounted(async () => {
   font-size: 13px;
   color: #64748b;
   line-height: 1.5;
+}
+.batch-reindex-progress {
+  margin-top: 8px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.batch-reindex-progress__title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+.batch-reindex-progress__meta {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #64748b;
 }
 </style>

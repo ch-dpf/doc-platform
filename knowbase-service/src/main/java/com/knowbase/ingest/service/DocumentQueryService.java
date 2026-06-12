@@ -6,6 +6,7 @@ import com.knowbase.ingest.dto.DocumentListQuery;
 import com.knowbase.ingest.dto.DocumentResponse;
 import com.knowbase.ingest.dto.PageResponse;
 import com.knowbase.ingest.support.DocMetadataStore;
+import com.knowbase.library.service.LibraryConfigResolver;
 import com.knowbase.vector.dto.DocChunkCountRow;
 import com.knowbase.vector.dto.DocVersionPair;
 import com.knowbase.vector.mapper.DocumentChunkMapper;
@@ -21,10 +22,15 @@ public class DocumentQueryService {
 
     private final DocMetadataStore repository;
     private final DocumentChunkMapper chunkMapper;
+    private final LibraryConfigResolver libraryConfigResolver;
 
-    public DocumentQueryService(DocMetadataStore repository, DocumentChunkMapper chunkMapper) {
+    public DocumentQueryService(
+            DocMetadataStore repository,
+            DocumentChunkMapper chunkMapper,
+            LibraryConfigResolver libraryConfigResolver) {
         this.repository = repository;
         this.chunkMapper = chunkMapper;
+        this.libraryConfigResolver = libraryConfigResolver;
     }
 
     public PageResponse<DocumentResponse> list(DocumentListQuery query) {
@@ -32,7 +38,7 @@ public class DocumentQueryService {
         Map<String, Integer> chunkCounts = resolveChunkCounts(page.getRecords());
         return new PageResponse<>(
                 page.getRecords().stream()
-                        .map(doc -> DocumentResponse.from(doc, chunkCounts.get(chunkKey(doc))))
+                        .map(doc -> toResponse(doc, chunkCounts.get(chunkKey(doc))))
                         .toList(),
                 page.getTotal(),
                 query.page(),
@@ -43,7 +49,16 @@ public class DocumentQueryService {
         DocMetadata doc = repository.findByDocIdAndDeletedFalse(docId)
                 .orElseThrow(() -> new DocumentNotFoundException(docId));
         Integer chunkCount = resolveChunkCounts(List.of(doc)).get(chunkKey(doc));
-        return DocumentResponse.from(doc, chunkCount);
+        return toResponse(doc, chunkCount);
+    }
+
+    private DocumentResponse toResponse(DocMetadata doc, Integer chunkCount) {
+        String primary = primaryChunkProfileId(doc.getLibraryId());
+        return DocumentResponse.from(doc, chunkCount, primary);
+    }
+
+    private String primaryChunkProfileId(UUID libraryId) {
+        return libraryConfigResolver.config(libraryId).getPrimaryChunkProfileId();
     }
 
     private Map<String, Integer> resolveChunkCounts(List<DocMetadata> docs) {

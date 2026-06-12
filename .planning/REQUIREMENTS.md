@@ -1,9 +1,11 @@
-# Requirements: 入库质量规范里程碑
+# Requirements
 
-**Defined:** 2026-06-10
-**Core Value:** 预览所见分块与入库结果一致，且分块质量足以支撑检索与问答
+**Defined:** 2026-06-10  
+**Core Value:** 预览所见分块与入库结果一致，且分块质量足以支撑检索与 RAG 可答
 
-## v1 Requirements
+> **战略更新（2026-06-10）：** v2 起 **Greenfield 实现、无数据兼容**；v1 需求为规范基线；v2/v3 见下方草案。
+
+## v1 Requirements（规范里程碑 — Complete）
 
 ### Pipeline Documentation（流程梳理）
 
@@ -19,12 +21,14 @@
 - [x] **TYPE-04**: TXT/Markdown 类型说明：编码检测、段落分块参数建议
 - [x] **TYPE-05**: 各类型「错误设定示例」与「预期分块质量问题」对照（运营可读）
 
-### Library Presets（库预设）
+### Library Presets（库预设）— **Superseded 2026-06-10**
 
-- [x] **PRESET-01**: 定义至少 4 种库预设：周报 Excel 库、制度/长文库、报销扫描库、通用混合库
-- [x] **PRESET-02**: 每预设包含完整 `parsing` + `cleaning` + `chunking` 子配置及一句话适用说明
-- [x] **PRESET-03**: 建库向导可选择预设并填充表单（`CreateLibraryWizard.vue`）
-- [x] **PRESET-04**: 编辑库设置时可查看当前预设来源或「自定义」状态
+> 库物种 preset（垂直/通用、场景模板）已废止。建库统一 `libraryDefaults.js`；MIME 默认由 `parsing.mimeAwareDefaults` 控制。下列 PRESET 需求仅作 Phase 3 历史记录。
+
+- [x] ~~**PRESET-01**~~: ~~4 种场景库预设~~ → 已删除 `libraryPresets.js`
+- [x] ~~**PRESET-02**~~: ~~预设子配置~~ → 并入 `libraryDefaults` + 向导 Step 3
+- [x] ~~**PRESET-03**~~: ~~向导选预设~~ → 已移除 Step 1 库类型卡片
+- [x] ~~**PRESET-04**~~: ~~编辑页 preset 标签~~ → 已移除；无 `libraryPresetId`
 
 ### Preview–Index Parity（预览与入库一致）
 
@@ -38,25 +42,52 @@
 - [x] **CFG-01**: `diffLibraryConfig` 正确比较 `parsing.*` / `chunking.*` / `cleaning.*` 嵌套字段
 - [x] **CFG-02**: 向导/编辑页对「表格提取」「OCR」等选项展示简短影响说明（非仅字段名）
 
-## v2 Requirements
+## v2 Requirements（目标态建仓入库 — Draft）
 
-### Quality Gates
+> 详见 `.planning/MILESTONE-v2-DRAFT.md`；正式化 via `/gsd-new-milestone`
 
-- **GATE-01**: 入库前自动检测「仅表头块占比过高」并警告
-- **GATE-02**: 入库报告展示每文档 chunk 数、过滤数、平均块长
+### Greenfield Platform
 
-### Structured Ingest
+- **GF-01**: 按目标态重建 PG schema，**不要求**迁移旧数据
+- **GF-02**: 后端/前端代码可按目标态**整体重写**，技术栈不变
 
-- **STRUCT-01**: Excel 行级结构化入库（另里程碑）
+### Target-State Ingest（RAG 上游）
+
+- **ING-01**: 建库向导 + `libraryDefaults` + §6 语义边界指引（无库物种二分）
+- **ING-02**: 三层配置：系统默认 / 库默认 / 采集 ingest profile
+- **ING-03**: 入库管道：解析 → 清洗 → 分块 → filter → 嵌入 → `document_chunk`
+- **ING-04**: 预览 = 入库（单一 chunk 管道契约）
+- **ING-05**: 按 TYPE 矩阵运行时生效（PDF/Word/Excel/TXT/MD）
+- **ING-06**: hybrid 检索 API + chunk metadata 契约稳定（供 v3 消费）
+
+### Quality Gates（v2 可选波次）
+
+- **GATE-01**: 入库前「表头块占比过高」警告
+- **GATE-02**: 入库报告：chunk 数、过滤数、平均块长
+
+### Deferred
+
+- **STRUCT-01**: Excel 行级结构化入库 — 另里程碑
+
+## v3 Requirements（RAG 智能问答 — Draft）
+
+> 详见 `.planning/MILESTONE-v3-DRAFT.md`；**依赖 v2 完成**
+
+- **RAG-01**: 库内问答（检索 + Ollama 生成 + 引用 chunk）
+- **RAG-02**: 多轮对话与会话持久化
+- **RAG-03**: 引用溯源 UI（文档/块跳转）
+- **RAG-04**: 检索 trace（召回块、分数、过滤原因）
+- **RAG-05**: 流式 SSE 生成
+- **RAG-06**: RAG 可答率评测样本集（D-16 工程化）
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| RAG 问答规则扩展 | 本里程碑解决入库源头质量，非生成层 |
-| 新向量模型/重排模型选型 | 与分块质量无直接关系 |
-| 完整 POI Excel 解析 | 推迟到结构化里程碑 |
-| 前端自动化测试框架 | v1 用手工 + 后端单测验收 |
+| 历史数据迁移 | 用户明确可全量清除 |
+| 旧代码 API 兼容 | Greenfield 重写 |
+| 新向量/LLM 平台选型 | 技术栈锁定 |
+| `document_record` 双轨 | 另立里程碑 |
 
 ## Traceability
 
@@ -89,4 +120,4 @@
 
 ---
 *Requirements defined: 2026-06-10*
-*Last updated: 2026-06-10 after Phase 4 verification (PARITY-01–04) and Phase 5 execution (CFG-01–02)*
+*Last updated: 2026-06-10 — Greenfield strategy; v2 ingest + v3 RAG requirement drafts*

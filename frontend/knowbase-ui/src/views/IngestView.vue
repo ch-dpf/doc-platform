@@ -8,19 +8,10 @@
       </template>
 
       <div class="library-page-content ingest-layout">
-        <el-tabs v-model="mainTab" class="ingest-main-tabs" @tab-change="onMainTabChange">
-          <el-tab-pane name="workflow">
-            <template #label>
-              <span class="ingest-tab-label">
-                选材料与预览
-                <el-badge v-if="validFiles.length" :value="validFiles.length" type="primary" class="ingest-tab-badge" />
-              </span>
-            </template>
-
-            <div class="ingest-tab-body ingest-tab-body--workflow">
-              <div class="ingest-workspace">
-                <div class="workflow-split">
-                  <div class="ingest-card ingest-card--pick">
+        <div class="ingest-workspace">
+          <div class="workflow-split">
+            <div class="ingest-column ingest-column--left">
+              <div class="ingest-card ingest-card--pick">
                     <header class="pick-head">
                       <span class="ingest-card__title">选择材料</span>
                       <div v-if="fileList.length" class="pick-head__stats pick-stats">
@@ -193,9 +184,112 @@
                         </div>
                       </div>
                     </div>
-                  </div>
+              </div>
+            </div>
 
-                  <div class="ingest-card ingest-card--preview">
+            <div class="ingest-column ingest-column--right">
+              <section class="ingest-card settings-section ingest-card--task">
+                <header class="settings-section__head">
+                  <span class="ingest-card__title">本次任务</span>
+                  <span class="settings-section__hint">本批可覆盖的采集规则</span>
+                </header>
+                <el-form label-width="96px" label-position="left" size="small" class="settings-form">
+                  <el-form-item label="租户 ID" required>
+                    <el-input v-model="tenantId" placeholder="demo" style="max-width: 240px" @change="onTenantChange" />
+                  </el-form-item>
+                  <el-form-item label="自动索引">
+                    <el-switch
+                      v-model="autoIndex"
+                      :disabled="reviewModeEnabled || ingestMode === 'review'"
+                      inline-prompt
+                      active-text="开"
+                      inactive-text="关"
+                    />
+                    <span v-if="reviewModeEnabled" class="hint-inline">库已开启人工审核，解析后不自动索引</span>
+                  </el-form-item>
+                  <el-form-item label="文档元数据">
+                    <el-input
+                      v-model="documentMetadataText"
+                      type="textarea"
+                      :rows="3"
+                      placeholder='可选 JSON，如 {"department":"研发","docType":"周报"}'
+                      style="max-width: 360px"
+                    />
+                  </el-form-item>
+                </el-form>
+                <p v-if="primaryChunkProfileId" class="settings-form__tip settings-form__tip--profile">
+                  库主分块档
+                  <code class="chunk-profile-code">{{ primaryChunkProfileId }}</code>
+                  · 默认问答仅检索此档
+                  <template v-if="activeProfileCount > 0">
+                    · 当前活跃 {{ activeProfileCount }}/{{ maxActiveChunkProfiles }} 档
+                  </template>
+                </p>
+                <el-alert
+                  v-if="!chunkOverrideAllowed"
+                  class="settings-lock-alert"
+                  type="info"
+                  :closable="false"
+                  show-icon
+                  title="已禁止自定义分块档"
+                  description="该库仅允许使用库默认分块配置入库，不可覆盖分块大小与重叠。"
+                />
+                <el-collapse
+                  v-if="chunkOverrideAllowed"
+                  v-model="advancedChunkOpen"
+                  class="ingest-advanced-collapse"
+                >
+                  <el-collapse-item name="chunk">
+                    <template #title>
+                      <span class="ingest-advanced-collapse__title">分块数值覆盖</span>
+                      <el-tag
+                        v-if="ingestProfileActive"
+                        size="small"
+                        type="warning"
+                        effect="plain"
+                        class="ingest-advanced-collapse__tag"
+                      >
+                        已启用
+                      </el-tag>
+                    </template>
+                    <p class="settings-form__tip">
+                      默认使用库配置（{{ rulesSummary?.chunkSize }} / {{ rulesSummary?.chunkOverlap }}）。
+                      仅当本批文件需要不同分块大小时启用。
+                    </p>
+                    <el-form label-width="96px" label-position="left" size="small" class="settings-form">
+                      <el-form-item label="启用覆盖">
+                        <el-switch v-model="ingestProfileForm.enabled" inline-prompt active-text="开" inactive-text="关" />
+                      </el-form-item>
+                      <template v-if="ingestProfileForm.enabled">
+                        <el-form-item label="分块大小">
+                          <el-input-number
+                            v-model="ingestProfileForm.chunkSize"
+                            :min="100"
+                            :max="8000"
+                            controls-position="right"
+                            :placeholder="String(libraryChunkDefaults.chunkSize)"
+                            class="ingest-profile-input"
+                          />
+                          <span class="hint-inline">库默认 {{ libraryChunkDefaults.chunkSize }}</span>
+                        </el-form-item>
+                        <el-form-item label="分块重叠">
+                          <el-input-number
+                            v-model="ingestProfileForm.chunkOverlap"
+                            :min="0"
+                            :max="2000"
+                            controls-position="right"
+                            :placeholder="String(libraryChunkDefaults.chunkOverlap)"
+                            class="ingest-profile-input"
+                          />
+                          <span class="hint-inline">库默认 {{ libraryChunkDefaults.chunkOverlap }}</span>
+                        </el-form-item>
+                      </template>
+                    </el-form>
+                  </el-collapse-item>
+                </el-collapse>
+              </section>
+
+              <div class="ingest-card ingest-card--preview">
               <header class="ingest-card__head ingest-card__head--fixed ingest-card__head--compact">
                 <div class="ingest-card__head-left">
                   <span class="ingest-card__title">解析预览</span>
@@ -217,6 +311,15 @@
                   >
                     {{ previewedFileCount }}/{{ validFiles.length }} 已预览
                   </el-tag>
+                  <el-tag
+                    v-if="ingestProfileHint"
+                    type="warning"
+                    size="small"
+                    effect="plain"
+                    :title="ingestProfileHint"
+                  >
+                    覆盖 {{ ingestProfileHint }}
+                  </el-tag>
                   <el-button
                     size="small"
                     round
@@ -233,7 +336,7 @@
                 <template v-if="selectedPreviewFile">
                   已选中 <strong>{{ displayFileName(selectedPreviewFile.name) }}</strong>，点击「生成预览」查看解析与分块效果
                 </template>
-                <template v-else>在左侧选择文件或文件夹，再点选列表中的文件进行预览</template>
+                <template v-else>在左侧已选文件中点选一项，再点击「生成预览」</template>
               </div>
 
               <div v-else class="preview-body">
@@ -282,9 +385,48 @@
                     >
                       已过滤 {{ previewStats.filteredOutCount }} 个表头块
                     </el-tag>
+                    <el-tag
+                      v-if="previewStats.chunkProfileId"
+                      size="small"
+                      :type="previewStats.primaryProfile ? 'success' : 'warning'"
+                      effect="plain"
+                      round
+                      class="preview-overview__tag"
+                      :title="previewStats.chunkProfileId"
+                    >
+                      {{ previewStats.primaryProfile ? '主档' : '非主档' }}
+                      {{ previewStats.chunkProfileId }}
+                    </el-tag>
+                    <template v-if="previewStats.pipelineTrace">
+                      <el-tag size="small" effect="plain" round class="preview-overview__tag">
+                        {{ previewStats.pipelineTrace.familyLabel }}
+                      </el-tag>
+                      <el-tag size="small" type="info" effect="plain" round class="preview-overview__tag">
+                        {{ previewStats.pipelineTrace.strategyLabel }}
+                      </el-tag>
+                      <el-tag
+                        v-if="previewStats.pipelineTrace.multiGranularity"
+                        size="small"
+                        type="success"
+                        effect="plain"
+                        round
+                        class="preview-overview__tag"
+                        title="与入库一致：子块检索，父段扩展 RAG 上下文"
+                      >
+                        多粒度
+                      </el-tag>
+                      <el-tag
+                        v-if="previewStats.pipelineTrace.adjustmentLabel"
+                        size="small"
+                        type="warning"
+                        effect="plain"
+                        round
+                        class="preview-overview__tag"
+                      >
+                        {{ previewStats.pipelineTrace.adjustmentLabel }}
+                      </el-tag>
+                    </template>
                   </div>
-                  <p class="preview-overview-hint">{{ INGEST_CHUNK_PREVIEW_HINT }}</p>
-
                   <el-tabs v-model="previewTab" class="preview-tabs">
                     <el-tab-pane label="原文摘录" name="text">
                       <div class="preview-pane preview-pane--text">
@@ -311,10 +453,11 @@
                   </el-tabs>
                 </template>
               </div>
-                  </div>
-                </div>
+              </div>
+            </div>
+          </div>
 
-                <div v-if="uploading || batchResult || singleResult" class="ingest-card ingest-card--result">
+          <div v-if="uploading || batchResult || singleResult" class="ingest-card ingest-card--result">
               <header class="ingest-card__head">
                 <span class="ingest-card__title">入库结果</span>
               </header>
@@ -397,179 +540,27 @@
                 </div>
               </div>
             </div>
-              </div>
 
-              <footer class="ingest-action-bar">
-                <div class="ingest-action-bar__hint">
-                  <template v-if="!validFiles.length">请先选择材料</template>
-                  <template v-else-if="!previewConfirmed">请至少预览 1 份文件后再入库（可在列表中切换文件逐份预览）</template>
-                  <template v-else-if="filesToUpload.length">
-                    将入库 <strong>{{ filesToUpload.length }}</strong> 个文件
-                    <span v-if="duplicateFiles.length" class="hint-inline"> · 重复策略见「规则与配置」</span>
-                  </template>
-                  <template v-else>跳过重复后无可入库文件</template>
-                </div>
-                <div class="ingest-action-bar__btns">
-                  <el-button round size="small" @click="switchMainTab('settings')">规则与配置</el-button>
-                  <el-button v-if="batchResult || singleResult" round size="small" @click="resetIngest">继续采集</el-button>
-                  <el-button v-if="batchResult || singleResult" round size="small" @click="goDocuments">文档库</el-button>
-                  <el-button
-                    type="primary"
-                    round
-                    :loading="loading"
-                    :disabled="!canSubmit"
-                    @click="submitUpload"
-                  >
-                    {{ submitLabel }}
-                  </el-button>
-                </div>
-              </footer>
+          <footer class="ingest-action-bar">
+            <div class="ingest-action-bar__hint">{{ footerHint }}</div>
+            <div class="ingest-action-bar__btns">
+              <el-button v-if="batchResult || singleResult" round size="small" @click="resetIngest">继续采集</el-button>
+              <el-button v-if="batchResult || singleResult" round size="small" @click="goDocuments">文档库</el-button>
+              <el-button
+                v-else
+                type="primary"
+                round
+                :loading="loading"
+                :disabled="!canSubmit"
+                @click="submitUpload"
+              >
+                {{ submitLabel }}
+              </el-button>
             </div>
-          </el-tab-pane>
-
-          <el-tab-pane label="规则与配置" name="settings">
-            <div class="ingest-tab-body ingest-tab-body--settings">
-              <div class="settings-panel">
-                <section class="ingest-card settings-section">
-                  <header class="settings-section__head">
-                    <span class="ingest-card__title">库默认规则</span>
-                    <el-tag size="small" type="info" effect="plain">只读</el-tag>
-                    <el-tag v-if="lockPipeline" size="small" type="warning" effect="plain">处理已锁定</el-tag>
-                    <el-button link type="primary" size="small" class="ingest-card__action" @click="goEditRules">
-                      打开完整配置
-                    </el-button>
-                  </header>
-                  <el-alert
-                    v-if="lockPipeline"
-                    class="settings-lock-alert"
-                    type="warning"
-                    :closable="false"
-                    show-icon
-                    title="库内已有文档"
-                    description="完整配置中「处理」页（解析、清洗、分块、向量化）已锁定；本次采集不可覆盖分块大小。"
-                  />
-                  <div v-if="rulesSummary" class="settings-rules-grid">
-                    <div class="settings-kv">
-                      <span class="settings-kv__label">文档采集</span>
-                      <span class="settings-kv__value">{{ fixedIngestAccessLabel }}</span>
-                    </div>
-                    <div class="settings-kv">
-                      <span class="settings-kv__label">支持类型</span>
-                      <span class="settings-kv__value">{{ supportedTypesLabel }}</span>
-                    </div>
-                    <div class="settings-kv">
-                      <span class="settings-kv__label">文本清洗</span>
-                      <span class="settings-kv__value">{{ rulesSummary.textNormalizationEnabled ? '开启' : '关闭' }}</span>
-                    </div>
-                    <div class="settings-kv">
-                      <span class="settings-kv__label">去重段落</span>
-                      <span class="settings-kv__value">{{ libraryConfig?.cleaning?.removeDuplicateParagraphs !== false ? '开启' : '关闭' }}</span>
-                    </div>
-                    <div class="settings-kv">
-                      <span class="settings-kv__label">分块策略</span>
-                      <span class="settings-kv__value">{{ rulesSummary.chunkingStrategy }}</span>
-                    </div>
-                    <div class="settings-kv">
-                      <span class="settings-kv__label">块大小 / 重叠</span>
-                      <span class="settings-kv__value">{{ rulesSummary.chunkSize }} / {{ rulesSummary.chunkOverlap }}</span>
-                    </div>
-                    <div class="settings-kv">
-                      <span class="settings-kv__label">Embedding</span>
-                      <span class="settings-kv__value">{{ rulesSummary.embeddingModel }}（{{ rulesSummary.embeddingDimension }} 维）</span>
-                    </div>
-                    <div v-if="constraints" class="settings-kv">
-                      <span class="settings-kv__label">上传限制</span>
-                      <span class="settings-kv__value">≤ {{ constraints.maxFileSizeDisplay }} · {{ uploadLimit }} 个/次</span>
-                    </div>
-                  </div>
-                  <el-skeleton v-else :rows="4" animated />
-                </section>
-
-                <section class="ingest-card settings-section">
-                  <header class="settings-section__head">
-                    <span class="ingest-card__title">本次覆盖</span>
-                    <span class="settings-section__hint">仅影响当前采集任务</span>
-                  </header>
-                  <el-form label-width="96px" label-position="left" size="small" class="settings-form">
-                    <el-form-item label="租户 ID" required>
-                      <el-input v-model="tenantId" placeholder="demo" style="max-width: 240px" @change="onTenantChange" />
-                    </el-form-item>
-                    <el-form-item label="自动索引">
-                      <el-switch
-                        v-model="autoIndex"
-                        :disabled="reviewModeEnabled || ingestMode === 'review'"
-                        inline-prompt
-                        active-text="开"
-                        inactive-text="关"
-                      />
-                      <span v-if="reviewModeEnabled" class="hint-inline">库已开启人工审核，解析后不自动索引</span>
-                    </el-form-item>
-                    <el-form-item label="文档元数据">
-                      <el-input
-                        v-model="documentMetadataText"
-                        type="textarea"
-                        :rows="3"
-                        placeholder='可选 JSON，如 {"department":"研发","docType":"周报"}'
-                        style="max-width: 360px"
-                      />
-                    </el-form-item>
-                    <el-form-item v-if="lockPipeline" label="分块参数">
-                      <span class="settings-kv__value">与库配置一致</span>
-                      <p class="settings-form__tip">库内已有文档，分块参数须与库配置一致</p>
-                    </el-form-item>
-                  </el-form>
-                </section>
-
-                <section class="ingest-card settings-section">
-                  <header class="settings-section__head">
-                    <span class="ingest-card__title">入库策略</span>
-                  </header>
-                  <el-form label-width="96px" label-position="left" size="small" class="settings-form">
-                    <el-form-item label="入库模式">
-                      <el-radio-group v-model="ingestMode" size="small">
-                        <el-radio-button label="immediate">立即入库</el-radio-button>
-                        <el-radio-button label="review" :disabled="!reviewModeEnabled">提交审核</el-radio-button>
-                      </el-radio-group>
-                      <p v-if="reviewModeEnabled" class="settings-form__tip">库已开启人工审核</p>
-                    </el-form-item>
-                    <el-form-item label="重复处理">
-                      <template v-if="duplicatePolicyLocked">
-                        <span class="settings-kv__value">{{ duplicatePolicyLabel }}</span>
-                        <p class="settings-form__tip">跟随知识库版本策略，不可在本页修改</p>
-                      </template>
-                      <el-radio-group v-else v-model="duplicatePolicy" size="small">
-                        <el-radio label="overwrite">覆盖（升版本重处理）</el-radio>
-                        <el-radio label="skip">跳过重复项</el-radio>
-                        <el-radio label="keep-history">新建版本</el-radio>
-                      </el-radio-group>
-                    </el-form-item>
-                  </el-form>
-                  <div v-if="duplicateFiles.length" class="notice notice--warn">
-                    <div class="notice__title">当前已选 {{ duplicateFiles.length }} 个重复文件名</div>
-                    <div class="notice__tags">
-                      <el-tag v-for="f in duplicateFiles" :key="f" size="small" type="warning" effect="plain">
-                        {{ f }}
-                      </el-tag>
-                    </div>
-                  </div>
-                </section>
-              </div>
-
-              <footer class="ingest-action-bar ingest-action-bar--secondary">
-                <span class="hint">配置完成后返回「选材料与预览」继续采集</span>
-                <el-button type="primary" round size="small" @click="switchMainTab('workflow')">返回采集</el-button>
-              </footer>
-            </div>
-          </el-tab-pane>
-        </el-tabs>
+          </footer>
+        </div>
       </div>
     </PageCard>
-
-    <EditLibrarySettingsDrawer
-      v-model="editDrawerVisible"
-      :library-id="libraryId"
-      @saved="onLibrarySettingsSaved"
-    />
   </div>
 </template>
 
@@ -589,10 +580,17 @@ import {
 import { previewChunks as fetchChunkPreview } from '../api/chunk'
 import { getVectorLibrary, getUploadTask } from '../api/library'
 import { useLibraryContext } from '../composables/useLibraryContext'
-import EditLibrarySettingsDrawer from '../components/EditLibrarySettingsDrawer.vue'
-import { buildRulesSummary, FIXED_INGEST_ACCESS_LABEL, hasIngestedContent } from '../utils/libraryConfig'
-import { FILE_TYPE_OPTIONS } from '../utils/libraryDefaults'
-import { INGEST_CHUNK_PREVIEW_HINT, libraryChunkParams } from '../utils/chunkPreviewSample'
+import { pipelineTraceSummary } from '../utils/contentPipeline'
+import { buildRulesSummary } from '../utils/libraryConfig'
+import { flattenLibraryConfig, libraryWithFlatConfig } from '../utils/libraryConfigView'
+import { FILE_TYPE_OPTIONS, SYSTEM_SUPPORTED_FILE_TYPES } from '../utils/libraryDefaults'
+import { libraryChunkParams } from '../utils/chunkPreviewSample'
+import {
+  buildIngestProfileJson,
+  emptyIngestProfileForm,
+  formatIngestProfileSummary,
+  validateIngestProfileForm
+} from '../utils/ingestProfile'
 import { filterFolderFiles, matchesSupportedType } from '../utils/supportedFileTypes'
 import {
   batchFailureSummary,
@@ -618,7 +616,6 @@ const libraryConfig = ref(null)
 const rulesSummary = ref(null)
 const constraints = ref(null)
 const existingDocs = ref([])
-const editDrawerVisible = ref(false)
 
 const autoIndex = ref(true)
 const fileList = ref([])
@@ -636,19 +633,14 @@ const previewTab = ref('text')
 
 const duplicatePolicy = ref('overwrite')
 const ingestMode = ref('immediate')
-const mainTab = ref('workflow')
 const documentMetadataText = ref('')
+const ingestProfileForm = ref(emptyIngestProfileForm())
+const advancedChunkOpen = ref([])
 
 const VERSION_STRATEGY_TO_POLICY = {
   overwrite: 'overwrite',
   incremental: 'skip',
   'keep-history': 'keep-history'
-}
-
-const DUPLICATE_POLICY_LABELS = {
-  overwrite: '覆盖（升版本重处理）',
-  skip: '跳过重复项',
-  'keep-history': '新建版本'
 }
 
 const uploadLimit = computed(() => constraints.value?.maxBatchFiles ?? 20)
@@ -660,23 +652,23 @@ const batchCapacityAlert = computed(() => {
   if (!failed.length) return ''
   if (!failed.every((item) => isCapacityLimitError(item.errorCode))) return ''
   if (failed.some((item) => item.errorCode === 'LIBRARY_DOCUMENT_LIMIT_EXCEEDED')) {
-    return '文档数量已达库上限：请提高容量配置或删除部分文档后再试。'
+    return '文档数量已达库上限：请联系管理员调整配额或删除部分文档后再试。'
   }
   if (failed.some((item) => item.errorCode === 'LIBRARY_SIZE_LIMIT_EXCEEDED')) {
-    return '知识库总大小已达上限：请提高总大小配置或清理大文件 / 历史版本后再试。'
+    return '知识库总大小已达上限：请联系管理员调整配额或清理大文件 / 历史版本后再试。'
   }
-  return '向量条目已达库上限：请提高向量条目配置，或调大分块大小、删除部分已索引文档后再试。'
+  return '向量条目已达库上限：请联系管理员调整配额，或在库配置中调大分块大小、删除部分已索引文档后再试。'
 })
 
-const fixedIngestAccessLabel = FIXED_INGEST_ACCESS_LABEL
+const supportedTypes = computed(
+  () => constraints.value?.supportedFileTypes || SYSTEM_SUPPORTED_FILE_TYPES
+)
 
 const supportedTypesLabel = computed(() => {
-  const types = libraryConfig.value?.ingestAccess?.supportedFileTypes || []
+  const types = supportedTypes.value
   if (!types.length) return '—'
   return types.map((t) => FILE_TYPE_OPTIONS.find((o) => o.value === t)?.label || t).join('、')
 })
-
-const supportedTypes = computed(() => libraryConfig.value?.ingestAccess?.supportedFileTypes || [])
 
 const validFiles = computed(() => {
   const types = supportedTypes.value
@@ -723,23 +715,40 @@ const currentFilePreviewed = computed(
   () => !!(selectedPreviewUid.value && previewCache.value[selectedPreviewUid.value])
 )
 
-const reviewModeEnabled = computed(
+const reviewModeEnabled = computed(() => constraints.value?.manualReviewRequired === true)
+
+const primaryChunkProfileId = computed(
   () =>
-    constraints.value?.manualReviewRequired === true
-    || libraryConfig.value?.governance?.ingestReviewMode === 'manual-review'
+    constraints.value?.primaryChunkProfileId ||
+    libraryConfig.value?.primaryChunkProfileId ||
+    ''
 )
 
-const lockPipeline = computed(() =>
-  hasIngestedContent({
-    documentCount: rulesSummary.value?.documentCount ?? 0,
-    chunkCount: rulesSummary.value?.chunkCount ?? 0
-  })
+const chunkOverrideAllowed = computed(
+  () => constraints.value?.chunkOverrideAllowed !== false
 )
 
-const duplicatePolicyLocked = computed(() => !!constraints.value?.versionUpdateStrategy)
+const activeProfileCount = computed(() => constraints.value?.activeProfileCount ?? 0)
 
-const duplicatePolicyLabel = computed(
-  () => DUPLICATE_POLICY_LABELS[duplicatePolicy.value] || duplicatePolicy.value
+const maxActiveChunkProfiles = computed(
+  () => constraints.value?.maxActiveChunkProfiles ?? 5
+)
+
+const libraryChunkDefaults = computed(() => libraryChunkParams(libraryConfig.value || {}))
+
+const ingestProfileActive = computed(() =>
+  !!buildIngestProfileJson(ingestProfileForm.value, libraryChunkDefaults.value)
+)
+
+const effectiveIngestProfileJson = computed(() =>
+  buildIngestProfileJson(ingestProfileForm.value, libraryChunkDefaults.value)
+)
+
+const ingestProfileHint = computed(() =>
+  formatIngestProfileSummary(
+    effectiveIngestProfileJson.value ? JSON.parse(effectiveIngestProfileJson.value) : null,
+    libraryChunkDefaults.value
+  )
 )
 
 const effectiveAutoIndex = computed(() => {
@@ -756,7 +765,37 @@ const canSubmit = computed(
   () => filesToUpload.value.length > 0 && previewConfirmed.value && !uploading.value
 )
 
+const footerHint = computed(() => {
+  if (batchResult.value || singleResult.value) return '入库已完成，可继续采集或前往文档库'
+  if (!validFiles.value.length) return '请先选择材料'
+  if (!previewConfirmed.value) return '请至少预览 1 份文件后再入库（可在列表中切换文件逐份预览）'
+  if (!filesToUpload.value.length) return '跳过重复后无可入库文件'
+  const extra = []
+  if (ingestProfileActive.value) extra.push('已启用分块数值覆盖')
+  if (duplicateFiles.value.length) extra.push(`含 ${duplicateFiles.value.length} 个重复文件名`)
+  const suffix = extra.length ? ` · ${extra.join(' · ')}` : ''
+  return `将入库 ${filesToUpload.value.length} 个文件${suffix}`
+})
+
 watch(validFiles, () => syncSelectedPreviewFile(), { immediate: true })
+
+watch(chunkOverrideAllowed, (allowed) => {
+  if (!allowed) {
+    ingestProfileForm.value = emptyIngestProfileForm()
+    advancedChunkOpen.value = []
+  }
+})
+
+watch(
+  () => [
+    ingestProfileForm.value.enabled,
+    ingestProfileForm.value.chunkSize,
+    ingestProfileForm.value.chunkOverlap
+  ],
+  () => {
+    resetPreviewState()
+  }
+)
 
 watch(previewTab, (tab) => {
   const uid = selectedPreviewUid.value
@@ -876,20 +915,6 @@ function goBackToLibrary() {
   }
 }
 
-function goEditRules() {
-  if (!libraryId.value) return
-  editDrawerVisible.value = true
-}
-
-async function onLibrarySettingsSaved(saved) {
-  if (saved?.config) {
-    libraryConfig.value = saved.config
-    configVersion.value = saved.config?.configVersion ?? configVersion.value
-    rulesSummary.value = buildRulesSummary(saved)
-  }
-  await Promise.all([loadCurrentLibrary(), loadConstraints(), loadExistingDocs()])
-}
-
 function goDocuments() {
   goBackToLibrary()
 }
@@ -914,9 +939,9 @@ async function loadCurrentLibrary() {
   try {
     const { data } = await getVectorLibrary(libraryId.value)
     currentLibraryName.value = data.name
-    libraryConfig.value = data.config || {}
-    configVersion.value = data.config?.configVersion ?? 1
-    rulesSummary.value = buildRulesSummary(data)
+    libraryConfig.value = flattenLibraryConfig(data)
+    configVersion.value = libraryConfig.value.configVersion ?? 1
+    rulesSummary.value = buildRulesSummary(libraryWithFlatConfig(data))
   } catch {
     currentLibraryName.value = libraryId.value
     rulesSummary.value = null
@@ -967,24 +992,9 @@ function onTenantChange() {
   loadExistingDocs()
 }
 
-function onMainTabChange(tab) {
-  const query = { ...route.query }
-  if (tab === 'settings') query.tab = 'settings'
-  else delete query.tab
-  router.replace({ query })
-}
-
-function switchMainTab(tab) {
-  mainTab.value = tab
-  onMainTabChange(tab)
-}
-
 async function initPage() {
   const qLib = route.query.libraryId
   if (qLib && typeof qLib === 'string') libraryId.value = qLib
-  const qTab = route.query.tab
-  if (qTab === 'settings' || qTab === 'config') mainTab.value = 'settings'
-  else mainTab.value = 'workflow'
   persist()
   if (!libraryId.value) {
     ElMessage.warning('请先从知识库详情进入文档采集')
@@ -1107,24 +1117,24 @@ function onUploadProgress(event) {
   uploadPercent.value = Math.min(99, Math.round((event.loaded * 100) / event.total))
 }
 
-function buildChunkPreviewBody(sampleText) {
+function buildChunkPreviewBody(sampleText, fileRow) {
   const cfg = libraryConfig.value || {}
-  const norm = cfg.textNormalization
   const sizing = libraryChunkParams(cfg)
-  return {
+  const body = {
     sampleText,
     libraryId: libraryId.value || null,
-    chunkingStrategy: cfg.chunkingStrategy || 'paragraph-first',
+    mimeType: fileRow?.raw?.type || null,
     chunkSize: sizing.chunkSize,
     chunkOverlap: sizing.chunkOverlap,
     minChunkSize: sizing.minChunkSize,
     maxChunkSize: sizing.maxChunkSize,
-    minParagraphLength: sizing.minParagraphLength,
-    normalizeBeforeChunk: cfg.normalizeBeforeChunk !== false,
-    textNormalizationEnabled: cfg.textNormalizationEnabled !== false,
-    textNormalization: cfg.textNormalizationEnabled !== false ? norm : null,
-    cleaning: cfg.cleaning || null
+    minParagraphLength: sizing.minParagraphLength
   }
+  const profileJson = effectiveIngestProfileJson.value
+  if (profileJson) {
+    body.ingestProfileJson = profileJson
+  }
+  return body
 }
 
 async function runIngestPreview() {
@@ -1137,7 +1147,7 @@ async function runIngestPreview() {
   previewLoading.value = true
   try {
     const { data: parsed } = await parsePreview(file, libraryId.value)
-    const { data: chunked } = await fetchChunkPreview(buildChunkPreviewBody(parsed.text || ''))
+    const { data: chunked } = await fetchChunkPreview(buildChunkPreviewBody(parsed.text || '', row))
     const chunks = chunked.chunks || []
     const stats = {
       fileName: parsed.fileName || displayFileName(row.name),
@@ -1146,7 +1156,15 @@ async function runIngestPreview() {
       rawChunkCount: chunked.rawTotalChunks ?? chunks.length,
       filteredOutCount: chunked.filteredOutCount ?? 0,
       estimatedTokens: estimateTokens(parsed.charCount ?? 0),
-      truncated: parsed.truncated
+      truncated: parsed.truncated,
+      pipelineTrace: pipelineTraceSummary({
+        contentFamily: chunked.contentFamily,
+        chunkingStrategy: chunked.chunkingStrategy,
+        chunkingAdjustmentReason: chunked.chunkingAdjustmentReason,
+        multiGranularity: chunked.multiGranularity
+      }),
+      chunkProfileId: chunked.chunkProfileId || null,
+      primaryProfile: chunked.primaryProfile === true
     }
     const text = parsed.text || ''
     previewCache.value = {
@@ -1203,7 +1221,22 @@ async function submitUpload() {
     return
   }
 
+  const profileError = validateIngestProfileForm(ingestProfileForm.value)
+  if (ingestProfileForm.value.enabled && profileError) {
+    ElMessage.warning(profileError)
+    loading.value = false
+    uploading.value = false
+    return
+  }
+  if (ingestProfileForm.value.enabled && !effectiveIngestProfileJson.value) {
+    ElMessage.warning('分块覆盖已开启，请填写与库默认不同的分块大小或重叠')
+    loading.value = false
+    uploading.value = false
+    return
+  }
+
   const indexFlag = effectiveAutoIndex.value
+  const ingestProfile = effectiveIngestProfileJson.value
 
   try {
     const asyncThreshold = 5 * 1024 * 1024
@@ -1214,7 +1247,8 @@ async function submitUpload() {
         files[0],
         indexFlag,
         onUploadProgress,
-        documentMetadata
+        documentMetadata,
+        ingestProfile
       )
       ElMessage.success(`大文件已提交异步任务 ${task.taskId}`)
       uploadPercent.value = 100
@@ -1228,7 +1262,8 @@ async function submitUpload() {
         files[0],
         indexFlag,
         onUploadProgress,
-        documentMetadata
+        documentMetadata,
+        ingestProfile
       )
       if (data?.docId) localStorage.setItem('lastDocId', data.docId)
       ElMessage.success(reviewModeEnabled.value || ingestMode.value === 'review' ? '已提交，待审核' : '入库成功')
@@ -1243,7 +1278,8 @@ async function submitUpload() {
       files,
       indexFlag,
       onUploadProgress,
-      documentMetadata
+      documentMetadata,
+      ingestProfile
     )
     uploadPercent.value = 100
     await loadExistingDocs()
@@ -1327,6 +1363,8 @@ function resetIngest() {
   pickNotice.value = null
   singleResult.value = null
   batchResult.value = null
+  ingestProfileForm.value = emptyIngestProfileForm()
+  advancedChunkOpen.value = []
   resetPreviewState()
 }
 
@@ -1363,6 +1401,31 @@ function retryFailed() {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.ingest-column--left,
+.ingest-column--right {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.ingest-column--left .ingest-card--pick {
+  flex: 1;
+  min-height: 0;
+}
+
+.ingest-column--right .ingest-card--preview {
+  flex: 1;
+  min-height: 0;
+}
+
+.ingest-card--task {
+  flex-shrink: 0;
+  max-height: 38%;
+  overflow-y: auto;
 }
 
 .ingest-main-tabs {
@@ -1430,7 +1493,7 @@ function retryFailed() {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(360px, 48%) 1fr;
+  grid-template-columns: minmax(380px, 46%) 1fr;
   gap: 10px;
   overflow: hidden;
 }
@@ -1658,6 +1721,35 @@ function retryFailed() {
   margin-bottom: 12px;
 }
 
+.ingest-advanced-collapse {
+  margin-top: 4px;
+  border: none;
+}
+
+.ingest-advanced-collapse :deep(.el-collapse-item__header) {
+  height: 36px;
+  font-size: 13px;
+  color: var(--dp-text-secondary);
+  border-bottom: none;
+}
+
+.ingest-advanced-collapse :deep(.el-collapse-item__wrap) {
+  border-bottom: none;
+}
+
+.ingest-advanced-collapse__title {
+  margin-right: 8px;
+}
+
+.ingest-advanced-collapse__tag {
+  margin-left: 4px;
+}
+
+.ingest-profile-input {
+  width: 140px;
+  margin-right: 8px;
+}
+
 .settings-lock-alert {
   margin-bottom: 12px;
 }
@@ -1676,6 +1768,15 @@ function retryFailed() {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 16px;
+}
+
+.settings-system-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e2e8f0;
 }
 
 .settings-kv {
@@ -1708,6 +1809,20 @@ function retryFailed() {
   margin: 4px 0 0;
   font-size: 11px;
   color: #94a3b8;
+}
+
+.settings-form__tip--profile {
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
+.chunk-profile-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  color: #334155;
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
 .ingest-action-bar--secondary {
@@ -2426,6 +2541,15 @@ function retryFailed() {
   .workflow-split {
     grid-template-columns: 1fr;
     overflow: visible;
+  }
+
+  .ingest-column--left,
+  .ingest-column--right {
+    overflow: visible;
+  }
+
+  .ingest-card--task {
+    max-height: none;
   }
 
   .ingest-card--pick,

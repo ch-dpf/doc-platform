@@ -1,6 +1,7 @@
 package com.knowbase.library.config;
 
 import com.knowbase.ingest.config.TextNormalizationProperties;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -8,16 +9,24 @@ import java.util.List;
 /**
  * 向量库级文本清洗规则（持久化在 config_json.textNormalization）。
  */
+@Schema(description = "文本规范化规则")
 public class TextNormalizationSettings {
 
+    @Schema(description = "是否启用", example = "true")
     private boolean enabled = true;
+    @Schema(description = "合并连续空行", example = "true")
     private boolean collapseBlankLines = true;
+    @Schema(description = "行首尾去空白", example = "true")
     private boolean trimLines = true;
+    @Schema(description = "移除控制字符", example = "true")
     private boolean removeControlChars = true;
+    @Schema(description = "统一 Unicode 空格", example = "true")
     private boolean normalizeUnicodeSpaces = true;
+    @Schema(description = "丢弃噪声行", example = "true")
     private boolean dropNoiseLines = true;
+    @Schema(description = "最短保留行长度", example = "2")
     private int minLineLength = 2;
-    /** 行级清洗：整行命中则删除。^\d{1,4}$=孤立页码；^第\s*\d+\s*页$=中文页码行 */
+    @Schema(description = "行级清洗正则：整行命中则删除（如页码行）")
     private List<String> linePatternsToDrop = new ArrayList<>(List.of(
             "^\\d{1,4}$",
             "^第\\s*\\d+\\s*页$",

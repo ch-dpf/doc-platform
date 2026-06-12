@@ -20,8 +20,12 @@ public record RagChatRequest(
         /** 可选：覆盖全局 ollama.chat-model，仅本次问答 */
         String chatModel,
         /** 可选：多轮对话历史（不含当前 question），按时间顺序 */
-        @Valid @Size(max = 40) List<RagChatMessage> history
-) {
+        @Valid @Size(max = 40) List<RagChatMessage> history,
+        /** 默认 false：仅检索库主分块档 */
+        Boolean includeAllChunkProfiles,
+        /** 可选：显式指定分块档 ID 列表 */
+        List<String> chunkProfileIds) {
+
     public RagChatRequest(
             UUID libraryId,
             String tenantId,
@@ -30,6 +34,18 @@ public record RagChatRequest(
             Double minScore,
             SearchRequest.SearchFilter filter,
             String chatModel) {
-        this(libraryId, tenantId, question, topK, minScore, filter, chatModel, null);
+        this(libraryId, tenantId, question, topK, minScore, filter, chatModel, null, false, null);
+    }
+
+    public RagChatRequest(
+            UUID libraryId,
+            String tenantId,
+            String question,
+            Integer topK,
+            Double minScore,
+            SearchRequest.SearchFilter filter,
+            String chatModel,
+            List<RagChatMessage> history) {
+        this(libraryId, tenantId, question, topK, minScore, filter, chatModel, history, false, null);
     }
 }

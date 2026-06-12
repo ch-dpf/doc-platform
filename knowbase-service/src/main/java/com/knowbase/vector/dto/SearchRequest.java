@@ -14,8 +14,14 @@ public record SearchRequest(
         @NotBlank String tenantId,
         @NotBlank String query,
         @Min(1) @Max(50) int topK,
-        SearchFilter filter
-) {
+        SearchFilter filter,
+        Boolean includeAllChunkProfiles,
+        List<String> chunkProfileIds) {
+
+    public SearchRequest(UUID libraryId, String tenantId, String query, int topK, SearchFilter filter) {
+        this(libraryId, tenantId, query, topK, filter, false, null);
+    }
+
     public record SearchFilter(List<UUID> docIds, Map<String, String> metadata) {
         public SearchFilter(List<UUID> docIds) {
             this(docIds, null);

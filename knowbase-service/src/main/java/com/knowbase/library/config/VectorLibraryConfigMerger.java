@@ -1,177 +1,73 @@
 package com.knowbase.library.config;
 
+import com.knowbase.library.dto.config.LibraryIndexPipelineDto;
 
+import java.util.ArrayList;
+import java.util.List;
 
-/**
-
- * 合并向量库配置：按是否已有入库内容区分可写字段。
-
- */
-
+/** 按配置分节合并向量库 config_json。 */
 public final class VectorLibraryConfigMerger {
 
-
-
     private VectorLibraryConfigMerger() {
-
     }
 
-
-
-    public static void mergeSafeFields(VectorLibraryConfig target, VectorLibraryConfig incoming) {
-
-        mergeSafeFields(target, incoming, false);
-
+    public static void mergeBasic(VectorLibraryConfig target, List<String> tags) {
+        if (tags != null) {
+            target.setTags(new ArrayList<>(tags));
+        }
     }
 
+    public static void mergeIndexPipeline(VectorLibraryConfig target, LibraryIndexPipelineDto dto) {
+        if (dto == null) {
+            return;
+        }
+        if (dto.embeddingModel() != null) {
+            target.setEmbeddingProvider("ollama");
+            target.setEmbeddingModel(dto.embeddingModel());
+        }
+        if (dto.embeddingDimension() > 0) {
+            target.setEmbeddingDimension(dto.embeddingDimension());
+        }
+        target.setChunkSize(dto.chunkSize());
+        target.setChunkOverlap(dto.chunkOverlap());
+        target.setHierarchicalChunkingEnabled(dto.hierarchicalChunkingEnabled());
+        target.setChunkDelimiter(dto.chunkDelimiter() != null ? dto.chunkDelimiter().strip() : "");
+    }
 
+    public static void mergeRetrieval(VectorLibraryConfig target, RetrievalRulesSettings retrieval) {
+        if (retrieval != null) {
+            target.setRetrieval(retrieval);
+        }
+    }
 
-    /**
-
-     * @param lockPipelineConfig true 时锁定解析/清洗/分块/向量化等影响已入库文档的字段
-
-     */
-
-    public static void mergeSafeFields(
-
-            VectorLibraryConfig target, VectorLibraryConfig incoming, boolean lockPipelineConfig) {
-
+    /** @deprecated 单体更新已废弃，保留供测试对照 */
+    @Deprecated
+    public static void mergeSafeFields(VectorLibraryConfig target, VectorLibraryConfig incoming, boolean lockPipelineConfig) {
         if (incoming == null) {
-
             return;
-
         }
-
-        if (incoming.getTags() != null) {
-
-            target.setTags(incoming.getTags());
-
-        }
-
-        if (incoming.getLibraryPresetId() != null) {
-
-            target.setLibraryPresetId(incoming.getLibraryPresetId());
-
-        }
-
+        mergeBasic(target, incoming.getTags());
         if (incoming.getRetrieval() != null) {
-
-            target.setRetrieval(incoming.getRetrieval());
-
+            mergeRetrieval(target, incoming.getRetrieval());
         }
-
-        if (incoming.getGovernance() != null) {
-
-            target.setGovernance(incoming.getGovernance());
-
-        }
-
-        mergeIngestAccess(target, incoming);
-
-
-
         if (lockPipelineConfig) {
-
             return;
-
         }
-
-        if (incoming.getEmbeddingProvider() != null) {
-
-            target.setEmbeddingProvider(incoming.getEmbeddingProvider());
-
-        }
-
-        if (incoming.getEmbeddingModel() != null) {
-
-            target.setEmbeddingModel(incoming.getEmbeddingModel());
-
-        }
-
-        if (incoming.getEmbeddingDimension() > 0) {
-
-            target.setEmbeddingDimension(incoming.getEmbeddingDimension());
-
-        }
-
-        if (incoming.getChunkingStrategy() != null) {
-
-            target.setChunkingStrategy(incoming.getChunkingStrategy());
-
-        }
-
-        target.setChunkSize(incoming.getChunkSize());
-
-        target.setChunkOverlap(incoming.getChunkOverlap());
-
-        target.setMinChunkSize(incoming.getMinChunkSize());
-
-        target.setMaxChunkSize(incoming.getMaxChunkSize());
-
-        target.setMinParagraphLength(incoming.getMinParagraphLength());
-
-        target.setNormalizeBeforeChunk(incoming.isNormalizeBeforeChunk());
-
-        target.setTextNormalizationEnabled(incoming.isTextNormalizationEnabled());
-
-        if (incoming.getTextNormalization() != null) {
-
-            target.setTextNormalization(incoming.getTextNormalization());
-
-        }
-
-        if (incoming.getParsing() != null) {
-
-            target.setParsing(incoming.getParsing());
-
-        }
-
-        if (incoming.getCleaning() != null) {
-
-            target.setCleaning(incoming.getCleaning());
-
-        }
-
+        mergeIndexPipeline(target, LibraryIndexPipelineDtoFromConfig.from(incoming));
     }
 
-
-
-    private static void mergeIngestAccess(VectorLibraryConfig target, VectorLibraryConfig incoming) {
-
-        if (incoming.getIngestAccess() == null) {
-
-            return;
-
+    private static final class LibraryIndexPipelineDtoFromConfig {
+        private LibraryIndexPipelineDtoFromConfig() {
         }
 
-        if (target.getIngestAccess() == null) {
-
-            target.setIngestAccess(incoming.getIngestAccess());
-
-            return;
-
+        static LibraryIndexPipelineDto from(VectorLibraryConfig cfg) {
+            return new LibraryIndexPipelineDto(
+                    cfg.getChunkSize(),
+                    cfg.getChunkOverlap(),
+                    cfg.getEmbeddingModel(),
+                    cfg.getEmbeddingDimension(),
+                    cfg.isHierarchicalChunkingEnabled(),
+                    cfg.getChunkDelimiter());
         }
-
-        if (incoming.getIngestAccess().getSupportedFileTypes() != null) {
-
-            target.getIngestAccess().setSupportedFileTypes(incoming.getIngestAccess().getSupportedFileTypes());
-
-        }
-
-        if (incoming.getIngestAccess().getCapacityLimits() != null) {
-
-            target.getIngestAccess().setCapacityLimits(incoming.getIngestAccess().getCapacityLimits());
-
-        }
-
-        if (incoming.getIngestAccess().getVersionPolicy() != null) {
-
-            target.getIngestAccess().setVersionPolicy(incoming.getIngestAccess().getVersionPolicy());
-
-        }
-
     }
-
 }
-
-

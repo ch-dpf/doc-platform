@@ -41,7 +41,13 @@ public interface DocumentChunkMapper {
             @Param("embedding") float[] queryEmbedding,
             @Param("topK") int topK,
             @Param("docIds") List<UUID> docIds,
-            @Param("metadataFilters") List<MetadataFilterClause> metadataFilters);
+            @Param("metadataFilters") List<MetadataFilterClause> metadataFilters,
+            @Param("chunkProfileIds") List<String> chunkProfileIds);
+
+    int backfillChunkProfileMetadata(
+            @Param("docId") UUID docId,
+            @Param("version") int version,
+            @Param("chunkProfileId") String chunkProfileId);
 
     List<SearchHit> keywordSearch(
             @Param("libraryId") UUID libraryId,
@@ -49,7 +55,8 @@ public interface DocumentChunkMapper {
             @Param("query") String query,
             @Param("topK") int topK,
             @Param("docIds") List<UUID> docIds,
-            @Param("metadataFilters") List<MetadataFilterClause> metadataFilters);
+            @Param("metadataFilters") List<MetadataFilterClause> metadataFilters,
+            @Param("chunkProfileIds") List<String> chunkProfileIds);
 
     List<DocumentChunkRow> listByDocIdAndVersion(
             @Param("docId") UUID docId,
@@ -62,4 +69,12 @@ public interface DocumentChunkMapper {
             @Param("limit") int limit);
 
     List<DocChunkCountRow> countByDocVersions(@Param("pairs") List<DocVersionPair> pairs);
+
+    List<String> findDistinctChunkProfileIds(
+            @Param("libraryId") UUID libraryId, @Param("tenantId") String tenantId);
+
+    int deleteOrphanChunksForProfile(
+            @Param("libraryId") UUID libraryId,
+            @Param("tenantId") String tenantId,
+            @Param("chunkProfileId") String chunkProfileId);
 }

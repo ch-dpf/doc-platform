@@ -5,6 +5,7 @@ import org.apache.ibatis.type.JdbcType;
 import org.apache.ibatis.type.MappedJdbcTypes;
 import org.postgresql.util.PGobject;
 
+import java.lang.reflect.Field;
 import java.sql.CallableStatement;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -15,6 +16,13 @@ import java.sql.SQLException;
  */
 @MappedJdbcTypes(JdbcType.OTHER)
 public class PostgresJsonbTypeHandler extends BaseTypeHandler<String> {
+
+    public PostgresJsonbTypeHandler() {
+    }
+
+    /** MyBatis-Plus 3.5.6+ resolves field-level {@code @TableField(typeHandler)} via this constructor. */
+    public PostgresJsonbTypeHandler(Class<?> type, Field field) {
+    }
 
     @Override
     public void setNonNullParameter(PreparedStatement ps, int i, String parameter, JdbcType jdbcType)

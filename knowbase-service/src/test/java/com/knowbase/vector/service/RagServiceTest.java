@@ -14,6 +14,7 @@ import com.knowbase.library.service.VectorLibraryService;
 import com.knowbase.vector.dto.RagChatMessage;
 import com.knowbase.vector.dto.RagChatRequest;
 import com.knowbase.vector.dto.SearchHit;
+import com.knowbase.vector.dto.RagSearchTrace;
 import com.knowbase.vector.dto.SearchResponse;
 import com.knowbase.vector.rag.RagPromptBuilder;
 import com.knowbase.vector.mapper.DocumentChunkMapper;
@@ -30,6 +31,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -55,19 +57,44 @@ class RagServiceTest {
     @Mock
     private DocumentChunkMapper documentChunkMapper;
 
+    private static RagSearchTrace traceWithHits(List<SearchHit> hits) {
+        return new RagSearchTrace(hits, hits, false, null, false);
+    }
+
+    private static RagSearchTrace emptyTrace() {
+        return new RagSearchTrace(List.of(), List.of(), false, null, false);
+    }
+
+    private void mockSearchHits(List<SearchHit> hits) {
+        when(searchService.searchForRagWithTrace(any(), any())).thenReturn(traceWithHits(hits));
+        when(searchService.searchForRag(any(), any())).thenReturn(new SearchResponse(hits));
+    }
+
     private RagService newService(RagProperties props, OllamaProperties ollama) {
         RetrievalProperties retrievalProps = new RetrievalProperties();
         retrievalProps.setCacheEnabled(false);
         retrievalProps.setQueryRewriteEnabled(false);
         RagQueryRewriteService queryRewriteService = new RagQueryRewriteService(
                 chatClient, ollama, retrievalProps);
+        com.knowbase.library.service.LibraryConfigResolver libraryConfigResolver =
+                org.mockito.Mockito.mock(com.knowbase.library.service.LibraryConfigResolver.class);
+        org.mockito.Mockito.lenient()
+                .when(libraryConfigResolver.retrievalFor(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new com.knowbase.library.config.RetrievalRulesSettings());
+        com.knowbase.pipeline.config.ChunkProfileService chunkProfileService =
+                org.mockito.Mockito.mock(com.knowbase.pipeline.config.ChunkProfileService.class);
+        org.mockito.Mockito.lenient()
+                .when(chunkProfileService.isPrimaryProfile(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(true);
         RagRetrievalService retrievalService = new RagRetrievalService(
                 searchService,
                 new RagRetrievalCache(retrievalProps),
                 props,
                 promptBuilder,
                 docMetadataStore,
-                queryRewriteService);
+                queryRewriteService,
+                libraryConfigResolver,
+                chunkProfileService);
         return new RagService(
                 props,
                 ollama,
@@ -76,7 +103,9 @@ class RagServiceTest {
                 promptBuilder,
                 docMetadataStore,
                 vectorLibraryService,
-                documentChunkMapper);
+                documentChunkMapper,
+                libraryConfigResolver,
+                chunkProfileService);
     }
 
     @Test
@@ -84,7 +113,7 @@ class RagServiceTest {
         RagProperties props = new RagProperties();
         OllamaProperties ollama = new OllamaProperties();
         RagService service = newService(props, ollama);
-        when(searchService.searchForRag(any(), any())).thenReturn(new SearchResponse(List.of()));
+        when(searchService.searchForRagWithTrace(any(), any())).thenReturn(emptyTrace());
 
         var response = service.chat(
                 new RagChatRequest(
@@ -119,7 +148,7 @@ class RagServiceTest {
         assertTrue(response.usedLlm());
         assertFalse(response.found());
         assertTrue(response.answer().contains("助手"));
-        verify(searchService, never()).searchForRag(any(), any());
+        verify(searchService, never()).searchForRagWithTrace(any(), any());
     }
 
     @Test
@@ -135,7 +164,7 @@ class RagServiceTest {
                 0,
                 "向量检索用于问答",
                 0.88);
-        when(searchService.searchForRag(any(), any())).thenReturn(new SearchResponse(List.of(hit)));
+        mockSearchHits(List.of(hit));
         when(docMetadataStore.findFileNamesByDocIds(any())).thenReturn(Map.of());
         when(promptBuilder.buildUserMessage(anyString(), anyList(), anyList(), any())).thenReturn("user prompt");
         when(chatClient.chat(anyString(), anyList(), anyString(), any())).thenReturn("回答 [1]");
@@ -158,6 +187,8 @@ class RagServiceTest {
         assertEquals(2, response.historyUsed());
         assertEquals("什么是向量检索 它有什么用途？", response.searchQuery());
         assertFalse(response.conversational());
+        assertNotNull(response.retrievalTrace());
+        assertEquals(1, response.retrievalTrace().hitCount());
         verify(chatClient).chat(anyString(), eq(history), eq("user prompt"), any());
     }
 
@@ -174,7 +205,7 @@ class RagServiceTest {
                 0,
                 "pgvector 向量数据库配置说明",
                 0.75);
-        when(searchService.searchForRag(any(), any())).thenReturn(new SearchResponse(List.of(hit)));
+        mockSearchHits(List.of(hit));
 
         var response = service.chat(new RagChatRequest(
                 VectorLibraryService.DEFAULT_LIBRARY_ID,
@@ -206,7 +237,7 @@ class RagServiceTest {
                 0,
                 "姓名\t杜鹏飞\n1\t海图项目\t任务\t\t45896\t杜鹏飞\t完成开发任务",
                 0.55);
-        when(searchService.searchForRag(any(), any())).thenReturn(new SearchResponse(List.of(hit)));
+        mockSearchHits(List.of(hit));
         when(docMetadataStore.findFileNamesByDocIds(any())).thenReturn(
                 Map.of(docId, "2025/杜鹏飞-周报（9.8-9.12）.xlsx"));
         when(promptBuilder.buildUserMessage(anyString(), anyList(), anyList(), any())).thenReturn("user prompt");
@@ -243,7 +274,7 @@ class RagServiceTest {
                 0,
                 "本周完成接口开发\n姓名\t杜鹏飞\n1\t海图项目\t任务\t\t45896\t杜鹏飞\t完成开发任务",
                 0.55);
-        when(searchService.searchForRag(any(), any())).thenReturn(new SearchResponse(List.of(hit)));
+        mockSearchHits(List.of(hit));
         when(docMetadataStore.findFileNamesByDocIds(any())).thenReturn(
                 Map.of(docId, "2025/杜鹏飞-周报（9.8-9.12）.xlsx"));
 
@@ -277,7 +308,7 @@ class RagServiceTest {
                 0,
                 "姓名\t杜鹏飞\n1\t海图项目\t任务\t\t45896\t杜鹏飞\t完成相关任务\t\t已完成",
                 0.52);
-        when(searchService.searchForRag(any(), any())).thenReturn(new SearchResponse(List.of(hit)));
+        mockSearchHits(List.of(hit));
         when(docMetadataStore.findFileNamesByDocIds(any())).thenReturn(
                 Map.of(docId, "2025/杜鹏飞-周报（8.25-8.29）.xlsx"));
 
@@ -344,7 +375,7 @@ class RagServiceTest {
                 2\t海图项目\t配合主中心人员完成运维工具的适配\t\t45878\t杜鹏飞\t已完成\t\t已完成
                 """;
         SearchHit hit = new SearchHit(UUID.randomUUID(), docId, "demo", 1, 3, rows, 0.58);
-        when(searchService.searchForRag(any(), any())).thenReturn(new SearchResponse(List.of(hit)));
+        mockSearchHits(List.of(hit));
         when(docMetadataStore.findFileNamesByDocIds(any())).thenReturn(
                 Map.of(docId, "2025/杜鹏飞-周报（8.4-8.8）.xlsx"));
 
@@ -377,7 +408,7 @@ class RagServiceTest {
                 "测试库",
                 "",
                 LibraryStatus.ACTIVE,
-                new VectorLibraryConfig(),
+                com.knowbase.library.support.LibraryConfigViewMapper.toView(new VectorLibraryConfig()),
                 20,
                 78,
                 Instant.now(),
@@ -391,7 +422,7 @@ class RagServiceTest {
         assertEquals(0, response.retrievedCount());
         assertTrue(response.answer().contains("20 份文档"));
         assertTrue(response.answer().contains("78 个向量切片"));
-        verify(searchService, never()).searchForRag(any(), any());
+        verify(searchService, never()).searchForRagWithTrace(any(), any());
         verify(chatClient, never()).chat(anyString(), any(), anyString(), any());
     }
 
@@ -407,7 +438,7 @@ class RagServiceTest {
                 "测试库",
                 "",
                 LibraryStatus.ACTIVE,
-                new VectorLibraryConfig(),
+                com.knowbase.library.support.LibraryConfigViewMapper.toView(new VectorLibraryConfig()),
                 3,
                 12,
                 Instant.now(),
@@ -420,7 +451,7 @@ class RagServiceTest {
         assertFalse(response.usedLlm());
         assertEquals(0, response.retrievedCount());
         assertTrue(response.answer().contains("3 份文档"));
-        verify(searchService, never()).searchForRag(any(), any());
+        verify(searchService, never()).searchForRagWithTrace(any(), any());
     }
 
     @Test
@@ -435,7 +466,7 @@ class RagServiceTest {
                 "周报知识库",
                 "存放各部门周报材料。",
                 LibraryStatus.ACTIVE,
-                new VectorLibraryConfig(),
+                com.knowbase.library.support.LibraryConfigViewMapper.toView(new VectorLibraryConfig()),
                 5,
                 20,
                 Instant.now(),
@@ -448,7 +479,7 @@ class RagServiceTest {
         assertFalse(response.usedLlm());
         assertEquals(0, response.retrievedCount());
         assertTrue(response.answer().contains("存放各部门周报材料"));
-        verify(searchService, never()).searchForRag(any(), any());
+        verify(searchService, never()).searchForRagWithTrace(any(), any());
         verify(chatClient, never()).chat(anyString(), any(), anyString(), any());
     }
 
@@ -465,7 +496,7 @@ class RagServiceTest {
                 0,
                 "2025年8月25日--8月29日 杜鹏飞 工作周报",
                 0.88);
-        when(searchService.searchForRag(any(), any())).thenReturn(new SearchResponse(List.of(hit)));
+        mockSearchHits(List.of(hit));
 
         var response = service.chat(new RagChatRequest(
                 VectorLibraryService.DEFAULT_LIBRARY_ID,

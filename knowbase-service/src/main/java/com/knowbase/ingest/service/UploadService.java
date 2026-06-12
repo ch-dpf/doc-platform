@@ -1,13 +1,19 @@
 package com.knowbase.ingest.service;
 
 import com.knowbase.ingest.config.IngestProperties;
+import com.knowbase.ingest.config.OcrProperties;
 import com.knowbase.ingest.dto.BatchUploadItemResult;
 import com.knowbase.ingest.dto.BatchUploadResponse;
 import com.knowbase.ingest.dto.DocumentResponse;
 import com.knowbase.ingest.dto.UploadConstraintsResponse;
 import com.knowbase.ingest.storage.ObjectStorageService;
+import com.knowbase.library.domain.VectorLibrary;
 import com.knowbase.library.dto.UploadTaskResponse;
+import com.knowbase.library.config.VectorLibraryConfigFactory;
 import com.knowbase.library.service.LibraryConfigResolver;
+import com.knowbase.pipeline.config.ChunkProfileService;
+import com.knowbase.pipeline.config.IngestProfileSupport;
+import com.knowbase.library.config.VectorLibraryConfig;
 import com.knowbase.library.service.UploadTaskService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,6 +34,8 @@ public class UploadService {
     private final IngestProperties ingestProperties;
     private final LibraryConfigResolver libraryConfigResolver;
     private final DocumentOcrService ocrService;
+    private final OcrProperties ocrProperties;
+    private final ChunkProfileService chunkProfileService;
 
     public UploadService(
             DocumentIngestor documentIngestor,
@@ -35,23 +43,26 @@ public class UploadService {
             ObjectStorageService storageService,
             IngestProperties ingestProperties,
             LibraryConfigResolver libraryConfigResolver,
-            DocumentOcrService ocrService) {
+            DocumentOcrService ocrService,
+            OcrProperties ocrProperties,
+            ChunkProfileService chunkProfileService) {
         this.documentIngestor = documentIngestor;
         this.uploadTaskService = uploadTaskService;
         this.storageService = storageService;
         this.ingestProperties = ingestProperties;
         this.libraryConfigResolver = libraryConfigResolver;
         this.ocrService = ocrService;
+        this.ocrProperties = ocrProperties;
+        this.chunkProfileService = chunkProfileService;
     }
 
     public UploadConstraintsResponse uploadConstraints(UUID libraryId) {
         libraryConfigResolver.requireLibrary(libraryId);
-        var versionPolicy = libraryConfigResolver.versionPolicyFor(libraryId);
-        String updateStrategy = versionPolicy.isEnabled()
-                ? versionPolicy.getUpdateStrategy()
-                : "overwrite";
+        VectorLibraryConfig cfg = libraryConfigResolver.config(libraryId);
+        List<String> globalMimes = ingestProperties.getAllowedMimeTypes();
         return new UploadConstraintsResponse(
-                libraryConfigResolver.allowedMimeTypes(libraryId),
+                VectorLibraryConfigFactory.systemSupportedFileTypes(globalMimes),
+                globalMimes,
                 ingestProperties.getMaxFileSizeBytes(),
                 ingestProperties.getMaxFileSize().toString(),
                 ingestProperties.getMaxBatchFiles(),
@@ -59,10 +70,16 @@ public class UploadService {
                 libraryConfigResolver.ingestSourceMode(libraryId),
                 libraryConfigResolver.isUploadAllowed(libraryId),
                 libraryConfigResolver.isCollectAllowed(libraryId),
-                libraryConfigResolver.parsingFor(libraryId).isOcrEnabled(),
+                ocrProperties.isEnabled(),
                 ocrService.isAvailable(),
-                libraryConfigResolver.requiresManualReview(libraryId),
-                updateStrategy);
+                ingestProperties.requiresManualReview(),
+                ingestProperties.getIngestReviewMode(),
+                ingestProperties.getVersionPolicy().isEnabled(),
+                ingestProperties.resolvedVersionUpdateStrategy(),
+                cfg.getPrimaryChunkProfileId(),
+                cfg.isAllowCustomChunkProfiles(),
+                chunkProfileService.countActiveProfiles(libraryId),
+                cfg.getMaxActiveChunkProfiles());
     }
 
     public DocumentResponse upload(
@@ -70,7 +87,8 @@ public class UploadService {
             String tenantId,
             MultipartFile file,
             boolean autoIndex,
-            String documentMetadata)
+            String documentMetadata,
+            String ingestProfile)
             throws IOException {
         libraryConfigResolver.requireLibrary(libraryId);
         libraryConfigResolver.requireUploadAllowed(libraryId);
@@ -85,7 +103,18 @@ public class UploadService {
                 file.getBytes(),
                 resolveFileName(file),
                 autoIndex,
-                documentMetadata);
+                documentMetadata,
+                prepareIngestProfile(libraryId, ingestProfile));
+    }
+
+    public DocumentResponse upload(
+            UUID libraryId,
+            String tenantId,
+            MultipartFile file,
+            boolean autoIndex,
+            String documentMetadata)
+            throws IOException {
+        return upload(libraryId, tenantId, file, autoIndex, documentMetadata, null);
     }
 
     public DocumentResponse upload(UUID libraryId, String tenantId, MultipartFile file, boolean autoIndex)
@@ -94,10 +123,22 @@ public class UploadService {
     }
 
     public UploadTaskResponse uploadAsync(
-            UUID libraryId, String tenantId, MultipartFile file, boolean autoIndex, String documentMetadata)
+            UUID libraryId,
+            String tenantId,
+            MultipartFile file,
+            boolean autoIndex,
+            String documentMetadata,
+            String ingestProfile)
             throws Exception {
         libraryConfigResolver.requireUploadAllowed(libraryId);
-        return uploadTaskService.submitAsync(libraryId, tenantId, file, autoIndex, documentMetadata);
+        return uploadTaskService.submitAsync(
+                libraryId, tenantId, file, autoIndex, documentMetadata, prepareIngestProfile(libraryId, ingestProfile));
+    }
+
+    public UploadTaskResponse uploadAsync(
+            UUID libraryId, String tenantId, MultipartFile file, boolean autoIndex, String documentMetadata)
+            throws Exception {
+        return uploadAsync(libraryId, tenantId, file, autoIndex, documentMetadata, null);
     }
 
     public UploadTaskResponse uploadAsync(UUID libraryId, String tenantId, MultipartFile file, boolean autoIndex)
@@ -106,7 +147,12 @@ public class UploadService {
     }
 
     public BatchUploadResponse uploadBatch(
-            UUID libraryId, String tenantId, MultipartFile[] files, boolean autoIndex, String documentMetadata) {
+            UUID libraryId,
+            String tenantId,
+            MultipartFile[] files,
+            boolean autoIndex,
+            String documentMetadata,
+            String ingestProfile) {
         libraryConfigResolver.requireUploadAllowed(libraryId);
         if (files == null || files.length == 0) {
             throw new InvalidDocumentException(
@@ -125,6 +171,7 @@ public class UploadService {
                     libraryConfigResolver.allowedMimeTypes(libraryId));
         }
 
+        String preparedProfile = prepareIngestProfile(libraryId, ingestProfile);
         List<BatchUploadItemResult> items = new ArrayList<>();
         int succeeded = 0;
         for (MultipartFile file : files) {
@@ -133,7 +180,8 @@ public class UploadService {
                 DocumentResponse doc;
                 if (uploadTaskService.shouldUploadAsync(file.getSize())) {
                     UploadTaskResponse task =
-                            uploadTaskService.submitAsync(libraryId, tenantId, file, autoIndex, documentMetadata);
+                            uploadTaskService.submitAsync(
+                                    libraryId, tenantId, file, autoIndex, documentMetadata, preparedProfile);
                     items.add(new BatchUploadItemResult(
                             fileName,
                             true,
@@ -143,7 +191,7 @@ public class UploadService {
                             task.taskId()));
                 } else {
                     doc = documentIngestor.ingestOne(
-                            libraryId, tenantId, file.getBytes(), fileName, autoIndex, documentMetadata);
+                            libraryId, tenantId, file.getBytes(), fileName, autoIndex, documentMetadata, preparedProfile);
                     items.add(new BatchUploadItemResult(fileName, true, doc, null, null));
                 }
                 succeeded++;
@@ -160,7 +208,17 @@ public class UploadService {
 
     public BatchUploadResponse uploadBatch(
             UUID libraryId, String tenantId, MultipartFile[] files, boolean autoIndex) {
-        return uploadBatch(libraryId, tenantId, files, autoIndex, null);
+        return uploadBatch(libraryId, tenantId, files, autoIndex, null, null);
+    }
+
+    public BatchUploadResponse uploadBatch(
+            UUID libraryId, String tenantId, MultipartFile[] files, boolean autoIndex, String documentMetadata) {
+        return uploadBatch(libraryId, tenantId, files, autoIndex, documentMetadata, null);
+    }
+
+    private String prepareIngestProfile(UUID libraryId, String ingestProfile) {
+        libraryConfigResolver.requireLibrary(libraryId);
+        return IngestProfileSupport.prepareForUpload(ingestProfile);
     }
 
     private static String resolveFileName(MultipartFile file) {

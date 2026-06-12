@@ -7,6 +7,7 @@ import com.knowbase.chat.domain.ChatMessage;
 import com.knowbase.chat.domain.MessageRole;
 import com.knowbase.chat.dto.MessageResponse;
 import com.knowbase.chat.mapper.ChatMessageMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.knowbase.platform.JsonSupport;
 import com.knowbase.vector.client.OllamaChatClient;
 import com.knowbase.vector.dto.RagChatMessage;
@@ -83,7 +84,7 @@ public class ChatMemoryService {
             String searchQuery) {
         String chunkRefsJson = citations == null || citations.isEmpty()
                 ? null
-                : JsonSupport.toJson(citations.stream().map(RagCitation::chunkId).toList());
+                : JsonSupport.toJson(citations);
         ChatMessage msg = newMessage(
                 conversation.getConversationId(),
                 MessageRole.assistant,
@@ -143,13 +144,31 @@ public class ChatMemoryService {
     }
 
     private MessageResponse toResponse(ChatMessage msg) {
-        List<RagCitation> citations = Collections.emptyList();
         return new MessageResponse(
                 msg.getMessageId(),
                 msg.getRole().name(),
                 msg.getContent(),
-                citations,
+                parseCitations(msg.getChunkRefs()),
                 msg.getSearchQuery(),
                 msg.getCreatedAt());
+    }
+
+    private static List<RagCitation> parseCitations(String chunkRefs) {
+        if (chunkRefs == null || chunkRefs.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            return JsonSupport.mapper().readValue(chunkRefs, new TypeReference<List<RagCitation>>() {});
+        } catch (Exception ignored) {
+            // 兼容旧版仅存 chunkId 列表
+        }
+        try {
+            List<UUID> chunkIds = JsonSupport.mapper().readValue(chunkRefs, new TypeReference<List<UUID>>() {});
+            return chunkIds.stream()
+                    .map(id -> new RagCitation(id, null, 0, 0.0, "", ""))
+                    .toList();
+        } catch (Exception ignored) {
+            return Collections.emptyList();
+        }
     }
 }

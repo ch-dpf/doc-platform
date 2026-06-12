@@ -2,7 +2,9 @@ package com.knowbase.vector.chunk;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import io.swagger.v3.oas.annotations.media.Schema;
 
+@Schema(description = "分块策略", enumAsRef = true)
 public enum ChunkingStrategy {
     /** 优先按段落（空行）切分，过长段落再按字符窗口切 */
     PARAGRAPH_FIRST("paragraph-first"),

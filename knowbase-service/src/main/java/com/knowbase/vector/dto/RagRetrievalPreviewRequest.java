@@ -17,5 +17,6 @@ public record RagRetrievalPreviewRequest(
         @Min(1) @Max(50) Integer topK,
         Double minScore,
         SearchRequest.SearchFilter filter,
-        @Valid @Size(max = 40) List<RagChatMessage> history
-) {}
+        @Valid @Size(max = 40) List<RagChatMessage> history,
+        Boolean includeAllChunkProfiles,
+        List<String> chunkProfileIds) {}

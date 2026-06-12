@@ -1,6 +1,8 @@
 package com.knowbase.vector.retrieval;
 
 import com.knowbase.ingest.domain.DocMetadata;
+import com.knowbase.pipeline.chunk.PipelineChunk;
+import com.knowbase.pipeline.config.ChunkProfileFingerprint;
 import com.knowbase.platform.JsonSupport;
 
 import java.util.LinkedHashMap;
@@ -15,6 +17,10 @@ public final class ChunkMetadataBuilder {
     private ChunkMetadataBuilder() {}
 
     public static String buildJson(DocMetadata doc) {
+        return buildJson(doc, null);
+    }
+
+    public static String buildJson(DocMetadata doc, PipelineChunk pipelineChunk) {
         if (doc == null) {
             return null;
         }
@@ -25,7 +31,13 @@ public final class ChunkMetadataBuilder {
         }
         putIfPresent(metadata, "fileName", doc.getFileName());
         putIfPresent(metadata, "docType", resolveDocType(doc.getFileName(), doc.getMimeType()));
+        putIfPresent(metadata, ChunkProfileFingerprint.METADATA_FIELD, doc.getChunkProfileId());
         mergeCustomMetadata(metadata, doc.getCustomMetadataJson());
+        if (pipelineChunk != null && pipelineChunk.hasParentContext()) {
+            metadata.put("granularity", "child");
+            metadata.put("parentIndex", String.valueOf(pipelineChunk.parentIndex()));
+            metadata.put("parentContext", pipelineChunk.parentContext());
+        }
         return metadata.isEmpty() ? null : JsonSupport.toJson(metadata);
     }
 

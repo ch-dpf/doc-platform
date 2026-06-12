@@ -3,8 +3,16 @@ package com.knowbase.vector.service;
 import com.knowbase.ingest.support.DocumentCleaningService;
 import com.knowbase.ingest.support.ParsedTextNormalizer;
 import com.knowbase.library.service.LibraryConfigResolver;
-import com.knowbase.vector.chunk.ChunkingStrategy;
-import com.knowbase.vector.chunk.LibraryChunkPipeline;
+import com.knowbase.pipeline.chunk.LibraryChunkPipeline;
+import com.knowbase.pipeline.config.ChunkProfileService;
+import com.knowbase.pipeline.config.EffectiveConfigResolver;
+import com.knowbase.pipeline.config.MimeTypePipelineDefaults;
+import com.knowbase.ingest.config.OcrProperties;
+import com.knowbase.ingest.config.TextNormalizationProperties;
+import com.knowbase.pipeline.content.ContentFamilyChunkBounds;
+import com.knowbase.pipeline.content.ContentFamilyPipelineDefaults;
+import com.knowbase.pipeline.content.ContentSignalsChunkingAdjuster;
+import com.knowbase.pipeline.content.DefaultContentSignalsDetector;
 import com.knowbase.vector.config.ChunkingProperties;
 import com.knowbase.vector.dto.ChunkPreviewRequest;
 import com.knowbase.vector.dto.ChunkPreviewResponse;
@@ -31,15 +39,34 @@ class ChunkPreviewServiceTest {
     @Mock
     private LibraryConfigResolver libraryConfigResolver;
 
+    @Mock
+    private ChunkProfileService chunkProfileService;
+
+    private EffectiveConfigResolver effectiveConfigResolver;
+
     private ChunkPreviewService service;
 
     @BeforeEach
     void setUp() {
         ChunkingProperties defaults = new ChunkingProperties();
         ChunkingService chunkingService = new ChunkingService(defaults, null);
+        OcrProperties ocrProperties = new OcrProperties();
+        effectiveConfigResolver = new EffectiveConfigResolver(
+                libraryConfigResolver,
+                null,
+                new MimeTypePipelineDefaults(new ContentFamilyPipelineDefaults(ocrProperties)),
+                ocrProperties,
+                new TextNormalizationProperties(),
+                new DefaultContentSignalsDetector(),
+                new ContentSignalsChunkingAdjuster(),
+                new ContentFamilyChunkBounds());
         LibraryChunkPipeline pipeline = new LibraryChunkPipeline(
-                chunkingService, textNormalizer, documentCleaningService, libraryConfigResolver);
-        service = new ChunkPreviewService(pipeline, defaults);
+                chunkingService,
+                textNormalizer,
+                documentCleaningService,
+                libraryConfigResolver,
+                effectiveConfigResolver);
+        service = new ChunkPreviewService(pipeline, defaults, effectiveConfigResolver, chunkProfileService);
         when(documentCleaningService.apply(any(), any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -78,16 +105,13 @@ class ChunkPreviewServiceTest {
 
         ChunkPreviewRequest request = new ChunkPreviewRequest(
                 sample,
-                ChunkingStrategy.PARAGRAPH_FIRST,
                 500,
                 120,
                 80,
                 1200,
                 30,
-                true,
-                false,
                 null,
-                null,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 null);
 
         ChunkPreviewResponse response = service.preview(request);

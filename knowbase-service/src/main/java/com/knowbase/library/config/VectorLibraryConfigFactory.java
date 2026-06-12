@@ -1,14 +1,10 @@
 package com.knowbase.library.config;
 
-import com.knowbase.vector.chunk.ChunkingStrategy;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 知识库默认配置工厂（快速创建 / 高级配置共用）。
- */
+/** 知识库默认配置工厂（建库短表单与后端缺省共用）。 */
 public final class VectorLibraryConfigFactory {
 
     private static final Map<String, List<String>> FILE_TYPE_MIMES = Map.of(
@@ -25,21 +21,13 @@ public final class VectorLibraryConfigFactory {
     private VectorLibraryConfigFactory() {
     }
 
-    public static VectorLibraryConfig quickDefaults(List<String> globalMimeTypes) {
-        return applyPhase2Defaults(new VectorLibraryConfig(), globalMimeTypes, "quick");
+    public static VectorLibraryConfig defaults(List<String> globalMimeTypes) {
+        return applyDefaults(new VectorLibraryConfig(), globalMimeTypes);
     }
 
-    public static VectorLibraryConfig advancedDefaults(List<String> globalMimeTypes) {
-        return applyPhase2Defaults(new VectorLibraryConfig(), globalMimeTypes, "advanced");
-    }
-
-    public static VectorLibraryConfig applyPhase2Defaults(
-            VectorLibraryConfig cfg, List<String> globalMimeTypes, String wizardMode) {
+    public static VectorLibraryConfig applyDefaults(VectorLibraryConfig cfg, List<String> globalMimeTypes) {
         if (cfg.getConfigVersion() <= 0) {
             cfg.setConfigVersion(1);
-        }
-        if (cfg.getWizardMode() == null || cfg.getWizardMode().isBlank()) {
-            cfg.setWizardMode(wizardMode != null ? wizardMode : "quick");
         }
         if (cfg.getTags() == null) {
             cfg.setTags(new ArrayList<>());
@@ -47,41 +35,40 @@ public final class VectorLibraryConfigFactory {
         if (cfg.getIngestAccess() == null) {
             cfg.setIngestAccess(new IngestAccessSettings());
         }
-        if (cfg.getParsing() == null) {
-            cfg.setParsing(new ParsingRulesSettings());
-        }
-        if (cfg.getCleaning() == null) {
-            cfg.setCleaning(new CleaningRulesSettings());
-        }
         if (cfg.getRetrieval() == null) {
             cfg.setRetrieval(new RetrievalRulesSettings());
+        }
+        if (cfg.getRetrieval().getDefaultTopK() <= 0) {
+            cfg.getRetrieval().setDefaultTopK(12);
         }
         if (cfg.getGovernance() == null) {
             cfg.setGovernance(new GovernanceRulesSettings());
         }
-        if (cfg.getTextNormalization() == null) {
-            cfg.setTextNormalization(new TextNormalizationSettings());
-        }
-
         cfg.setIngestSourceMode("upload");
         cfg.getIngestAccess().setAccessMode(IngestAccessSettings.FIXED_ACCESS_MODE);
-        if (cfg.getIngestAccess().getSupportedFileTypes() == null
-                || cfg.getIngestAccess().getSupportedFileTypes().isEmpty()) {
-            cfg.getIngestAccess().setSupportedFileTypes(IngestAccessSettings.defaultFileTypes());
-        }
-        if (cfg.getAllowedMimeTypes() == null || cfg.getAllowedMimeTypes().isEmpty()) {
-            cfg.setAllowedMimeTypes(resolveMimeTypes(cfg.getIngestAccess().getSupportedFileTypes(), globalMimeTypes));
-        }
-        if (cfg.getChunkingStrategy() == null) {
-            cfg.setChunkingStrategy(ChunkingStrategy.PARAGRAPH_FIRST);
-        }
+        cfg.setAllowedMimeTypes(globalMimeTypes != null ? globalMimeTypes : List.of());
         if (cfg.getChunkSize() <= 0) {
-            cfg.setChunkSize(600);
+            cfg.setChunkSize(500);
         }
         if (cfg.getChunkOverlap() <= 0) {
-            cfg.setChunkOverlap(100);
+            cfg.setChunkOverlap(120);
         }
         return cfg;
+    }
+
+    /** 由系统 MIME 白名单推导对外展示的文件类型标识（一期只读）。 */
+    public static List<String> systemSupportedFileTypes(List<String> globalMimeTypes) {
+        if (globalMimeTypes == null || globalMimeTypes.isEmpty()) {
+            return List.of();
+        }
+        List<String> types = new ArrayList<>();
+        for (Map.Entry<String, List<String>> entry : FILE_TYPE_MIMES.entrySet()) {
+            boolean matched = entry.getValue().stream().anyMatch(globalMimeTypes::contains);
+            if (matched) {
+                types.add(entry.getKey());
+            }
+        }
+        return types;
     }
 
     public static List<String> resolveMimeTypes(List<String> fileTypes, List<String> globalFallback) {

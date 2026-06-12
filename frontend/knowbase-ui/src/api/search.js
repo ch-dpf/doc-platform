@@ -18,7 +18,8 @@ export function buildRetrievalPreviewPayload({
   topK,
   minScore,
   docIds,
-  messages
+  messages,
+  includeAllChunkProfiles
 }) {
   const payload = {
     libraryId,
@@ -30,5 +31,6 @@ export function buildRetrievalPreviewPayload({
   const history = buildRagChatHistory(messages || [])
   if (history.length) payload.history = history
   if (docIds?.length) payload.filter = { docIds }
+  if (includeAllChunkProfiles) payload.includeAllChunkProfiles = true
   return payload
 }

@@ -3,7 +3,7 @@ package com.knowbase.library.service;
 import com.knowbase.library.config.VersionPolicySettings;
 
 /**
- * 库级版本更新策略（ingestAccess.versionPolicy）。
+ * 系统级版本更新策略（ingest.version-policy）。
  */
 public enum VersionUpdateStrategy {
 

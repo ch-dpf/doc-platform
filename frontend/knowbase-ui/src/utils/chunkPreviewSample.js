@@ -1,3 +1,5 @@
+import { SYSTEM_CHUNKING_DEFAULTS } from './libraryDefaults'
+
 /**
  * 分块策略对比示例：双主题 + 4 级标题，便于区分策略差异。
  */
@@ -24,14 +26,12 @@ const STRATEGY_EXPECTATIONS = {
   'fixed-char': '预期约 5~6 块（等长 ~100 字窗口，可能切断标题行）'
 }
 
-/** 与入库流水线一致的分块参数（不做预览临时缩放） */
+/** 与入库流水线一致的分块参数（库级仅 size/overlap；合并规则来自系统 chunking.*） */
 export function libraryChunkParams(config = {}) {
   return {
     chunkSize: config.chunkSize ?? 500,
     chunkOverlap: config.chunkOverlap ?? 120,
-    maxChunkSize: config.maxChunkSize ?? 1200,
-    minChunkSize: config.minChunkSize ?? 80,
-    minParagraphLength: config.minParagraphLength ?? 30
+    ...SYSTEM_CHUNKING_DEFAULTS
   }
 }
 
@@ -42,9 +42,7 @@ export function resolvePreviewChunkParams(textLength, config, strategy = 'paragr
   const base = {
     chunkSize: config.chunkSize ?? 600,
     chunkOverlap: config.chunkOverlap ?? 100,
-    maxChunkSize: config.maxChunkSize ?? 1200,
-    minChunkSize: config.minChunkSize ?? 80,
-    minParagraphLength: config.minParagraphLength ?? 30
+    ...SYSTEM_CHUNKING_DEFAULTS
   }
   const expectedHint = STRATEGY_EXPECTATIONS[strategy] || ''
 
@@ -87,7 +85,7 @@ export function resolvePreviewChunkParams(textLength, config, strategy = 'paragr
   const minChunkSize = Math.min(base.minChunkSize, Math.max(20, Math.floor(idealChunkSize * 0.25)))
   const previewHint =
     idealChunkSize < base.chunkSize
-      ? `预览临时块大小 ${idealChunkSize}（库配置 ${base.chunkSize}），按「${strategyLabel(strategy)}」策略优化。`
+      ? `预览临时分块大小 ${idealChunkSize}（库配置 ${base.chunkSize}），按「${strategyLabel(strategy)}」策略优化。`
       : ''
 
   return {
@@ -113,12 +111,3 @@ function strategyLabel(strategy) {
   )
 }
 
-export const CHUNK_STRATEGY_PREVIEW_HINTS = {
-  'paragraph-first': '按空行分段；短段可能合并；超长段再按字符切。',
-  'fixed-char': '按固定长度滑动窗口切，块边界可能落在句子中间。',
-  semantic: '按相邻句 embedding 相似度切分主题；预览使用较大块大小以体现差异。',
-  'heading-level': '在 # / ## 标题行处切分为独立块。'
-}
-
-export const INGEST_CHUNK_PREVIEW_HINT =
-  '分块预览与入库一致：使用库配置参数，并应用表头块过滤。'

@@ -7,6 +7,11 @@ import com.knowbase.ingest.domain.IndexStatus;
 import com.knowbase.ingest.domain.ParseStatus;
 import com.knowbase.ingest.support.DocMetadataStore;
 import com.knowbase.library.service.LibraryConfigResolver;
+import com.knowbase.pipeline.config.ChunkProfileFingerprint;
+import com.knowbase.pipeline.config.EffectiveConfigResolver;
+import com.knowbase.pipeline.config.EffectivePipelineConfig;
+import com.knowbase.pipeline.config.IngestProfileSupport;
+import com.knowbase.pipeline.content.ContentSignalsSupport;
 import com.knowbase.platform.DocumentIndexCoordinator;
 import com.knowbase.ingest.support.DocumentCleaningService;
 import com.knowbase.ingest.support.ParsedTextNormalizer;
@@ -34,6 +39,7 @@ public class DocumentPipelineService {
     private final ParsedTextNormalizer textNormalizer;
     private final DocumentIndexCoordinator indexCoordinator;
     private final LibraryConfigResolver libraryConfigResolver;
+    private final EffectiveConfigResolver effectiveConfigResolver;
     private final DocumentCleaningService documentCleaningService;
 
     public DocumentPipelineService(
@@ -43,6 +49,7 @@ public class DocumentPipelineService {
             ParsedTextNormalizer textNormalizer,
             DocumentIndexCoordinator indexCoordinator,
             LibraryConfigResolver libraryConfigResolver,
+            EffectiveConfigResolver effectiveConfigResolver,
             DocumentCleaningService documentCleaningService) {
         this.repository = repository;
         this.storageService = storageService;
@@ -50,6 +57,7 @@ public class DocumentPipelineService {
         this.textNormalizer = textNormalizer;
         this.indexCoordinator = indexCoordinator;
         this.libraryConfigResolver = libraryConfigResolver;
+        this.effectiveConfigResolver = effectiveConfigResolver;
         this.documentCleaningService = documentCleaningService;
     }
 
@@ -89,17 +97,28 @@ public class DocumentPipelineService {
             doc.setParseStatus(ParseStatus.PARSING);
             repository.save(doc);
 
+            EffectivePipelineConfig effective =
+                    effectiveConfigResolver.forDocument(doc.getLibraryId(), doc.getDocId());
             String plainText = parseService.extractText(
                     fileBytes,
                     fileName,
                     doc.getMimeType(),
-                    libraryConfigResolver.parseOptionsFor(doc.getLibraryId()));
-            if (libraryConfigResolver.config(doc.getLibraryId()).isTextNormalizationEnabled()) {
-                plainText = textNormalizer.normalize(
-                        plainText, libraryConfigResolver.normalizationFor(doc.getLibraryId()));
+                    effectiveConfigResolver.parseOptions(effective));
+            if (effective.isTextNormalizationEnabled()) {
+                plainText = textNormalizer.normalize(plainText, effective.normalization());
             }
-            plainText = documentCleaningService.apply(
-                    plainText, libraryConfigResolver.cleaningFor(doc.getLibraryId()));
+            plainText = documentCleaningService.apply(plainText, effective.cleaning());
+
+            EffectivePipelineConfig withContent = effectiveConfigResolver.forIngestWithContent(
+                    doc.getLibraryId(),
+                    doc.getMimeType(),
+                    IngestProfileSupport.parse(doc.getIngestProfileJson()),
+                    plainText);
+            doc.setChunkProfileId(ChunkProfileFingerprint.compute(doc.getLibraryId(), withContent));
+            String signalsJson = ContentSignalsSupport.toJson(withContent.contentSignals());
+            if (signalsJson != null) {
+                doc.setContentSignalsJson(signalsJson);
+            }
 
             String parsedKey = doc.getTenantId()
                     + "/"

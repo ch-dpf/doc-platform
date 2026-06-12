@@ -1,12 +1,21 @@
 package com.knowbase.library.config;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
+@Schema(description = "正文清洗规则")
 public class CleaningRulesSettings {
 
+    @Schema(description = "去除页眉页脚", example = "true")
     private boolean removeHeaderFooter = true;
+    @Schema(description = "去除水印", example = "true")
     private boolean removeWatermark = true;
+    @Schema(description = "去除重复段落", example = "true")
     private boolean removeDuplicateParagraphs = true;
+    @Schema(description = "手机号脱敏", example = "false")
     private boolean maskPhone = false;
+    @Schema(description = "身份证号脱敏", example = "false")
     private boolean maskIdCard = false;
+    @Schema(description = "停用词过滤", example = "false")
     private boolean stopwordFilter = false;
 
     public boolean isRemoveHeaderFooter() {

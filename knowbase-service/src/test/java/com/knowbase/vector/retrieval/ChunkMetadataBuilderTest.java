@@ -2,6 +2,7 @@ package com.knowbase.vector.retrieval;
 
 import com.knowbase.ingest.domain.DocMetadata;
 import com.knowbase.ingest.domain.SourceType;
+import com.knowbase.pipeline.chunk.PipelineChunk;
 import com.knowbase.platform.JsonSupport;
 import org.junit.jupiter.api.Test;
 
@@ -34,6 +35,20 @@ class ChunkMetadataBuilderTest {
     void returnsNullWhenNoMetadataAvailable() {
         assertNull(ChunkMetadataBuilder.buildJson(null));
         assertNull(ChunkMetadataBuilder.buildJson(new DocMetadata()));
+    }
+
+    @Test
+    void addsParentContextForHierarchicalChunk() {
+        DocMetadata doc = new DocMetadata();
+        doc.setFileName("policy.docx");
+        doc.setMimeType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+
+        String json = ChunkMetadataBuilder.buildJson(doc, new PipelineChunk("child", "parent section", 1));
+        Map<?, ?> metadata = JsonSupport.fromJson(json, Map.class);
+
+        assertEquals("child", metadata.get("granularity"));
+        assertEquals("1", metadata.get("parentIndex"));
+        assertEquals("parent section", metadata.get("parentContext"));
     }
 
     @Test

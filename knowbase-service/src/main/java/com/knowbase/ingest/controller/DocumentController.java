@@ -120,7 +120,9 @@ public class DocumentController {
 
 
 
-    @Operation(summary = "上传约束")
+    @Operation(
+            summary = "上传约束",
+            description = "返回系统级 supportedFileTypes / allowedMimeTypes（来自 ingest 配置）、单文件大小、批量上限及库级版本策略与审核模式。")
 
     @GetMapping("/upload-constraints")
 
@@ -162,9 +164,10 @@ public class DocumentController {
 
             @RequestParam(defaultValue = "true") boolean autoIndex,
 
-            @RequestParam(required = false) String documentMetadata) throws Exception {
+            @RequestParam(required = false) String documentMetadata,
+            @RequestParam(required = false) String ingestProfile) throws Exception {
 
-        return uploadService.upload(libraryId, tenantId, file, autoIndex, documentMetadata);
+        return uploadService.upload(libraryId, tenantId, file, autoIndex, documentMetadata, ingestProfile);
 
     }
 
@@ -186,9 +189,10 @@ public class DocumentController {
 
             @RequestParam(defaultValue = "true") boolean autoIndex,
 
-            @RequestParam(required = false) String documentMetadata) throws Exception {
+            @RequestParam(required = false) String documentMetadata,
+            @RequestParam(required = false) String ingestProfile) throws Exception {
 
-        return uploadService.uploadAsync(libraryId, tenantId, file, autoIndex, documentMetadata);
+        return uploadService.uploadAsync(libraryId, tenantId, file, autoIndex, documentMetadata, ingestProfile);
 
     }
 
@@ -210,9 +214,10 @@ public class DocumentController {
 
             @RequestParam(defaultValue = "true") boolean autoIndex,
 
-            @RequestParam(required = false) String documentMetadata) {
+            @RequestParam(required = false) String documentMetadata,
+            @RequestParam(required = false) String ingestProfile) {
 
-        return uploadService.uploadBatch(libraryId, tenantId, files, autoIndex, documentMetadata);
+        return uploadService.uploadBatch(libraryId, tenantId, files, autoIndex, documentMetadata, ingestProfile);
 
     }
 

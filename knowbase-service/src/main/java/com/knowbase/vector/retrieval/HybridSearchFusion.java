@@ -59,7 +59,9 @@ public final class HybridSearchFusion {
                     source.version(),
                     source.chunkIndex(),
                     source.content(),
-                    entry.getValue()));
+                    entry.getValue(),
+                    source.parentContext(),
+                    source.chunkProfileId()));
         }
         return merged;
     }

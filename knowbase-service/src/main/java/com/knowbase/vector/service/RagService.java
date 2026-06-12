@@ -19,9 +19,12 @@ import com.knowbase.vector.dto.RagCitation;
 import com.knowbase.vector.dto.SearchHit;
 
 import com.knowbase.ingest.support.DocMetadataStore;
+import com.knowbase.pipeline.config.ChunkProfileService;
 import com.knowbase.library.dto.VectorLibraryResponse;
+import com.knowbase.library.service.LibraryConfigResolver;
 import com.knowbase.library.service.LibraryNotFoundException;
 import com.knowbase.library.service.VectorLibraryService;
+import com.knowbase.vector.retrieval.RetrievalTopKResolver;
 import com.knowbase.vector.rag.RagLibraryStatsSupport;
 import com.knowbase.vector.rag.RagWeeklyReportSummarySupport;
 import com.knowbase.vector.rag.RagWeeklyReportWeekSupport;
@@ -39,7 +42,9 @@ import com.knowbase.vector.rag.RagAnswerGuard;
 import com.knowbase.vector.rag.RagQuestionAnalyzer;
 import com.knowbase.vector.rag.RagQueryClassifier;
 import com.knowbase.vector.rag.RagTemporalSupport;
+import com.knowbase.vector.dto.RagRetrievalTrace;
 import com.knowbase.vector.dto.RagStreamEvent;
+import com.knowbase.vector.service.RagRetrievalService.RetrievalResult;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -74,7 +79,8 @@ public class RagService {
 
     private final DocumentChunkMapper documentChunkMapper;
 
-
+    private final LibraryConfigResolver libraryConfigResolver;
+    private final ChunkProfileService chunkProfileService;
 
     public RagService(
 
@@ -92,7 +98,10 @@ public class RagService {
 
             VectorLibraryService vectorLibraryService,
 
-            DocumentChunkMapper documentChunkMapper) {
+            DocumentChunkMapper documentChunkMapper,
+
+            LibraryConfigResolver libraryConfigResolver,
+            ChunkProfileService chunkProfileService) {
 
         this.ragProperties = ragProperties;
 
@@ -110,6 +119,8 @@ public class RagService {
 
         this.documentChunkMapper = documentChunkMapper;
 
+        this.libraryConfigResolver = libraryConfigResolver;
+        this.chunkProfileService = chunkProfileService;
     }
 
 
@@ -197,53 +208,58 @@ public class RagService {
             return metadataRagResponse(weeklyWeekAnswer.get(), history.size());
         }
 
-        int topK = request.topK() != null ? request.topK() : ragProperties.getDefaultTopK();
-        var retrieval = retrievalService.retrieve(request, topK);
+        int topK = RetrievalTopKResolver.resolve(
+                request.topK(),
+                libraryConfigResolver.retrievalFor(request.libraryId()),
+                ragProperties);
+        RetrievalResult retrieval = retrievalService.retrieve(request, topK);
         List<SearchHit> hits = retrieval.hits();
         String searchQuery = retrieval.searchQuery();
-
-
+        RagRetrievalTrace trace = retrievalService.buildTrace(request.libraryId(), retrieval);
 
         if (hits.isEmpty()) {
-
-            return noHitResponse(history.size(), searchQuery);
-
+            return noHitResponse(history.size(), searchQuery, trace);
         }
 
         if (!RagHitRelevance.hasTermOverlap(request.question(), hits)
                 && history.isEmpty()) {
-            return weakMatchResponse(history.size(), searchQuery);
+            return weakMatchResponse(history.size(), searchQuery, trace);
         }
 
         if (RagQuestionAnalyzer.isDeadlineQuestion(request.question())
                 && !RagAnswerGuard.sourcesMentionExplicitDeadline(hits)) {
-            return new RagChatResponse(
+            Map<UUID, String> fileNames = resolveFileNames(hits);
+            return ragResponse(
                     RagAnswerTemplates.NO_EXPLICIT_DEADLINE,
-                    toCitations(hits),
+                    toCitations(request.libraryId(), hits, fileNames),
                     hits.size(),
                     false,
                     false,
                     history.size(),
                     searchQuery,
-                    false);
+                    false,
+                    trace);
         }
 
         Map<UUID, String> fileNames = resolveFileNames(hits);
 
         var ruleAnswer = RagEmployeeRosterSupport.tryRuleBasedAnswer(request.question(), hits, fileNames);
         if (ruleAnswer.isPresent()) {
-            return ruleBasedRagResponse(ruleAnswer.get(), hits, history.size(), searchQuery);
+            return ruleBasedRagResponse(
+                    request.libraryId(), ruleAnswer.get(), hits, fileNames, history.size(), searchQuery, trace);
         }
 
         var projectAnswer = RagProjectParticipationSupport.tryRuleBasedAnswer(request.question(), hits, fileNames);
         if (projectAnswer.isPresent()) {
-            return ruleBasedRagResponse(projectAnswer.get(), hits, history.size(), searchQuery);
+            return ruleBasedRagResponse(
+                    request.libraryId(), projectAnswer.get(), hits, fileNames, history.size(), searchQuery, trace);
         }
 
         var weeklySummary = RagWeeklyReportSummarySupport.tryRuleBasedAnswer(
                 request.question(), hits, fileNames);
         if (weeklySummary.isPresent()) {
-            return ruleBasedRagResponse(weeklySummary.get(), hits, history.size(), searchQuery);
+            return ruleBasedRagResponse(
+                    request.libraryId(), weeklySummary.get(), hits, fileNames, history.size(), searchQuery, trace);
         }
 
         String userMessage = promptBuilder.buildUserMessage(request.question(), hits, history, fileNames);
@@ -253,12 +269,11 @@ public class RagService {
         answer = RagAnswerGuard.enforceGrounding(answer, request.question(), hits, fileNames);
         answer = recoverWeeklySummaryIfEchoed(answer, request.question(), hits, fileNames);
 
-        List<RagCitation> citations = toCitations(hits);
+        List<RagCitation> citations = toCitations(request.libraryId(), hits, fileNames);
 
         boolean found = !answer.startsWith("未找到");
 
-        return new RagChatResponse(
-                answer, citations, hits.size(), true, found, history.size(), searchQuery, false);
+        return ragResponse(answer, citations, hits.size(), true, found, history.size(), searchQuery, false, trace);
 
     }
 
@@ -354,37 +369,56 @@ public class RagService {
 
 
 
-    private RagChatResponse noHitResponse(int historyUsed, String searchQuery) {
-
+    private RagChatResponse noHitResponse(int historyUsed, String searchQuery, RagRetrievalTrace trace) {
         String answer = ragProperties.getNoHitAnswer() != null && !ragProperties.getNoHitAnswer().isBlank()
-
                 ? ragProperties.getNoHitAnswer().strip()
-
                 : RagAnswerTemplates.NO_HIT;
-
-        return new RagChatResponse(answer, List.of(), 0, false, false, historyUsed, searchQuery, false);
-
+        return ragResponse(answer, List.of(), 0, false, false, historyUsed, searchQuery, false, trace);
     }
 
+    private RagChatResponse noHitResponse(int historyUsed, String searchQuery) {
+        return noHitResponse(historyUsed, searchQuery, null);
+    }
 
-
-    private List<RagCitation> toCitations(List<SearchHit> hits) {
+    private List<RagCitation> toCitations(UUID libraryId, List<SearchHit> hits, Map<UUID, String> fileNames) {
         return hits.stream()
                 .map(hit -> new RagCitation(
                         hit.chunkId(),
                         hit.docId(),
                         hit.chunkIndex(),
                         hit.score(),
-                        promptBuilder.excerpt(hit.content())))
+                        promptBuilder.excerpt(hit.contextForPrompt()),
+                        fileNames.getOrDefault(hit.docId(), ""),
+                        hit.chunkProfileId(),
+                        chunkProfileService.isPrimaryProfile(libraryId, hit.chunkProfileId())))
                 .toList();
     }
 
-    private RagChatResponse weakMatchResponse(int historyUsed, String searchQuery) {
+    private RagChatResponse weakMatchResponse(int historyUsed, String searchQuery, RagRetrievalTrace trace) {
+        return ragResponse(
+                RagAnswerTemplates.WEAK_MATCH, List.of(), 0, false, false, historyUsed, searchQuery, false, trace);
+    }
 
+    private static RagChatResponse ragResponse(
+            String answer,
+            List<RagCitation> citations,
+            int retrievedCount,
+            boolean usedLlm,
+            boolean found,
+            int historyUsed,
+            String searchQuery,
+            boolean conversational,
+            RagRetrievalTrace trace) {
         return new RagChatResponse(
-
-                RagAnswerTemplates.WEAK_MATCH, List.of(), 0, false, false, historyUsed, searchQuery, false);
-
+                answer,
+                citations,
+                retrievedCount,
+                usedLlm,
+                found,
+                historyUsed,
+                searchQuery,
+                conversational,
+                trace);
     }
 
 
@@ -450,48 +484,58 @@ public class RagService {
             return emitInstant(metadataRagResponse(weeklyWeekAnswer.get(), history.size()));
         }
 
-        int topK = request.topK() != null ? request.topK() : ragProperties.getDefaultTopK();
-        var retrieval = retrievalService.retrieve(request, topK);
+        int topK = RetrievalTopKResolver.resolve(
+                request.topK(),
+                libraryConfigResolver.retrievalFor(request.libraryId()),
+                ragProperties);
+        RetrievalResult retrieval = retrievalService.retrieve(request, topK);
         List<SearchHit> hits = retrieval.hits();
         String searchQuery = retrieval.searchQuery();
+        RagRetrievalTrace trace = retrievalService.buildTrace(request.libraryId(), retrieval);
 
         if (hits.isEmpty()) {
-            return emitInstant(noHitResponse(history.size(), searchQuery));
+            return emitInstant(noHitResponse(history.size(), searchQuery, trace));
         }
         if (!RagHitRelevance.hasTermOverlap(request.question(), hits) && history.isEmpty()) {
-            return emitInstant(weakMatchResponse(history.size(), searchQuery));
+            return emitInstant(weakMatchResponse(history.size(), searchQuery, trace));
         }
         if (RagQuestionAnalyzer.isDeadlineQuestion(request.question())
                 && !RagAnswerGuard.sourcesMentionExplicitDeadline(hits)) {
-            return emitInstant(new RagChatResponse(
+            Map<UUID, String> deadlineFileNames = resolveFileNames(hits);
+            return emitInstant(ragResponse(
                     RagAnswerTemplates.NO_EXPLICIT_DEADLINE,
-                    toCitations(hits),
+                    toCitations(request.libraryId(), hits, deadlineFileNames),
                     hits.size(),
                     false,
                     false,
                     history.size(),
                     searchQuery,
-                    false));
+                    false,
+                    trace));
         }
 
         Map<UUID, String> fileNames = resolveFileNames(hits);
         var ruleAnswer = RagEmployeeRosterSupport.tryRuleBasedAnswer(request.question(), hits, fileNames);
         if (ruleAnswer.isPresent()) {
-            return emitInstant(ruleBasedRagResponse(ruleAnswer.get(), hits, history.size(), searchQuery));
+            return emitInstant(ruleBasedRagResponse(
+                    request.libraryId(), ruleAnswer.get(), hits, fileNames, history.size(), searchQuery, trace));
         }
         var projectAnswer = RagProjectParticipationSupport.tryRuleBasedAnswer(request.question(), hits, fileNames);
         if (projectAnswer.isPresent()) {
-            return emitInstant(ruleBasedRagResponse(projectAnswer.get(), hits, history.size(), searchQuery));
+            return emitInstant(ruleBasedRagResponse(
+                    request.libraryId(), projectAnswer.get(), hits, fileNames, history.size(), searchQuery, trace));
         }
 
         var weeklySummary = RagWeeklyReportSummarySupport.tryRuleBasedAnswer(
                 request.question(), hits, fileNames);
         if (weeklySummary.isPresent()) {
-            return emitInstant(ruleBasedRagResponse(weeklySummary.get(), hits, history.size(), searchQuery));
+            return emitInstant(ruleBasedRagResponse(
+                    request.libraryId(), weeklySummary.get(), hits, fileNames, history.size(), searchQuery, trace));
         }
 
         String userMessage = promptBuilder.buildUserMessage(request.question(), hits, history, fileNames);
         List<SearchHit> finalHits = hits;
+        RagRetrievalTrace finalTrace = trace;
         StringBuilder answerBuilder = new StringBuilder();
 
         return chatClient.streamChat(ragProperties.getSystemPrompt(), history, userMessage, chatModel)
@@ -503,10 +547,11 @@ public class RagService {
                     String answer = RagAnswerGuard.enforceGrounding(
                             answerBuilder.toString(), request.question(), finalHits, fileNames);
                     answer = recoverWeeklySummaryIfEchoed(answer, request.question(), finalHits, fileNames);
-                    List<RagCitation> citations = toCitations(finalHits);
+                    List<RagCitation> citations = toCitations(request.libraryId(), finalHits, fileNames);
                     boolean found = !answer.startsWith("未找到");
-                    RagChatResponse response = new RagChatResponse(
-                            answer, citations, finalHits.size(), true, found, history.size(), searchQuery, false);
+                    RagChatResponse response = ragResponse(
+                            answer, citations, finalHits.size(), true, found, history.size(), searchQuery, false,
+                            finalTrace);
                     return Flux.just(RagStreamEvent.done(response, null));
                 }))
                 .onErrorResume(ex -> Flux.just(RagStreamEvent.error(ex.getMessage())));
@@ -517,9 +562,23 @@ public class RagService {
     }
 
     private RagChatResponse ruleBasedRagResponse(
-            String answer, List<SearchHit> hits, int historyUsed, String searchQuery) {
-        return new RagChatResponse(
-                answer, toCitations(hits), hits.size(), false, true, historyUsed, searchQuery, false);
+            UUID libraryId,
+            String answer,
+            List<SearchHit> hits,
+            Map<UUID, String> fileNames,
+            int historyUsed,
+            String searchQuery,
+            RagRetrievalTrace trace) {
+        return ragResponse(
+                answer,
+                toCitations(libraryId, hits, fileNames),
+                hits.size(),
+                false,
+                true,
+                historyUsed,
+                searchQuery,
+                false,
+                trace);
     }
 
     private String recoverWeeklySummaryIfEchoed(

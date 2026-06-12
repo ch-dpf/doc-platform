@@ -30,7 +30,8 @@ public class UploadTaskWorker {
             byte[] bytes,
             String fileName,
             boolean autoIndex,
-            String documentMetadata) {
+            String documentMetadata,
+            String ingestProfile) {
         UploadTask task = taskMapper.selectById(taskId);
         if (task == null) {
             return;
@@ -41,7 +42,7 @@ public class UploadTaskWorker {
             taskMapper.updateById(task);
 
             DocumentResponse doc = documentIngestor.ingestOne(
-                    libraryId, tenantId, bytes, fileName, autoIndex, documentMetadata);
+                    libraryId, tenantId, bytes, fileName, autoIndex, documentMetadata, ingestProfile);
             task.setDocId(doc.docId());
             task.setStatus(UploadTaskStatus.COMPLETED);
             task.setProgress(100);

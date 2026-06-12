@@ -15,6 +15,26 @@ public class ChunkingProperties {
     private boolean normalizeBeforeChunk = true;
     /** 相邻句 embedding 余弦相似度低于该值时切开（semantic 策略） */
     private double semanticSimilarityThreshold = 0.72;
+    /** 是否启用父子块（heading-level 父段 + 子块检索） */
+    private boolean hierarchicalChunkingEnabled = true;
+    /** 自定义分隔符；非空时优先按分隔符切段再套用库级分块数值 */
+    private String customDelimiter = "";
+
+    public boolean isHierarchicalChunkingEnabled() {
+        return hierarchicalChunkingEnabled;
+    }
+
+    public void setHierarchicalChunkingEnabled(boolean hierarchicalChunkingEnabled) {
+        this.hierarchicalChunkingEnabled = hierarchicalChunkingEnabled;
+    }
+
+    public String getCustomDelimiter() {
+        return customDelimiter;
+    }
+
+    public void setCustomDelimiter(String customDelimiter) {
+        this.customDelimiter = customDelimiter != null ? customDelimiter : "";
+    }
 
     public ChunkingStrategy getStrategy() {
         return strategy;

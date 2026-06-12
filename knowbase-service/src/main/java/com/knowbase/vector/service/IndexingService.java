@@ -8,7 +8,6 @@ import com.knowbase.event.DocumentReadyForIndexEvent;
 
 import com.knowbase.ingest.domain.DocMetadata;
 import com.knowbase.ingest.support.DocMetadataStore;
-import com.knowbase.library.config.RetrievalRulesSettings;
 import com.knowbase.library.service.LibraryCapacityValidator;
 import com.knowbase.library.service.LibraryConfigResolver;
 
@@ -16,8 +15,14 @@ import com.knowbase.library.service.VectorLibraryService;
 
 import com.knowbase.platform.IndexStatusUpdater;
 
-import com.knowbase.vector.chunk.ChunkPipelineResult;
-import com.knowbase.vector.chunk.LibraryChunkPipeline;
+import com.knowbase.pipeline.config.ChunkProfileService;
+import com.knowbase.pipeline.config.IngestProfile;
+import com.knowbase.pipeline.config.IngestProfileSupport;
+import com.knowbase.pipeline.config.IngestReport;
+import com.knowbase.platform.JsonSupport;
+import com.knowbase.pipeline.chunk.ChunkPipelineResult;
+import com.knowbase.pipeline.chunk.LibraryChunkPipeline;
+import com.knowbase.pipeline.chunk.PipelineChunk;
 
 import com.knowbase.vector.domain.DocumentIndexJob;
 
@@ -75,8 +80,7 @@ public class IndexingService {
     private final LibraryCapacityValidator capacityValidator;
 
     private final DocMetadataStore docMetadataStore;
-
-
+    private final ChunkProfileService chunkProfileService;
 
     public IndexingService(
 
@@ -95,7 +99,8 @@ public class IndexingService {
             VectorLibraryService vectorLibraryService,
             LibraryChunkPipeline libraryChunkPipeline,
             LibraryCapacityValidator capacityValidator,
-            DocMetadataStore docMetadataStore) {
+            DocMetadataStore docMetadataStore,
+            ChunkProfileService chunkProfileService) {
 
         this.jobStore = jobStore;
 
@@ -116,7 +121,7 @@ public class IndexingService {
         this.capacityValidator = capacityValidator;
 
         this.docMetadataStore = docMetadataStore;
-
+        this.chunkProfileService = chunkProfileService;
     }
 
 
@@ -124,6 +129,15 @@ public class IndexingService {
     @Transactional
 
     public void index(DocumentReadyForIndexEvent event) {
+        indexInternal(event, false);
+    }
+
+    @Transactional
+    public void indexMigratingToPrimary(DocumentReadyForIndexEvent event) {
+        indexInternal(event, true);
+    }
+
+    private void indexInternal(DocumentReadyForIndexEvent event, boolean useLibraryRules) {
 
         UUID libraryId = event.libraryId();
 
@@ -142,9 +156,18 @@ public class IndexingService {
         try {
 
             String text = textFetcher.fetch(event.parsedTextKey(), event.parsedTextUrl());
-
-            ChunkPipelineResult pipeline = libraryChunkPipeline.chunkIndexedText(libraryId, text);
+            ChunkPipelineResult pipeline;
+            if (useLibraryRules) {
+                applyPrimaryChunkProfile(libraryId, docId);
+                clearIngestChunkOverrides(docId);
+                pipeline = libraryChunkPipeline.chunkForLibraryRebuild(libraryId, docId, text);
+            } else {
+                refreshChunkProfileId(libraryId, docId, text);
+                pipeline = libraryChunkPipeline.chunkIndexedText(libraryId, docId, text);
+            }
+            List<PipelineChunk> pipelineChunks = pipeline.pipelineChunks();
             List<String> chunks = pipeline.chunks();
+            persistIngestReport(libraryId, docId, pipeline, chunks);
 
             int replacingChunks = chunkMapper.countByDocIdAndVersion(docId, event.version());
             capacityValidator.requireChunkCapacity(libraryId, replacingChunks, chunks.size());
@@ -172,30 +195,24 @@ public class IndexingService {
 
             }
 
-            String chunkMetadataJson = resolveChunkMetadataJson(libraryId, docId);
+            DocMetadata doc = docMetadataStore.findById(docId).orElse(null);
+            boolean retainMetadata = libraryConfigResolver.retrievalFor(libraryId).isRetainChunkMetadata();
 
-            for (int i = 0; i < chunks.size(); i++) {
-
+            for (int i = 0; i < pipelineChunks.size(); i++) {
+                PipelineChunk pipelineChunk = pipelineChunks.get(i);
+                String chunkMetadataJson = retainMetadata
+                        ? ChunkMetadataBuilder.buildJson(doc, pipelineChunk)
+                        : null;
                 chunkMapper.insertChunk(
-
                         UUID.randomUUID(),
-
                         libraryId,
-
                         docId,
-
                         event.tenantId(),
-
                         event.version(),
-
                         i,
-
-                        chunks.get(i),
-
+                        pipelineChunk.content(),
                         chunkMetadataJson,
-
                         embeddings.get(i));
-
             }
 
             completeJob(job, event, chunks.size());
@@ -292,13 +309,83 @@ public class IndexingService {
 
     }
 
-    private String resolveChunkMetadataJson(UUID libraryId, UUID docId) {
-        RetrievalRulesSettings retrieval = libraryConfigResolver.retrievalFor(libraryId);
-        if (!retrieval.isRetainChunkMetadata()) {
-            return null;
-        }
+    private void refreshChunkProfileId(UUID libraryId, UUID docId, String parsedText) {
         DocMetadata doc = docMetadataStore.findById(docId).orElse(null);
-        return ChunkMetadataBuilder.buildJson(doc);
+        if (doc == null) {
+            return;
+        }
+        String profileId = chunkProfileService.computeForIngestWithContent(
+                libraryId, doc.getMimeType(), doc.getIngestProfileJson(), parsedText);
+        if (!profileId.equals(doc.getChunkProfileId())) {
+            doc.setChunkProfileId(profileId);
+            docMetadataStore.save(doc);
+        }
+    }
+
+    private void applyPrimaryChunkProfile(UUID libraryId, UUID docId) {
+        DocMetadata doc = docMetadataStore.findById(docId).orElse(null);
+        if (doc == null) {
+            return;
+        }
+        String primary = chunkProfileService.resolvedPrimaryProfileId(libraryId);
+        if (!primary.equals(doc.getChunkProfileId())) {
+            doc.setChunkProfileId(primary);
+            docMetadataStore.save(doc);
+        }
+    }
+
+    private void clearIngestChunkOverrides(UUID docId) {
+        DocMetadata doc = docMetadataStore.findById(docId).orElse(null);
+        if (doc == null) {
+            return;
+        }
+        IngestProfile profile = IngestProfileSupport.parse(doc.getIngestProfileJson());
+        if (profile == null
+                || (profile.getChunkSize() == null
+                        && profile.getChunkOverlap() == null
+                        && profile.getMinParagraphLength() == null)) {
+            return;
+        }
+        profile.setChunkSize(null);
+        profile.setChunkOverlap(null);
+        profile.setMinParagraphLength(null);
+        String nextJson = profile.isEmpty() ? null : JsonSupport.toJson(profile);
+        doc.setIngestProfileJson(nextJson);
+        docMetadataStore.updateIngestProfileJson(docId, nextJson);
+    }
+
+    private void persistIngestReport(UUID libraryId, UUID docId, ChunkPipelineResult pipeline, List<String> chunks) {
+        DocMetadata doc = docMetadataStore.findById(docId).orElse(null);
+        if (doc == null) {
+            return;
+        }
+        double avgLen = 0;
+        if (!chunks.isEmpty()) {
+            long total = 0;
+            for (String c : chunks) {
+                total += c.length();
+            }
+            avgLen = (double) total / chunks.size();
+        }
+        boolean headerWarning = pipeline.rawTotalChunks() > 0
+                && pipeline.filteredOutCount() > pipeline.rawTotalChunks() / 2;
+        int configVersion = libraryConfigResolver.config(libraryId).getConfigVersion();
+        IngestReport report = new IngestReport(
+                pipeline.rawTotalChunks(),
+                pipeline.filteredOutCount(),
+                chunks.size(),
+                avgLen,
+                headerWarning,
+                configVersion,
+                pipeline.contentFamilyWire(),
+                pipeline.chunkingStrategyWire(),
+                pipeline.chunkingAdjustmentReason(),
+                pipeline.multiGranularity());
+        doc.setIngestReportJson(JsonSupport.toJson(report));
+        if (pipeline.contentSignalsJson() != null) {
+            doc.setContentSignalsJson(pipeline.contentSignalsJson());
+        }
+        docMetadataStore.save(doc);
     }
 
 }

@@ -2,8 +2,11 @@ package com.knowbase.ingest.service;
 
 import com.knowbase.ingest.config.OcrProperties;
 import com.knowbase.ingest.parse.DocumentParseOptions;
+import com.knowbase.ingest.parse.ExcelMimeSupport;
+import com.knowbase.ingest.parse.ExcelStructuredExtractor;
 import com.knowbase.ingest.parse.HtmlParsingContentProcessor;
 import com.knowbase.ingest.parse.OcrFallbackPolicy;
+import com.knowbase.ingest.parse.TableExtractionMode;
 import com.knowbase.ingest.parse.TikaMetadataHints;
 import org.apache.tika.Tika;
 import org.apache.tika.metadata.Metadata;
@@ -46,7 +49,7 @@ public class DocumentParseService {
         String detectedMime = mimeType != null && !mimeType.isBlank()
                 ? mimeType
                 : detectMimeType(bytes, fileName);
-        String tikaText = extractWithTika(bytes, fileName, effective);
+        String tikaText = extractWithTika(bytes, fileName, detectedMime, effective);
         if (!effective.ocrEnabled()) {
             return tikaText;
         }
@@ -71,8 +74,23 @@ public class DocumentParseService {
         return tika.detect(sample, fileName);
     }
 
-    private String extractWithTika(byte[] bytes, String fileName, DocumentParseOptions options) {
+    private String extractWithTika(
+            byte[] bytes, String fileName, String mimeType, DocumentParseOptions options) {
         DocumentParseOptions effective = options != null ? options : DocumentParseOptions.disabled();
+        if (effective.tableExtraction() == TableExtractionMode.STRUCTURED
+                && ExcelMimeSupport.isExcel(mimeType, fileName)) {
+            return ExcelStructuredExtractor.extract(
+                    bytes,
+                    fileName,
+                    effective,
+                    request -> {
+                        try {
+                            return extractHtmlWithTika(request.bytes(), request.fileName(), request.options());
+                        } catch (Exception e) {
+                            throw new IllegalStateException(e);
+                        }
+                    });
+        }
         if (!effective.requiresHtmlPipeline()) {
             return extractPlainWithTika(bytes, fileName, effective);
         }

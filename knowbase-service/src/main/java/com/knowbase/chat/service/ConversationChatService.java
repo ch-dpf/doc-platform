@@ -70,7 +70,8 @@ public class ConversationChatService {
                                         event.found() != null && event.found(),
                                         event.historyUsed() != null ? event.historyUsed() : 0,
                                         event.searchQuery(),
-                                        event.conversational() != null && event.conversational()),
+                                        event.conversational() != null && event.conversational(),
+                                        event.retrievalTrace()),
                                 saved.getMessageId());
                         return Flux.just(toSse(done));
                     }
@@ -91,7 +92,9 @@ public class ConversationChatService {
                 request.minScore(),
                 filter,
                 request.chatModel(),
-                history);
+                history,
+                request.includeAllChunkProfiles(),
+                request.chunkProfileIds());
     }
 
     private static ServerSentEvent<String> toSse(RagStreamEvent event) {

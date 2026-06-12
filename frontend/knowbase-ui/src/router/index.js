@@ -2,12 +2,14 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 import DocumentChunksView from '../views/DocumentChunksView.vue'
 import DocumentsView from '../views/DocumentsView.vue'
+import HomeView from '../views/HomeView.vue'
 import IngestView from '../views/IngestView.vue'
 import QaView from '../views/QaView.vue'
 import VectorLibrariesView from '../views/VectorLibrariesView.vue'
 import VectorLibraryDetailView from '../views/VectorLibraryDetailView.vue'
 const routes = [
-  { path: '/', redirect: '/vector-libraries' },
+  { path: '/', redirect: '/home' },
+  { path: '/home', name: 'home', component: HomeView, meta: { title: '首页', hidePageHeader: true } },
   { path: '/documents', name: 'documents', component: DocumentsView, meta: { title: '文档库' } },
   {
     path: '/documents/:docId/chunks',

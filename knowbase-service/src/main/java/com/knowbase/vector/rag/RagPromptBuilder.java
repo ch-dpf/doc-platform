@@ -135,6 +135,6 @@ public class RagPromptBuilder {
         return "[" + index + "]" + fileLine + " docId=" + hit.docId()
                 + " chunk=" + hit.chunkIndex()
                 + " score=" + String.format("%.4f", hit.score())
-                + "\n" + hit.content().strip() + "\n\n";
+                + "\n" + hit.contextForPrompt() + "\n\n";
     }
 }

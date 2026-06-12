@@ -56,6 +56,14 @@ ingest:
   max-file-size: 50MB
   max-batch-files: 20
   async-upload-threshold: 5MB
+  # 系统级：同名文件重复上传时的版本策略（全租户/全库统一，不在库配置中设置）
+  version-policy:
+    # 是否启用版本策略；false 时等同 overwrite（覆盖当前版本重处理）
+    enabled: true
+    # overwrite=覆盖升版重处理 | incremental=内容未变则跳过 | keep-history=保留历史并新建版本
+    update-strategy: keep-history
+  # 系统级：入库审核。auto=按采集页「立即入库」决定索引；manual-review=解析后需人工批准才索引
+  ingest-review-mode: auto
   ocr:
     # 先运行 scripts/setup-tesseract.ps1 下载语言包，再改为 true
     enabled: true

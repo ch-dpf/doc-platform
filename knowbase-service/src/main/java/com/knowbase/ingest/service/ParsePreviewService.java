@@ -4,7 +4,7 @@ import com.knowbase.ingest.config.IngestProperties;
 import com.knowbase.ingest.dto.ParsePreviewResponse;
 import com.knowbase.ingest.parse.DocumentParseOptions;
 import com.knowbase.ingest.support.MimeTypeAllowlist;
-import com.knowbase.library.service.LibraryConfigResolver;
+import com.knowbase.pipeline.config.EffectiveConfigResolver;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,15 +22,15 @@ public class ParsePreviewService {
 
     private final DocumentParseService parseService;
     private final List<String> allowedMimeTypes;
-    private final LibraryConfigResolver libraryConfigResolver;
+    private final EffectiveConfigResolver effectiveConfigResolver;
 
     public ParsePreviewService(
             DocumentParseService parseService,
             IngestProperties ingestProperties,
-            LibraryConfigResolver libraryConfigResolver) {
+            EffectiveConfigResolver effectiveConfigResolver) {
         this.parseService = parseService;
         this.allowedMimeTypes = ingestProperties.getAllowedMimeTypes();
-        this.libraryConfigResolver = libraryConfigResolver;
+        this.effectiveConfigResolver = effectiveConfigResolver;
     }
 
     public ParsePreviewResponse preview(MultipartFile file) throws IOException {
@@ -53,8 +53,9 @@ public class ParsePreviewService {
                     HttpStatus.BAD_REQUEST, "不支持的文件类型: " + mimeType + "（仅文档类型可预览解析）");
         }
         DocumentParseOptions options = libraryId != null
-                ? libraryConfigResolver.parseOptionsFor(libraryId)
-                : DocumentParseOptions.disabled();
+                ? effectiveConfigResolver.parseOptions(
+                        effectiveConfigResolver.forIngest(libraryId, mimeType, null))
+                : effectiveConfigResolver.parseOptions(effectiveConfigResolver.forMimeOnly(mimeType));
         String text = parseService.extractText(bytes, fileName, mimeType, options);
         boolean truncated = false;
         if (text.length() > MAX_PREVIEW_CHARS) {

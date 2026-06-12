@@ -4,11 +4,13 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.knowbase.platform.mybatis.PostgresJsonbTypeHandler;
+import org.apache.ibatis.type.JdbcType;
 
 import java.time.Instant;
 import java.util.UUID;
 
-@TableName("doc_metadata")
+@TableName(value = "doc_metadata", autoResultMap = true)
 public class DocMetadata {
 
     @TableId(value = "doc_id", type = IdType.INPUT)
@@ -65,8 +67,24 @@ public class DocMetadata {
     @TableField("updated_at")
     private Instant updatedAt;
 
-    @TableField("custom_metadata")
+    @TableField(value = "custom_metadata", jdbcType = JdbcType.OTHER, typeHandler = PostgresJsonbTypeHandler.class)
     private String customMetadataJson;
+
+    /** v2: 采集级管道覆盖（解析/清洗/分块），与 custom_metadata 语义标签分离 */
+    @TableField(value = "ingest_profile_json", jdbcType = JdbcType.OTHER, typeHandler = PostgresJsonbTypeHandler.class)
+    private String ingestProfileJson;
+
+    /** v2: 入库质量报告（块数、过滤数、表头占比警告等） */
+    @TableField(value = "ingest_report_json", jdbcType = JdbcType.OTHER, typeHandler = PostgresJsonbTypeHandler.class)
+    private String ingestReportJson;
+
+    /** v2: 解析后内容结构探测快照（ContentSignals） */
+    @TableField(value = "content_signals_json", jdbcType = JdbcType.OTHER, typeHandler = PostgresJsonbTypeHandler.class)
+    private String contentSignalsJson;
+
+    /** 入库时固化的分块配置档 ID */
+    @TableField("chunk_profile_id")
+    private String chunkProfileId;
 
     public UUID getDocId() {
         return docId;
@@ -218,5 +236,37 @@ public class DocMetadata {
 
     public void setCustomMetadataJson(String customMetadataJson) {
         this.customMetadataJson = customMetadataJson;
+    }
+
+    public String getIngestProfileJson() {
+        return ingestProfileJson;
+    }
+
+    public void setIngestProfileJson(String ingestProfileJson) {
+        this.ingestProfileJson = ingestProfileJson;
+    }
+
+    public String getIngestReportJson() {
+        return ingestReportJson;
+    }
+
+    public void setIngestReportJson(String ingestReportJson) {
+        this.ingestReportJson = ingestReportJson;
+    }
+
+    public String getContentSignalsJson() {
+        return contentSignalsJson;
+    }
+
+    public void setContentSignalsJson(String contentSignalsJson) {
+        this.contentSignalsJson = contentSignalsJson;
+    }
+
+    public String getChunkProfileId() {
+        return chunkProfileId;
+    }
+
+    public void setChunkProfileId(String chunkProfileId) {
+        this.chunkProfileId = chunkProfileId;
     }
 }

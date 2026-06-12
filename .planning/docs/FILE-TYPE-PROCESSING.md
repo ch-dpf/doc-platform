@@ -43,7 +43,7 @@ focus: file-type-processing
 - **流程与 API：** 建库、入库九阶段、Resolver 生效路径见 [INGEST-PIPELINE.md §2–§4](./INGEST-PIPELINE.md#2-建库流程pipe-01)；本文**不**重复 PIPE 流程。
 - **通用质量准则：** 块自洽、表头过滤、预览≠入库见 [INGEST-PIPELINE.md §7](./INGEST-PIPELINE.md#7-分块质量准则) 与 [§8 反模式](./INGEST-PIPELINE.md#8-反模式对照)。
 - **配置层级模型：** 系统 / 库默认 / 采集覆盖（目标态）见 [INGEST-PIPELINE.md §5](./INGEST-PIPELINE.md#5-三层配置矩阵)；本文 §3 仅对照系统默认与向导默认，不重复完整四层 ingest 矩阵。
-- **按类型细表：** Phase 1 D-17 将 TYPE-01–05 归本文件；Phase 3 预设引用附录 A MIME 片段。
+- **按类型细表：** Phase 1 D-17 将 TYPE-01–05 归本文件；附录 A 供 `MimeTypePipelineDefaults` 运行时引用。
 
 ### Phase 2 覆盖范围
 
@@ -52,7 +52,7 @@ focus: file-type-processing
 | 能力 | 本阶段 | 后续 |
 |------|--------|------|
 | 按类型推荐矩阵 | §2 主矩阵（已填充） | — |
-| MIME 运行时自动默认 | 附录 A 规划表 only | Phase 3 `libraryPresets.js` |
+| MIME 运行时自动默认 | `PlatformPipelineDefaults` + `MimeTypePipelineDefaults`（始终按 MIME 生效） | — |
 | 结构化 Excel ingest | 附录 B backlog | 另立里程碑 |
 | 预览=入库一致性 | 反模式链回 INGEST-PIPELINE §8 | Phase 4 PARITY |
 
@@ -73,7 +73,7 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 | 场景 | 类型 | 关键设定方向 |
 |------|------|-------------|
 | 周报 xlsx | Excel | `paragraph-first` + `text-only`；禁止 `semantic` / `structured` |
-| 扫描 pdf | PDF | `parsing.ocrEnabled: true`；禁止 OCR 关闭 |
+| 扫描 pdf | PDF | `ingest.ocr.enabled: true`；禁止在未部署 tessdata 时上传扫描件 |
 | 制度 docx | Word | `structured` 表格 + `heading-level` 分块（长文档） |
 
 ---
@@ -166,8 +166,8 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 **层级说明：**
 
 - **系统级** — 无库 JSON 或字段缺失时 `VectorLibraryConfigFactory` 兜底（如 `chunkSize` 600、`chunkOverlap` 100）；`ingest.ocr.enabled` 为 OCR **引擎开关**，非库级 `parsing.ocrEnabled`。
-- **向导级** — `CreateLibraryWizard` Step 3 通过 `defaultLibraryConfig()` 写入新库 `config_json` 初始值。
-- **类型推荐** — 运营按 §2 矩阵为垂直库覆盖；与向导默认一致时标注「同左」，差异时在 §2 脚注说明。
+- **建库默认** — `CreateLibraryWizard` 短表单提交时 `defaultLibraryConfig()` 写入新库 `config_json` 初始值；细调在 `EditLibrarySettingsDrawer`。
+- **类型推荐** — 运营按 §2 矩阵为专用业务库覆盖；与向导默认一致时标注「同左」，差异时在 §2 脚注说明。
 
 | 规则项 | 配置路径 | 系统默认 (`application.yml`) | 向导默认 (`libraryDefaults.js`) | 类型推荐值（汇总） | 一致/差异说明 |
 |--------|----------|------------------------------|--------------------------------|-------------------|--------------|
@@ -204,7 +204,7 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 | **Word** | 制度 docx + `cleaning.removeHeaderFooter: false` | 页眉页脚、页码行进入索引；检索噪声 | `DocumentCleaningService.java`；`cleaningFor(libraryId)` | 保持 **`true`**（[§2 Word cleaning 行](#ops-matrix)） |
 | **Excel** | `parsing.tableExtraction: structured` 用于 xlsx | 无结构化收益；运营误以为行列对象入库 | `DocumentParseService.java` L95–107；`TableExtractionMode.java` L8–9 | 保持 **`text-only`**（[§2 Excel tableExtraction 行](#ops-matrix)）；链回 §8「**Excel 误开 structured 表格**」 |
 | **Excel** | `chunkingStrategy: semantic` 用于周报 / 明细 xlsx | 续行与主体行分离；表头块被语义边界误切；召回失败 | `ChunkPreviewServiceTest.java`（杜鹏飞 fixture 脚注[^dupengfei-anti]）；`TabularContinuationNormalizer.java` | **`paragraph-first` + `text-only`**（[§2 Excel chunkingStrategy 行](#ops-matrix)）；链回 §8「**杜鹏飞周报 xlsx**」 |
-| **Excel** | 周报 xlsx 与报销 xlsx 建在同一垂直库 | 检索噪声大；问答混淆不同业务语义 | `ChunkMetadataBuilder.java`（`documentMetadata` 仅过滤不拆库） | 按语义主轴**拆库**（[§2 Excel 周报子场景行](#ops-matrix)）；链回 §8「**异质语义混库**」 |
+| **Excel** | 周报 xlsx 与报销 xlsx 建在同一业务库且不打标签 | 检索噪声大；问答混淆不同业务语义 | `ChunkMetadataBuilder.java`（`documentMetadata` 仅过滤不拆库） | 按语义主轴**拆库**或打标签（[§2 Excel 周报子场景行](#ops-matrix)）；链回 §8「**异质语义混库**」 |
 | **TXT** | `parsing.autoDetectEncoding: false` + GBK 源文件 | 乱码 chunk → 无效向量；检索无法命中 | `TikaEncodingMapper.java`；`DocumentParseService.java` `extractPlainWithTika` | 保持 **`autoDetectEncoding: true`**（[§2 TXT 编码行](#ops-matrix)） |
 | **TXT** | `chunkingStrategy: semantic` 于短通知 / 清单 txt | 列表项在语义边界被拆开；单行事实跨块 | `ChunkingService.java` | 使用 **`paragraph-first`**（[§2 TXT chunkingStrategy 行](#ops-matrix)） |
 | **Markdown** | 库 `ingestAccess.supportedFileTypes` 未含 **`markdown`** | 上传 `.md` 返回 415；文件被拦截 | `supportedFileTypes.js` L1–7；`MimeTypeAllowlist.java` L14–40；`UploadService.java` | 建库 Step 2 纳入 markdown（[§2 Markdown MIME 行](#ops-matrix)） |
@@ -226,7 +226,7 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 ## 附录 A MIME → 推荐 config_json {#appendix-a} {#dev-appendix-a}
 
-> **文档规划，Phase 3 预设引用** — 本表为库级初始默认片段，供 Phase 3 `libraryPresets.js` 套用。**非** v1 运行时 MIME 自动默认引擎（实现 deferred）。
+> **运行时 MIME 默认源** — 本表为 `MimeTypePipelineDefaults` 目标态片段；`parsing.mimeAwareDefaults` 为 `true`（默认）时入库按 MIME 覆盖库级 parsing/chunking 片段。
 
 | MIME | 文件类型键 | 扩展名 | 推荐 config_json 片段（库级初始默认） |
 |------|-----------|--------|--------------------------------------|
@@ -248,9 +248,9 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 **MIME 默认三层覆盖（D-07）：**
 
-1. **附录 A 值** = 库级初始默认（Phase 3 `libraryPresets.js` 套用源）
-2. **垂直专用库**可覆盖（如扫描 PDF 库全局 `parsing.ocrEnabled: true`；周报库 `chunkSize: 500`）
-3. **采集级覆盖** = 目标态 backlog（[INGEST-PIPELINE.md 附录 B.3](./INGEST-PIPELINE.md) ingest profile）
+1. **附录 A 值** = `MimeTypePipelineDefaults` 运行时片段（`mimeAwareDefaults` 开启时）
+2. **库级配置**可覆盖（如扫描 PDF 库全局 `parsing.ocrEnabled: true`；周报库 `chunkSize: 500`）；关闭 `mimeAwareDefaults` 时仅以本层为准
+3. **采集级覆盖** = `ingestProfile`（[INGEST-PIPELINE.md §5](./INGEST-PIPELINE.md#5-三层配置矩阵)）
 
 ---
 
@@ -308,12 +308,12 @@ Phase 2 验收要求以下三类场景在 §2 主矩阵中各有明确的**推�
 
 **UI 入口：**
 
-- `CreateLibraryWizard.vue` — Wizard **Step 3** 文档处理规则（`parsing.*`, `cleaning.*`, `chunking*`）；Step 2 含 `ingestAccess.supportedFileTypes`
-- `EditLibrarySettingsDrawer.vue` — 同上字段编辑；`lockPipeline`（`documentCount > 0 || chunkCount > 0`）时禁用管道字段，与 `VectorLibraryConfigMerger.mergeSafeFields` 硬锁一致
+- `CreateLibraryWizard.vue` — 短表单建库（名称/描述/标签 + 默认 config）
+- `EditLibrarySettingsDrawer.vue` — 数据类型、管道、检索、治理等深配；库内有文档时软锁提示重索引
 
 **后端字段权威：**
 
-- `knowbase-service/src/main/java/com/knowbase/library/config/ParsingRulesSettings.java` — `ocrEnabled`, `tableExtraction`, `autoDetectEncoding`, `defaultLanguage`
+- `knowbase-service/src/main/java/com/knowbase/library/config/ParsingRulesSettings.java` — `ocrEnabled`, `tableExtraction`, `autoDetectEncoding`, `defaultLanguage`, `mimeAwareDefaults`
 - `knowbase-service/src/main/java/com/knowbase/library/service/LibraryConfigResolver.java` — `parseOptionsFor`, `chunkingFor`, `cleaningFor`
 
 ---
@@ -326,7 +326,7 @@ ROADMAP Phase 2 成功标准：**周报 xlsx、扫描 pdf、制度 docx 各有�
 
 2. **开发路径 — 三层默认值差异：** 从 [#dev-reference](#dev-reference) 进入 [§3 三层默认值对照](#dev-defaults)，核对 `chunkSize` 向导 **500** vs 系统 **600**、`chunkOverlap` 向导 **120** vs 系统 **100** 差异列；确认 `ingest.ocr.enabled`（引擎开关）与 `parsing.ocrEnabled`（库级）区分说明存在。
 
-3. **Phase 3 预设引用源 — 附录 A：** 打开 [附录 A MIME → 推荐 config_json](#appendix-a)，确认 8 行 MIME 映射表可被 Phase 3 `libraryPresets.js` 引用；表头含「文档规划，Phase 3 预设引用」横幅，**非** v1 运行时引擎。
+3. **附录 A — MIME 默认：** 打开 [附录 A MIME → 推荐 config_json](#appendix-a)，确认 8 行映射与 `MimeTypePipelineDefaults` / `mimeAwareDefaults` 叙述一致。
 
 4. **类型反模式 — §4 与 §8 链回：** 阅读 [§4 类型反模式](#ops-anti-patterns)，确认 pdf / word / excel / txt / markdown 每类型 **≥2** 行；通用反模式（预览≠入库、异质混库、杜鹏飞周报）**链回** [INGEST-PIPELINE.md §8](./INGEST-PIPELINE.md#8-反模式对照) 而非重复全文；每行含代码锚点路径。
 
@@ -371,45 +371,21 @@ ROADMAP Phase 2 成功标准：**周报 xlsx、扫描 pdf、制度 docx 各有�
 
 ---
 
-## §10 库类型预设（Phase 3） {#library-presets}
+## §10 知识库配置与 MIME 默认 {#library-presets}
 
-Phase 3 在 `frontend/knowbase-ui/src/utils/libraryPresets.js` 定义四套命名预设，建库向导 Step 1 可选套用；`libraryPresetId` 写入 `config_json` 供编辑页展示来源。完整 overrides 见源码，本文仅列目录与附录 A 对照。
+建库为短表单 + 默认 config；与 Dify / FastGPT 等主流产品一致，**按业务语义多建平级知识库**，管道深配在 `EditLibrarySettingsDrawer`。
 
-### 10.1 预设目录
+### 10.1 运行时 MIME 默认
 
-| id | 中文名 | summary | supportedFileTypes | ROADMAP 锚点 |
-|----|--------|---------|-------------------|--------------|
-| `weekly-report-excel` | 周报 Excel 库 | 同质周报 xlsx：paragraph-first + text-only | `excel` | [§2 周报 xlsx 子场景](#ops-matrix)（TYPE-03） |
-| `policy-longform` | 制度 / 长文库 | 制度 docx / 长 PDF：heading-level + Word structured 表格 | `word`, `pdf` | [§2 制度 docx 行](#ops-matrix)（TYPE-02） |
-| `scan-reimbursement` | 报销扫描库 | 扫描 PDF / 图片型单据：开启 OCR | `pdf` | [§2 扫描 pdf 行](#ops-matrix)（TYPE-01） |
-| `general-mixed` | 通用混合库 | 五种类型均衡默认 | `pdf`, `word`, `txt`, `markdown`, `excel` | 通用混合库（D-09） |
+`config_json.parsing.mimeAwareDefaults`（默认 `true`，缺省同 `true`）控制入库时是否调用 `MimeTypePipelineDefaults`（附录 A 目标态）。设为 `false` 时仅以库级 parsing/chunking 为准。
 
-**代码入口：**
+**代码入口：** `EffectiveConfigResolver`、`MimeTypePipelineDefaults`、`libraryDefaults.js`。
 
-- 预设定义与套用：`libraryPresets.js` — `LIBRARY_PRESETS`, `applyLibraryPreset`, `syncLibraryPresetIdOnEdit`
-- 建库 UI：`CreateLibraryWizard.vue` — Step 1 预设卡片
-- 编辑 UI：`EditLibrarySettingsDrawer.vue` — `presetLabel` tag + 保存前 drift 同步
-- 后端持久化：`VectorLibraryConfig.libraryPresetId` + `VectorLibraryConfigMerger.mergeSafeFields`
+### 10.2 建库与语义边界
 
-### 10.2 附录 A 对齐表
+同质业务 → 单独建库并精调管道；异质混存 → 单库 + 上传 `documentMetadata` 语义标签 + 检索 metadata 过滤。场景矩阵见 [§2](#ops-matrix)，不在向导展示。
 
-每预设相对 [附录 A](#appendix-a) 主 fileType 的关键字段（垂直库可覆盖 MIME 默认值，见 D-07 第 2 层）：
+### 10.3 测试
 
-| preset id | 主 fileType | chunkingStrategy | parsing 关键字段 | cleaning 关键字段 | 附录 A 备注 |
-|-----------|-------------|------------------|------------------|-------------------|-------------|
-| `weekly-report-excel` | excel | `paragraph-first` | `tableExtraction: text-only`, `ocrEnabled: false` | `removeDuplicateParagraphs: true` | 同附录 A excel 行 |
-| `scan-reimbursement` | pdf | `paragraph-first` | `ocrEnabled: true`, `tableExtraction: text-only` | `removeHeaderFooter: true` | 扫描 PDF 库覆盖附录 A pdf 行 `ocrEnabled: false` → **true** |
-| `policy-longform` | word | `heading-level` | `tableExtraction: structured`, `ocrEnabled: false` | `removeHeaderFooter: true` | 同附录 A word 行；库含 pdf 时 pdf 亦用 `heading-level`（垂直库覆盖） |
-| `general-mixed` | 五类型 | `paragraph-first` | `tableExtraction: text-only`, `ocrEnabled: false` | 向导默认 | 各 MIME 按附录 A 基线；单库统一配置 |
-
-### 10.3 自动化审计
-
-| 模块 | 路径 | 作用 |
-|------|------|------|
-| 期望值表 | `appendixAPresetAudit.js` | `APPENDIX_A_EXPECTATIONS`, `ROADMAP_ANCHOR_EXPECTATIONS` |
-| 前端单测 | `libraryPresets.test.js` | 4 预设完整性、锚点对齐、`syncLibraryPresetIdOnEdit` |
-| 后端往返 | `VectorLibraryConfigPresetTest.java` | `libraryPresetId` JSON 序列化 |
-| Merger | `VectorLibraryConfigMergerTest.java` | 编辑保存 preset id 合并 |
-
-运行：`cd frontend/knowbase-ui && npm test`；`cd knowbase-service && mvn test -Dtest=VectorLibraryConfigPresetTest,VectorLibraryConfigMergerTest`
+`MimeTypePipelineDefaultsTest.java`、`EffectiveConfigResolverMimeTest.java`、`VectorLibraryConfigMergerTest.java`；前端 `libraryConfig.test.js`。
 

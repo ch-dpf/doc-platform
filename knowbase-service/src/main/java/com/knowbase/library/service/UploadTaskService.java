@@ -42,7 +42,12 @@ public class UploadTaskService {
 
     @Transactional
     public UploadTaskResponse submitAsync(
-            UUID libraryId, String tenantId, MultipartFile file, boolean autoIndex, String documentMetadata)
+            UUID libraryId,
+            String tenantId,
+            MultipartFile file,
+            boolean autoIndex,
+            String documentMetadata,
+            String ingestProfile)
             throws Exception {
         libraryConfigResolver.requireLibrary(libraryId);
         libraryConfigResolver.requireUploadAllowed(libraryId);
@@ -69,13 +74,20 @@ public class UploadTaskService {
         task.setUpdatedAt(Instant.now());
         taskMapper.updateById(task);
 
-        uploadTaskWorker.process(taskId, libraryId, tenantId, bytes, fileName, autoIndex, documentMetadata);
+        uploadTaskWorker.process(
+                taskId, libraryId, tenantId, bytes, fileName, autoIndex, documentMetadata, ingestProfile);
         return UploadTaskResponse.from(taskMapper.selectById(taskId));
     }
 
     public UploadTaskResponse submitAsync(
+            UUID libraryId, String tenantId, MultipartFile file, boolean autoIndex, String documentMetadata)
+            throws Exception {
+        return submitAsync(libraryId, tenantId, file, autoIndex, documentMetadata, null);
+    }
+
+    public UploadTaskResponse submitAsync(
             UUID libraryId, String tenantId, MultipartFile file, boolean autoIndex) throws Exception {
-        return submitAsync(libraryId, tenantId, file, autoIndex, null);
+        return submitAsync(libraryId, tenantId, file, autoIndex, null, null);
     }
 
     public UploadTaskResponse get(UUID taskId) {

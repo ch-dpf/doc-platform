@@ -10,5 +10,6 @@ public record RagRetrievalPreviewHit(
         int chunkIndex,
         double score,
         String excerpt,
-        boolean headerOnlyChunk
-) {}
+        boolean headerOnlyChunk,
+        String chunkProfileId,
+        boolean primaryProfile) {}

@@ -1,8 +1,6 @@
 # 知库（knowbase）
 
-企业知识库平台：**文档采集入库**、**向量索引检索** 与 **RAG 智能问答** 统一在 `knowbase-service`（端口 **8080**）；前端统一为 `knowbase-ui`（端口 **5173**）。
-
-> 原 `doc-ingest-service` + `vector-index-service` + Kafka + `doc-platform-contract` 已合并为进程内直接调用，功能与 API 路径保持不变。
+企业知识库平台：**建仓入库**、**智能问答** 统一在 `knowbase-service`（端口 **8080**）；前端统一为 `knowbase-ui`（端口 **5173**）。
 
 默认工作目录：仓库根目录（克隆路径可为 `doc-platform` 或 `knowbase`）
 
@@ -109,7 +107,7 @@ flowchart LR
 2. **入库流水线**（代码固定）：数据源接入 → 解析 → 清洗 → 分块 → 向量化 → 入库
 3. **采集**：`POST .../upload`、`/upload/batch`、`/upload/async`（文件与文件夹批量均走上传接口）
 4. **解析**（异步）：Tika + `ingest.text-normalization`
-5. **索引**（异步）：固定执行分块、向量化并写入 `document_chunk`（清洗是否执行由知识库 `textNormalizationEnabled` 控制）
+5. **索引**（异步）：固定执行分块、向量化并写入 `document_chunk`（规范化/清洗由系统 `ingest.text-normalization` 与 MIME 代码规则控制）
 6. **问答/检索**：`POST /api/v1/search`、`/rag/chat` 需 `libraryId`
 
 ### 智能问答（在线 / 实时）
@@ -223,9 +221,9 @@ java -jar knowbase-service\target\knowbase-service-1.0.0-SNAPSHOT.jar
 
 手动执行 SQL 见 `infra/postgres/recreate-single-schema.sql` → `drop-public-tables.sql` → `init.sql`。
 
-表：`vector_library`、`upload_task`、`doc_metadata`、`document_chunk`、`document_index_job`、`processed_event`（均在 `public`）。
+表：`vector_library`、`upload_task`、`doc_metadata`、`document_chunk`、`document_index_job`、`processed_event`、`chat_conversation`、`chat_message`（均在 `public`）。
 
-已有库若仍含 `ingest_orchestration`，可执行 `infra/postgres/migrate-drop-orchestration.sql` 清理废弃表。
+Greenfield 安装仅使用 `init.sql`；全量重建可用 `infra/postgres/schema-v2-greenfield.sql`。
 
 ### 中文乱码排查（Windows 常见）
 

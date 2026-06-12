@@ -16,8 +16,12 @@ public class VectorLibraryConfig {
     private int embeddingDimension = 768;
 
     private ChunkingStrategy chunkingStrategy = ChunkingStrategy.PARAGRAPH_FIRST;
-    private int chunkSize = 600;
-    private int chunkOverlap = 100;
+    private int chunkSize = 500;
+    private int chunkOverlap = 120;
+    /** 父子块：heading-level 长文档按标题父段 + 子块索引 */
+    private boolean hierarchicalChunkingEnabled = true;
+    /** 自定义分隔符；非空时覆盖 MIME 策略，按分隔符切段 */
+    private String chunkDelimiter = "";
     private int minChunkSize = 80;
     private int maxChunkSize = 1200;
     private int minParagraphLength = 30;
@@ -26,17 +30,19 @@ public class VectorLibraryConfig {
 
     private boolean textNormalizationEnabled = true;
     private TextNormalizationSettings textNormalization = new TextNormalizationSettings();
-    /** 首选数据源：upload=本地文件（二期默认）；crawl/both 仅兼容历史库 */
+    /** 数据源模式，当前仅支持 upload（本地文件上传） */
     private String ingestSourceMode = "upload";
     private List<String> allowedMimeTypes;
 
     /** 二期：配置快照版本，每次规则变更递增 */
     private int configVersion = 1;
+    /** 库默认分块档 ID（默认问答仅检索此档） */
+    private String primaryChunkProfileId = "";
+    /** 是否允许采集侧使用非主档分块覆盖 */
+    private boolean allowCustomChunkProfiles = true;
+    /** 单库最大活跃分块档数量 */
+    private int maxActiveChunkProfiles = 5;
     private List<String> tags = new java.util.ArrayList<>();
-    /** quick | advanced */
-    private String wizardMode = "quick";
-    /** Phase 3 建库预设 id；custom 或空表示手调 */
-    private String libraryPresetId;
     private IngestAccessSettings ingestAccess = new IngestAccessSettings();
     private ParsingRulesSettings parsing = new ParsingRulesSettings();
     private CleaningRulesSettings cleaning = new CleaningRulesSettings();
@@ -97,6 +103,22 @@ public class VectorLibraryConfig {
 
     public void setChunkOverlap(int chunkOverlap) {
         this.chunkOverlap = chunkOverlap;
+    }
+
+    public boolean isHierarchicalChunkingEnabled() {
+        return hierarchicalChunkingEnabled;
+    }
+
+    public void setHierarchicalChunkingEnabled(boolean hierarchicalChunkingEnabled) {
+        this.hierarchicalChunkingEnabled = hierarchicalChunkingEnabled;
+    }
+
+    public String getChunkDelimiter() {
+        return chunkDelimiter;
+    }
+
+    public void setChunkDelimiter(String chunkDelimiter) {
+        this.chunkDelimiter = chunkDelimiter != null ? chunkDelimiter : "";
     }
 
     public int getMinChunkSize() {
@@ -179,28 +201,36 @@ public class VectorLibraryConfig {
         this.configVersion = configVersion;
     }
 
+    public String getPrimaryChunkProfileId() {
+        return primaryChunkProfileId;
+    }
+
+    public void setPrimaryChunkProfileId(String primaryChunkProfileId) {
+        this.primaryChunkProfileId = primaryChunkProfileId != null ? primaryChunkProfileId : "";
+    }
+
+    public boolean isAllowCustomChunkProfiles() {
+        return allowCustomChunkProfiles;
+    }
+
+    public void setAllowCustomChunkProfiles(boolean allowCustomChunkProfiles) {
+        this.allowCustomChunkProfiles = allowCustomChunkProfiles;
+    }
+
+    public int getMaxActiveChunkProfiles() {
+        return maxActiveChunkProfiles;
+    }
+
+    public void setMaxActiveChunkProfiles(int maxActiveChunkProfiles) {
+        this.maxActiveChunkProfiles = maxActiveChunkProfiles;
+    }
+
     public List<String> getTags() {
         return tags;
     }
 
     public void setTags(List<String> tags) {
         this.tags = tags;
-    }
-
-    public String getWizardMode() {
-        return wizardMode;
-    }
-
-    public void setWizardMode(String wizardMode) {
-        this.wizardMode = wizardMode;
-    }
-
-    public String getLibraryPresetId() {
-        return libraryPresetId;
-    }
-
-    public void setLibraryPresetId(String libraryPresetId) {
-        this.libraryPresetId = libraryPresetId;
     }
 
     public IngestAccessSettings getIngestAccess() {

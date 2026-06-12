@@ -14,40 +14,65 @@ export function getUploadConstraints(libraryId) {
   return client.get('/api/v1/documents/upload-constraints', { params: { libraryId } })
 }
 
-function uploadParams(libraryId, tenantId, autoIndex, documentMetadata) {
+function uploadParams(libraryId, tenantId, autoIndex, documentMetadata, ingestProfile) {
   const params = { libraryId, tenantId, autoIndex }
   if (documentMetadata?.trim()) params.documentMetadata = documentMetadata.trim()
+  if (ingestProfile?.trim()) params.ingestProfile = ingestProfile.trim()
   return params
 }
 
-export function uploadDocument(libraryId, tenantId, file, autoIndex = true, onProgress, documentMetadata) {
+export function uploadDocument(
+  libraryId,
+  tenantId,
+  file,
+  autoIndex = true,
+  onProgress,
+  documentMetadata,
+  ingestProfile
+) {
   const form = new FormData()
   form.append('file', file)
   return client.post('/api/v1/documents/upload', form, {
-    params: uploadParams(libraryId, tenantId, autoIndex, documentMetadata),
+    params: uploadParams(libraryId, tenantId, autoIndex, documentMetadata, ingestProfile),
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: onProgress
   })
 }
 
-export function uploadDocumentAsync(libraryId, tenantId, file, autoIndex = true, onProgress, documentMetadata) {
+export function uploadDocumentAsync(
+  libraryId,
+  tenantId,
+  file,
+  autoIndex = true,
+  onProgress,
+  documentMetadata,
+  ingestProfile
+) {
   const form = new FormData()
   form.append('file', file)
   return client.post('/api/v1/documents/upload/async', form, {
-    params: uploadParams(libraryId, tenantId, autoIndex, documentMetadata),
+    params: uploadParams(libraryId, tenantId, autoIndex, documentMetadata, ingestProfile),
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: onProgress
   })
 }
 
-export function uploadDocumentsBatch(libraryId, tenantId, files, autoIndex = true, onProgress, documentMetadata) {
+export function uploadDocumentsBatch(
+  libraryId,
+  tenantId,
+  files,
+  autoIndex = true,
+  onProgress,
+  documentMetadata,
+  ingestProfile
+) {
   const form = new FormData()
   for (const f of files) {
     const name = f.webkitRelativePath || f.name
     form.append('files', f, name)
   }
   return client.post('/api/v1/documents/upload/batch', form, {
-    params: uploadParams(libraryId, tenantId, autoIndex, documentMetadata),
+    params: uploadParams(libraryId, tenantId, autoIndex, documentMetadata, ingestProfile),
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress: onProgress
   })

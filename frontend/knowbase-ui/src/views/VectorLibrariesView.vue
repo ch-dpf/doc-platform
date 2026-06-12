@@ -7,6 +7,9 @@
       <template #actions>
 
         <span v-if="total > 0" class="stat-chip">共 <strong>{{ total }}</strong> 个</span>
+        <span v-if="pendingMigrationLibraries > 0" class="stat-chip stat-chip--warn">
+          <strong>{{ pendingMigrationLibraries }}</strong> 个待迁移
+        </span>
 
         <el-button type="primary" round @click="wizardVisible = true">创建知识库</el-button>
 
@@ -160,11 +163,21 @@
 
         >
 
-        <el-table-column prop="name" label="名称" min-width="140">
+        <el-table-column prop="name" label="名称" min-width="180">
 
           <template #default="{ row }">
 
             <span class="name-link">{{ row.name }}</span>
+            <el-tag
+              v-if="row.pendingMigrationCount > 0"
+              size="small"
+              type="warning"
+              effect="plain"
+              class="migration-badge"
+              @click.stop="openEdit(row, 'pipeline')"
+            >
+              待迁移 {{ row.pendingMigrationCount }}
+            </el-tag>
 
           </template>
 
@@ -210,25 +223,17 @@
 
         </el-table-column>
 
-        <el-table-column label="分块策略" min-width="96" align="center">
+        <el-table-column label="Embedding大模型" min-width="140" show-overflow-tooltip>
 
           <template #default="{ row }">
 
-            {{ chunkingStrategyLabel(row.chunkingStrategy) }}
+            <span class="embedding-cell" :title="row.embeddingModel || ''">
+
+              {{ formatEmbeddingModel(row.embeddingModel) }}
+
+            </span>
 
           </template>
-
-        </el-table-column>
-
-        <el-table-column label="Embedding" min-width="100" show-overflow-tooltip>
-
-          <template #default="{ row }">{{ row.embeddingModel || '—' }}</template>
-
-        </el-table-column>
-
-        <el-table-column label="配置" min-width="64" align="center">
-
-          <template #default="{ row }">v{{ row.configVersion ?? 1 }}</template>
 
         </el-table-column>
 
@@ -246,7 +251,7 @@
 
           <template #default="{ row }">
 
-            <el-button link type="primary" @click.stop="openEdit(row)">配置</el-button>
+            <el-button link type="primary" @click.stop="openEdit(row)">库配置</el-button>
 
             <el-button
 
@@ -301,6 +306,16 @@
           <header class="library-card__head">
 
             <h3 class="library-card__title">{{ row.name }}</h3>
+            <el-tag
+              v-if="row.pendingMigrationCount > 0"
+              size="small"
+              type="warning"
+              effect="plain"
+              class="migration-badge"
+              @click.stop="openEdit(row, 'pipeline')"
+            >
+              待迁移 {{ row.pendingMigrationCount }}
+            </el-tag>
 
           </header>
 
@@ -332,27 +347,19 @@
 
           <p class="library-card__summary">
 
+            <span class="library-card__embedding">{{ formatEmbeddingModel(row.embeddingModel) }}</span>
+
+            <span class="library-card__dot">·</span>
+
             <span>文档 {{ row.documentCount ?? 0 }}</span>
 
             <span class="library-card__dot">·</span>
 
             <span>分块 {{ row.chunkCount ?? 0 }}</span>
 
-            <span class="library-card__dot">·</span>
-
-            <span>v{{ row.configVersion ?? 1 }}</span>
-
           </p>
 
           <p class="library-card__meta">
-
-            {{ chunkingStrategyLabel(row.chunkingStrategy) }}
-
-            <span class="library-card__dot">·</span>
-
-            {{ row.embeddingModel || '—' }}
-
-            <span class="library-card__dot">·</span>
 
             {{ formatTime(row.updatedAt) }}
 
@@ -360,7 +367,7 @@
 
           <footer class="library-card__foot" @click.stop>
 
-            <el-button link type="primary" size="small" @click="openEdit(row)">配置</el-button>
+            <el-button link type="primary" size="small" @click="openEdit(row)">库配置</el-button>
 
             <el-button
 
@@ -454,6 +461,8 @@
 
       :library-id="editLibraryId"
 
+      :initial-tab="editInitialTab"
+
       @saved="onSettingsSaved"
 
     />
@@ -466,7 +475,7 @@
 
 <script setup>
 
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import { useRouter } from 'vue-router'
 
@@ -491,10 +500,7 @@ import PageCard from '../components/PageCard.vue'
 import CreateLibraryWizard from '../components/CreateLibraryWizard.vue'
 
 import EditLibrarySettingsDrawer from '../components/EditLibrarySettingsDrawer.vue'
-
-import { chunkingStrategyLabel } from '../utils/libraryConfig'
-
-
+import { labelForEmbeddingModel } from '../utils/embeddingModels'
 
 const DEFAULT_LIBRARY_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -530,6 +536,12 @@ const editVisible = ref(false)
 
 const editLibraryId = ref('')
 
+const editInitialTab = ref('basic')
+
+const pendingMigrationLibraries = computed(
+  () => items.value.filter((row) => (row.pendingMigrationCount || 0) > 0).length
+)
+
 const viewMode = ref(localStorage.getItem(VIEW_MODE_KEY) === 'card' ? 'card' : 'list')
 
 
@@ -541,6 +553,10 @@ function onViewModeChange(mode) {
 }
 
 
+
+function formatEmbeddingModel(model) {
+  return labelForEmbeddingModel(model)
+}
 
 function formatTime(value) {
 
@@ -740,7 +756,9 @@ function onCreated(lib) {
 
 
 
-function openEdit(row) {
+function openEdit(row, tab = 'basic') {
+
+  editInitialTab.value = tab
 
   editLibraryId.value = row.libraryId
 
@@ -982,6 +1000,20 @@ onMounted(async () => {
 
 }
 
+.stat-chip--warn {
+  color: #b45309;
+}
+
+.stat-chip--warn strong {
+  color: #b45309;
+}
+
+.migration-badge {
+  margin-left: 8px;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
 .library-card-grid {
 
   display: grid;
@@ -1122,6 +1154,11 @@ onMounted(async () => {
 
 }
 
+.embedding-cell {
+  font-size: 13px;
+  color: #475569;
+}
+
 .library-card__summary {
 
   margin: 2px 0 0;
@@ -1132,6 +1169,10 @@ onMounted(async () => {
 
   line-height: 1.4;
 
+}
+
+.library-card__embedding {
+  color: #475569;
 }
 
 .library-card__meta {

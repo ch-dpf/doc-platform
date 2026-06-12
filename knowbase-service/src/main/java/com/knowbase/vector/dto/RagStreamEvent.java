@@ -13,10 +13,11 @@ public record RagStreamEvent(
         Integer historyUsed,
         String searchQuery,
         Boolean conversational,
+        RagRetrievalTrace retrievalTrace,
         UUID messageId
 ) {
     public static RagStreamEvent chunk(String content) {
-        return new RagStreamEvent("chunk", content, null, null, null, null, null, null, null, null);
+        return new RagStreamEvent("chunk", content, null, null, null, null, null, null, null, null, null);
     }
 
     public static RagStreamEvent done(RagChatResponse response, UUID messageId) {
@@ -30,10 +31,11 @@ public record RagStreamEvent(
                 response.historyUsed(),
                 response.searchQuery(),
                 response.conversational(),
+                response.retrievalTrace(),
                 messageId);
     }
 
     public static RagStreamEvent error(String message) {
-        return new RagStreamEvent("error", message, null, null, null, null, null, null, null, null);
+        return new RagStreamEvent("error", message, null, null, null, null, null, null, null, null, null);
     }
 }

@@ -9,6 +9,7 @@ import com.knowbase.ingest.service.InvalidDocumentException;
 
 import com.knowbase.library.service.LibraryCapacityExceededException;
 import com.knowbase.library.service.LibraryNotFoundException;
+import com.knowbase.library.service.PipelineConfigLockedException;
 import com.knowbase.library.service.UnsupportedEmbeddingProviderException;
 
 
@@ -125,6 +126,13 @@ public class ApiExceptionHandler {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         detail.setTitle("知识库容量超限");
         detail.setProperty("errorCode", ex.getErrorCode());
+        return detail;
+    }
+
+    @ExceptionHandler(PipelineConfigLockedException.class)
+    public ProblemDetail pipelineConfigLocked(PipelineConfigLockedException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.getMessage());
+        detail.setTitle("索引管道已锁定");
         return detail;
     }
 

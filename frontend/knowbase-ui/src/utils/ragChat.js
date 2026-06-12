@@ -19,7 +19,8 @@ export function buildRagChatPayload({
   topK,
   minScore,
   docIds,
-  chatModel
+  chatModel,
+  includeAllChunkProfiles
 }) {
   const payload = {
     libraryId,
@@ -34,6 +35,9 @@ export function buildRagChatPayload({
   }
   if (docIds?.length) {
     payload.filter = { docIds }
+  }
+  if (includeAllChunkProfiles) {
+    payload.includeAllChunkProfiles = true
   }
   return payload
 }

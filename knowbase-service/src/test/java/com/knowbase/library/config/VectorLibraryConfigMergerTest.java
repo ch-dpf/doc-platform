@@ -2,52 +2,56 @@ package com.knowbase.library.config;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class VectorLibraryConfigMergerTest {
 
     @Test
-    void mergesLibraryPresetIdWhenIncomingCustom() {
+    void mergeBasicUpdatesTags() {
         VectorLibraryConfig target = new VectorLibraryConfig();
-        target.setLibraryPresetId("policy-longform");
+        target.setTags(List.of("old"));
 
-        VectorLibraryConfig incoming = new VectorLibraryConfig();
-        incoming.setLibraryPresetId("custom");
+        VectorLibraryConfigMerger.mergeBasic(target, List.of("ops"));
 
-        VectorLibraryConfigMerger.mergeSafeFields(target, incoming);
-
-        assertEquals("custom", target.getLibraryPresetId());
+        assertEquals(List.of("ops"), target.getTags());
     }
 
     @Test
-    void incomingNullLibraryPresetIdDoesNotOverwrite() {
+    void lockPipelineStillAllowsMetadataMerge() {
         VectorLibraryConfig target = new VectorLibraryConfig();
-        target.setLibraryPresetId("weekly-report-excel");
-
-        VectorLibraryConfig incoming = new VectorLibraryConfig();
-        incoming.setLibraryPresetId(null);
-
-        VectorLibraryConfigMerger.mergeSafeFields(target, incoming);
-
-        assertEquals("weekly-report-excel", target.getLibraryPresetId());
-    }
-
-    @Test
-    void lockPipelineStillAllowsMetadataAndPresetIdMerge() {
-        VectorLibraryConfig target = new VectorLibraryConfig();
-        target.setLibraryPresetId("policy-longform");
         target.setChunkSize(500);
 
         VectorLibraryConfig incoming = new VectorLibraryConfig();
-        incoming.setLibraryPresetId("custom");
-        incoming.setTags(java.util.List.of("ops"));
+        incoming.setTags(List.of("ops"));
         incoming.setChunkSize(800);
 
         VectorLibraryConfigMerger.mergeSafeFields(target, incoming, true);
 
-        assertEquals("custom", target.getLibraryPresetId());
-        assertEquals(java.util.List.of("ops"), target.getTags());
+        assertEquals(List.of("ops"), target.getTags());
         assertEquals(500, target.getChunkSize());
+    }
+
+    @Test
+    void mergeIndexPipelineUpdatesChunkSize() {
+        VectorLibraryConfig target = new VectorLibraryConfig();
+        target.setChunkSize(400);
+
+        VectorLibraryConfigMerger.mergeIndexPipeline(
+                target, LibraryIndexPipelineDtoFromConfig.pipelineWithChunkSize(900));
+
+        assertEquals(900, target.getChunkSize());
+        assertNotEquals(400, target.getChunkSize());
+    }
+
+    private static final class LibraryIndexPipelineDtoFromConfig {
+        private LibraryIndexPipelineDtoFromConfig() {
+        }
+
+        static com.knowbase.library.dto.config.LibraryIndexPipelineDto pipelineWithChunkSize(int size) {
+            return new com.knowbase.library.dto.config.LibraryIndexPipelineDto(size, 0, null, 0, true, "");
+        }
     }
 }

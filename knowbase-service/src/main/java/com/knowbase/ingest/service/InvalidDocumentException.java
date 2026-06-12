@@ -41,6 +41,9 @@ public class InvalidDocumentException extends RuntimeException {
     public static final String CODE_COLLECTION_FAILED = "COLLECTION_FAILED";
     public static final String CODE_FETCH_FAILED = "URL_FETCH_FAILED";
     public static final String CODE_INGEST_SOURCE_NOT_ALLOWED = "INGEST_SOURCE_NOT_ALLOWED";
+    public static final String CODE_INGEST_PROFILE_NOT_ALLOWED = "INGEST_PROFILE_NOT_ALLOWED";
+    public static final String CODE_INGEST_PROFILE_INVALID = "INGEST_PROFILE_INVALID";
+    public static final String CODE_DUPLICATE_DIFFERENT_CHUNK_PROFILE = "DUPLICATE_DIFFERENT_CHUNK_PROFILE";
 
     public static InvalidDocumentException of(String errorCode, String message) {
         return new InvalidDocumentException(errorCode, message, null, null, List.of());
@@ -62,6 +65,20 @@ public class InvalidDocumentException extends RuntimeException {
                 max,
                 fileName);
         return new InvalidDocumentException(CODE_LIBRARY_DOCUMENT_LIMIT, message, fileName, null, List.of());
+    }
+
+    public static InvalidDocumentException duplicateDifferentChunkProfile(
+            String fileName, String existingChunkProfileId) {
+        String profile = existingChunkProfileId != null && !existingChunkProfileId.isBlank()
+                ? existingChunkProfileId
+                : "（库默认档）";
+        String message = String.format(
+                "文件「%s」内容与库内已有文档相同，但本次分块参数不同（已有分块档 %s）。"
+                        + "不会覆盖原文档；请关闭分块覆盖使用库默认，或修改文件内容后重试。",
+                fileName,
+                profile);
+        return new InvalidDocumentException(
+                CODE_DUPLICATE_DIFFERENT_CHUNK_PROFILE, message, fileName, null, List.of());
     }
 
     public static InvalidDocumentException librarySizeLimit(String fileName, long projectedBytes, long maxBytes) {

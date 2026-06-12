@@ -59,28 +59,30 @@ Plans:
 
 ---
 
-### Phase 3 — 库类型预设
+### Phase 3 — 库类型预设（**Superseded**）
 
-**Goal:** 向导一键套用预设，降低运营配错概率。
+> **2026-06-10 废止：** 垂直/通用库物种与场景 preset 已移除。建库见 `libraryDefaults.js`；MIME 默认见 `parsing.mimeAwareDefaults` + `MimeTypePipelineDefaults`。Phase 3 计划/验证文档保留为历史档案。
 
-**Requirements:** PRESET-01 … PRESET-04
+**Goal（原）：** 向导一键套用预设，降低运营配错概率。
 
-**Plans:** 3/3 plans complete
+**Requirements:** PRESET-01 … PRESET-04（见 REQUIREMENTS 废止说明）
 
-**Key deliverables:**
+**Plans:** 3/3 plans complete（历史）
 
-- `frontend/knowbase-ui/src/utils/libraryPresets.js`（或同级）
-- `CreateLibraryWizard.vue` 预设选择 UI
-- 预设定义与 Phase 2 矩阵一致
+**Key deliverables（现行）：**
 
-**Success criteria:**
+- `frontend/knowbase-ui/src/utils/libraryDefaults.js`
+- `CreateLibraryWizard.vue` 短表单建库 + `EditLibrarySettingsDrawer` 深配
+- `MimeTypePipelineDefaults` + `EffectiveConfigResolver`
 
-- 创建「周报库」后配置与文档推荐一致，无需手调 10+ 字段
+**Success criteria（现行）：**
+
+- 运营按 §6 多建平级库；`mimeAwareDefaults` 下按 MIME 应用附录 A 默认
 
 Plans:
 
 - [x] 03-01-PLAN.md — vitest 预设单测 + 附录 A/ROADMAP 锚点审计 + JsonSupport 往返测试
-- [x] 03-02-PLAN.md — Merger libraryPresetId + 编辑页 custom 漂移检测（PRESET-04）
+- [x] 03-02-PLAN.md — （历史）Merger libraryPresetId；现行已移除 preset 字段
 - [x] 03-03-PLAN.md — 文档 §10、VERIFICATION、REQUIREMENTS/STATE/ROADMAP 闭环
 
 ---
@@ -141,11 +143,26 @@ Plans:
 3. 一致性（Phase 4）是核心价值的工程落地
 4. UX（Phase 5）收尾减少运营摩擦
 
-## Next Step
+## v1 完成 — 下一里程碑
+
+| 里程碑 | 焦点 | 草案 |
+|--------|------|------|
+| **v2** | 目标态建仓入库（Greenfield，RAG 上游） | `MILESTONE-v2-DRAFT.md` |
+| **v3** | RAG 智能问答（多轮、引用、评测） | `MILESTONE-v3-DRAFT.md` |
+
+### 战略（2026-06-10）
+
+- **目标态唯一** — `INGEST-PIPELINE` / `FILE-TYPE-PROCESSING` 目标态章节为实现契约
+- **Greenfield** — 代码可推倒重来；**无数据兼容**，历史数据可全量清除
+- **技术栈不变** — Java/Spring/Vue/PG/Ollama
+- **RAG 分两期** — v2 保证 chunk + 检索；v3 做生成与对话
+
+### Next Step
 
 ```bash
-/gsd-complete-milestone
+/gsd-complete-milestone    # 归档 v1（可选）
+/gsd-new-milestone         # 正式启动 v2：目标态建仓入库
 ```
 
 ---
-*Roadmap created: 2026-06-10*
+*Roadmap v1: 2026-06-10 | v2/v3 drafts added same day*
