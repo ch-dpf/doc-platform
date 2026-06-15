@@ -1,6 +1,6 @@
-# End-to-end smoke test for knowbase (requires infra + service on 8080)
+# End-to-end smoke test for knowbase (requires infra + knowbase-app on 8010)
 $ErrorActionPreference = "Stop"
-$base = "http://localhost:8080"
+$base = "http://localhost:8010"
 $tenant = "demo"
 $libraryId = "00000000-0000-0000-0000-000000000001"
 $sample = Join-Path $PSScriptRoot "..\samples\knowledge.txt"

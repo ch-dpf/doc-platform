@@ -23,4 +23,4 @@ Write-Host "mvn $($goals -join ' ')"
 & $Mvn @goals
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Write-Host "Build OK. JARs:"
-Write-Host "  knowbase-service\target\knowbase-service-1.0.0-SNAPSHOT.jar"
+Write-Host "  knowbase-app\target\knowbase-app-1.0.0-SNAPSHOT.jar"

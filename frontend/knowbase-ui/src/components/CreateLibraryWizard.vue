@@ -93,6 +93,12 @@ async function submit() {
       tags: form.tags
     })
     const { data: lib } = await createVectorLibrary(payload)
+    if (!lib?.libraryId) {
+      ElMessage.error(
+        '创建接口未返回 libraryId。若嵌入 kanhai 宿主，请在 application.yml 设置 knowbase.web.expose-controllers: true'
+      )
+      return
+    }
     const config = normalizeSubmitConfig(form.config)
     await Promise.all([
       updateLibraryIndexPipeline(lib.libraryId, buildIndexPipelinePayload(config)),

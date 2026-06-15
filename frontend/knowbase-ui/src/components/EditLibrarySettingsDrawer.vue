@@ -268,6 +268,10 @@ async function submit() {
   saving.value = true
   try {
     const id = props.libraryId
+    if (!id) {
+      ElMessage.error('未指定知识库 ID，无法保存配置')
+      return
+    }
     const calls = []
     if (metaChanged) {
       calls.push(updateLibraryBasic(id, {

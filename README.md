@@ -29,7 +29,11 @@
 
 | 路径 | 说明 |
 |------|------|
-| `knowbase-service/` | 单体后端（`com.knowbase.ingest.*` + `com.knowbase.vector.*`） |
+| `knowbase-api/` | 对外 Facade 接口、SPI、命令/结果 DTO |
+| `knowbase-core/` | 领域服务、流水线、持久化（库 JAR） |
+| `knowbase-autoconfigure/` | Spring Boot 自动配置（数据源、MyBatis、Flyway） |
+| `knowbase-starter/` | 宿主 Maven 依赖入口 |
+| `knowbase-app/` | 独立可执行应用（`java -jar`，端口 8080） |
 | `frontend/knowbase-ui/` | 统一前端控制台 |
 | `infra/postgres/` | 数据库初始化与迁移 SQL |
 | `scripts/` | 构建、基础设施、启动、E2E |
@@ -131,8 +135,9 @@ flowchart LR
 | PostgreSQL + pgvector | 5432 | 库 `knowbase`，单 schema `public`（见 `infra/postgres/init.sql`） |
 | MinIO | 9000 / 9001 | 桶 `documents` |
 | Ollama | 11434 | `nomic-embed-text` + `llama3.2` |
-| **knowbase-service** | **8080** | Knife4j：`/doc.html` |
-| **knowbase-ui** | **5173** | 统一控制台 |
+| **knowbase-app** | **8010** | 知库 REST API；Knife4j：`/doc.html`（独立部署） |
+| **knowbase-ui** | **5173** | 统一控制台（开发代理 `/api` → **8010**） |
+| kanhai 宿主（可选） | 8080 | 业务系统；与知库 UI **分离**时无需暴露 `/api/v1/*` |
 
 `docker-compose.yml` 仅包含 **Postgres、MinIO、Ollama**（已移除 Kafka）。
 
@@ -146,15 +151,15 @@ flowchart LR
 # 在仓库根目录执行
 .\scripts\build.ps1
 .\scripts\start-infra.ps1    # 或本机安装后 .\scripts\infra-check.ps1
-.\scripts\start-services.ps1 # 启动 8080
+.\scripts\start-services.ps1 # 启动 knowbase-app（8010）
 
 cd frontend\knowbase-ui
 npm install
-npm run dev                  # http://localhost:5173
+npm run dev                  # http://localhost:5173 → API 代理到 8010
 ```
 
 ```powershell
-java -jar knowbase-service\target\knowbase-service-1.0.0-SNAPSHOT.jar
+java -jar knowbase-app\target\knowbase-app-1.0.0-SNAPSHOT.jar
 ```
 
 ---
@@ -282,7 +287,55 @@ Greenfield 安装仅使用 `init.sql`；全量重建可用 `infra/postgres/schem
 
 ---
 
+## 宿主集成（Spring Boot Starter）
+
+Java 宿主（如 kanhai）通过 Maven 依赖嵌入知库，**无需 HTTP 侧车**：
+
+```xml
+<dependency>
+    <groupId>com.knowbase</groupId>
+    <artifactId>knowbase-starter</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+```yaml
+# 宿主 application.yml
+knowbase:
+  enabled: true
+  web:
+    # 嵌入 knowbase-ui 控制台时必须 true，否则 /api/v1/vector-libraries 无路由
+    expose-controllers: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/knowbase
+    username: knowbase
+    password: knowbase
+  flyway:
+    enabled: true               # 空库时启用；Docker init.sql 已建表可 false
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/kanhai   # 宿主业务库
+```
+
+知库使用独立 `knowbaseDataSource` + `knowbaseSqlSessionFactory`，与宿主 MyBatis-Plus **可共存**（宿主 `@MapperScan` 仅扫描自身包即可）。
+
+宿主实现 `KnowbaseTenantResolver`（从 JWT 取 `orgId`），注入后调用 Facade：
+
+- `KnowbaseRagFacade` / `KnowbaseSearchFacade` / `KnowbaseIngestFacade` / `KnowbaseLibraryFacade`
+
+**Kanhai 完整业务层示例**（Controller + Service + 组织库绑定 + JWT 租户）见
+[`examples/kanhai-integration/`](examples/kanhai-integration/README.md)，复制 `org.shkj.kanhai.knowbase` 包即可。
+
+- **仅 Facade 调用**（`/api/knowledge/*`）：`expose-controllers: false`，宿主自行封装 API
+- **挂载 knowbase-ui 控制台（方案 A）**：`expose-controllers: true`，前端直连宿主 `/api/v1/*`
+- **与宿主分离（方案 B，推荐）**：kanhai 保持 `expose-controllers: false`；`knowbase-ui` 代理到 **knowbase-app :8010**（见 `frontend/knowbase-ui/.env`）
+
+独立部署使用 `knowbase-app` 可执行 JAR（`knowbase.web.expose-controllers: true`，端口 **8010**）。
+
+---
+
 ## 相关文档
 
 - [frontend/README.md](frontend/README.md)
-- Knife4j：http://localhost:8080/doc.html
+- Knife4j：http://localhost:8010/doc.html

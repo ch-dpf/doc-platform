@@ -12,7 +12,11 @@
     <description>KnowBase: knowledge library ingest, vector index and RAG</description>
 
     <modules>
-        <module>knowbase-service</module>
+        <module>knowbase-api</module>
+        <module>knowbase-core</module>
+        <module>knowbase-autoconfigure</module>
+        <module>knowbase-starter</module>
+        <module>knowbase-app</module>
     </modules>
 
     <properties>
@@ -27,6 +31,26 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>com.knowbase</groupId>
+                <artifactId>knowbase-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.knowbase</groupId>
+                <artifactId>knowbase-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.knowbase</groupId>
+                <artifactId>knowbase-autoconfigure</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.knowbase</groupId>
+                <artifactId>knowbase-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
