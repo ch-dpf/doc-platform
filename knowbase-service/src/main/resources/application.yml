@@ -53,6 +53,9 @@ minio:
   presign-expiry-minutes: 30
 
 ingest:
+  tabular:
+    # 分块保持 Tab 分隔原文（header-prefixed 会破坏周报分块/过滤，勿在分块阶段启用）
+    row-format: tsv-legacy
   max-file-size: 50MB
   max-batch-files: 20
   async-upload-threshold: 5MB

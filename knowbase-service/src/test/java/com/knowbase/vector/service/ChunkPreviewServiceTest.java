@@ -1,5 +1,6 @@
 package com.knowbase.vector.service;
 
+import com.knowbase.ingest.support.DocMetadataStore;
 import com.knowbase.ingest.support.DocumentCleaningService;
 import com.knowbase.ingest.support.ParsedTextNormalizer;
 import com.knowbase.library.service.LibraryConfigResolver;
@@ -42,6 +43,9 @@ class ChunkPreviewServiceTest {
     @Mock
     private ChunkProfileService chunkProfileService;
 
+    @Mock
+    private DocMetadataStore docMetadataStore;
+
     private EffectiveConfigResolver effectiveConfigResolver;
 
     private ChunkPreviewService service;
@@ -65,7 +69,8 @@ class ChunkPreviewServiceTest {
                 textNormalizer,
                 documentCleaningService,
                 libraryConfigResolver,
-                effectiveConfigResolver);
+                effectiveConfigResolver,
+                docMetadataStore);
         service = new ChunkPreviewService(pipeline, defaults, effectiveConfigResolver, chunkProfileService);
         when(documentCleaningService.apply(any(), any())).thenAnswer(inv -> inv.getArgument(0));
     }

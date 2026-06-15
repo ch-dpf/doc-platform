@@ -26,7 +26,9 @@ export function buildRetrievalPreviewPayload({
     tenantId: tenantId.trim(),
     question: question.trim(),
     topK,
-    minScore: minScore > 0 ? minScore : null
+  }
+  if (minScore > 0) {
+    payload.minScore = minScore
   }
   const history = buildRagChatHistory(messages || [])
   if (history.length) payload.history = history

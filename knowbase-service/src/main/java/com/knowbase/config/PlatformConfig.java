@@ -5,6 +5,7 @@ import com.knowbase.ingest.config.IngestProperties;
 import com.knowbase.ingest.config.MinioProperties;
 import com.knowbase.ingest.config.OcrProperties;
 import com.knowbase.ingest.config.StorageProperties;
+import com.knowbase.ingest.config.TabularPipelineProperties;
 import com.knowbase.ingest.config.TextNormalizationProperties;
 import com.knowbase.vector.config.ChunkingProperties;
 import com.knowbase.vector.config.EmbeddingProperties;
@@ -29,6 +30,7 @@ import java.util.UUID;
     StorageProperties.class,
     MinioProperties.class,
     IngestProperties.class,
+    TabularPipelineProperties.class,
     OcrProperties.class,
     TextNormalizationProperties.class,
     OllamaProperties.class,

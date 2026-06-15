@@ -32,6 +32,9 @@ public enum ChunkingStrategy {
             return PARAGRAPH_FIRST;
         }
         String trimmed = value.trim();
+        if ("tabular-row".equalsIgnoreCase(trimmed)) {
+            return PARAGRAPH_FIRST;
+        }
         for (ChunkingStrategy strategy : values()) {
             if (strategy.wireValue.equalsIgnoreCase(trimmed)
                     || strategy.name().equalsIgnoreCase(trimmed)

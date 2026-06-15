@@ -44,7 +44,7 @@
                       />
                     </el-form-item>
                     <el-form-item label="Top K">
-                      <el-slider v-model="chatSettings.topK" :min="1" :max="30" show-input />
+                      <el-slider v-model="chatSettings.topK" :min="1" :max="20" show-input />
                       <p v-if="libraryDefaultTopK" class="qa-field-hint">
                         库默认 {{ libraryDefaultTopK }}，本会话可覆盖
                       </p>
@@ -552,7 +552,7 @@ async function syncRetrievalDefaultsFromLibrary(id) {
     const topK = flat.retrieval?.defaultTopK
     if (topK > 0) {
       libraryDefaultTopK.value = topK
-      chatSettings.topK = topK
+      chatSettings.topK = Math.min(topK, 20)
     } else {
       libraryDefaultTopK.value = null
     }
@@ -788,8 +788,10 @@ async function sendMessage() {
     tenantId: chatSettings.tenantId.trim(),
     question,
     topK: chatSettings.topK,
-    minScore: chatSettings.minScore > 0 ? chatSettings.minScore : null,
     chatModel: chatSettings.chatModel?.trim() || null
+  }
+  if (chatSettings.minScore > 0) {
+    payload.minScore = chatSettings.minScore
   }
   if (docIds.length) {
     payload.filter = { docIds }

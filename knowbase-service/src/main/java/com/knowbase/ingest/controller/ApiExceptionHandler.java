@@ -220,6 +220,18 @@ public class ApiExceptionHandler {
         return detail;
     }
 
+    @ExceptionHandler(NullPointerException.class)
+    public ProblemDetail nullPointer(NullPointerException ex) {
+        ProblemDetail detail = ProblemDetail.forStatusAndDetail(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "检索结果映射异常，请检查分块是否已完成向量化");
+        detail.setTitle("服务内部错误");
+        if (ex.getMessage() != null) {
+            detail.setProperty("cause", ex.getMessage());
+        }
+        return detail;
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail illegalArgument(IllegalArgumentException ex) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());

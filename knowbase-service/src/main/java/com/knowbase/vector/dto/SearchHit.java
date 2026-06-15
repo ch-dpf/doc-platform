@@ -13,6 +13,31 @@ public record SearchHit(
         String parentContext,
         String chunkProfileId) {
 
+    /**
+     * MyBatis 行映射构造：JDBC 数值列可能为 null，不可直接写入 primitive 字段。
+     */
+    public SearchHit(
+            UUID chunkId,
+            UUID docId,
+            String tenantId,
+            Integer version,
+            Integer chunkIndex,
+            String content,
+            Double score,
+            String parentContext,
+            String chunkProfileId) {
+        this(
+                chunkId,
+                docId,
+                tenantId,
+                version != null ? version : 0,
+                chunkIndex != null ? chunkIndex : 0,
+                content,
+                score != null ? score : 0.0,
+                parentContext,
+                chunkProfileId);
+    }
+
     public SearchHit(
             UUID chunkId,
             UUID docId,

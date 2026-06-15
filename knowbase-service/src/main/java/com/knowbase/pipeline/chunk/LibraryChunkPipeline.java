@@ -2,6 +2,8 @@ package com.knowbase.pipeline.chunk;
 
 
 
+import com.knowbase.ingest.domain.DocMetadata;
+import com.knowbase.ingest.support.DocMetadataStore;
 import com.knowbase.ingest.support.DocumentCleaningService;
 
 import com.knowbase.ingest.support.ParsedTextNormalizer;
@@ -19,7 +21,9 @@ import com.knowbase.pipeline.config.IngestProfileSupport;
 import com.knowbase.pipeline.config.PlatformPipelineDefaults;
 import com.knowbase.pipeline.content.ContentSignalsSupport;
 
+import com.knowbase.pipeline.content.ContentFamily;
 import com.knowbase.vector.chunk.IndexingChunkFilter;
+import com.knowbase.vector.chunk.TabularSectionContextInjector;
 
 import com.knowbase.vector.config.ChunkingProperties;
 
@@ -53,6 +57,8 @@ public class LibraryChunkPipeline {
 
     private final EffectiveConfigResolver effectiveConfigResolver;
 
+    private final DocMetadataStore docMetadataStore;
+
 
 
     public LibraryChunkPipeline(
@@ -65,7 +71,9 @@ public class LibraryChunkPipeline {
 
             LibraryConfigResolver libraryConfigResolver,
 
-            EffectiveConfigResolver effectiveConfigResolver) {
+            EffectiveConfigResolver effectiveConfigResolver,
+
+            DocMetadataStore docMetadataStore) {
 
         this.chunkingService = chunkingService;
 
@@ -77,6 +85,8 @@ public class LibraryChunkPipeline {
 
         this.effectiveConfigResolver = effectiveConfigResolver;
 
+        this.docMetadataStore = docMetadataStore;
+
     }
 
 
@@ -87,7 +97,7 @@ public class LibraryChunkPipeline {
 
                 effectiveConfigResolver.forDocumentWithContent(libraryId, docId, rawText);
 
-        return chunkWithEffective(libraryId, effective, rawText);
+        return chunkWithEffective(libraryId, docId, effective, rawText);
 
     }
 
@@ -103,7 +113,7 @@ public class LibraryChunkPipeline {
 
                 effectiveConfigResolver.forIngestWithContent(libraryId, mimeType, profile, rawText);
 
-        return chunkWithEffective(libraryId, effective, rawText);
+        return chunkWithEffective(libraryId, null, effective, rawText);
 
     }
 
@@ -131,7 +141,7 @@ public class LibraryChunkPipeline {
 
         text = documentCleaningService.apply(text, PlatformPipelineDefaults.baselineCleaning());
 
-        return chunkAndFilter(libraryId, text, chunking, null);
+        return chunkAndFilter(libraryId, text, chunking, null, null);
 
     }
 
@@ -143,7 +153,7 @@ public class LibraryChunkPipeline {
 
                 effectiveConfigResolver.forDocumentWithContent(libraryId, docId, parsedText);
 
-        return chunkAndFilter(libraryId, parsedText, effective.chunking(), effective);
+        return chunkAndFilter(libraryId, parsedText, effective.chunking(), effective, docId);
 
     }
 
@@ -151,7 +161,7 @@ public class LibraryChunkPipeline {
     public ChunkPipelineResult chunkForLibraryRebuild(UUID libraryId, UUID docId, String parsedText) {
         EffectivePipelineConfig effective =
                 effectiveConfigResolver.forDocumentLibraryRebuild(libraryId, docId, parsedText);
-        return chunkWithEffective(libraryId, effective, parsedText);
+        return chunkWithEffective(libraryId, docId, effective, parsedText);
     }
 
 
@@ -162,7 +172,7 @@ public class LibraryChunkPipeline {
 
         ChunkingProperties chunking = libraryConfigResolver.chunkingFor(libraryId);
 
-        return chunkAndFilter(libraryId, parsedText, chunking, null);
+        return chunkAndFilter(libraryId, parsedText, chunking, null, null);
 
     }
 
@@ -170,7 +180,7 @@ public class LibraryChunkPipeline {
 
     private ChunkPipelineResult chunkWithEffective(
 
-            UUID libraryId, EffectivePipelineConfig effective, String rawText) {
+            UUID libraryId, UUID docId, EffectivePipelineConfig effective, String rawText) {
 
         String text = rawText;
 
@@ -182,7 +192,7 @@ public class LibraryChunkPipeline {
 
         text = documentCleaningService.apply(text, effective.cleaning());
 
-        return chunkAndFilter(libraryId, text, effective.chunking(), effective);
+        return chunkAndFilter(libraryId, text, effective.chunking(), effective, docId);
 
     }
 
@@ -190,7 +200,11 @@ public class LibraryChunkPipeline {
 
     private ChunkPipelineResult chunkAndFilter(
 
-            UUID libraryId, String text, ChunkingProperties chunking, EffectivePipelineConfig effective) {
+            UUID libraryId,
+            String text,
+            ChunkingProperties chunking,
+            EffectivePipelineConfig effective,
+            UUID docId) {
 
         boolean multiGranularity = effective != null
 
@@ -214,7 +228,10 @@ public class LibraryChunkPipeline {
 
         }
 
-
+        if (shouldInjectTabularSectionContext(effective, text)) {
+            rawPipelineChunks = TabularSectionContextInjector.inject(
+                    rawPipelineChunks, text, resolveFileName(docId));
+        }
 
         int rawTotalChunks = rawPipelineChunks.size();
 
@@ -245,6 +262,21 @@ public class LibraryChunkPipeline {
     }
 
 
+
+    private String resolveFileName(UUID docId) {
+        if (docId == null) {
+            return null;
+        }
+        return docMetadataStore.findById(docId)
+                .map(DocMetadata::getFileName)
+                .orElse(null);
+    }
+
+    private static boolean shouldInjectTabularSectionContext(
+            EffectivePipelineConfig effective, String text) {
+        ContentFamily family = effective != null ? effective.contentFamily() : null;
+        return TabularSectionContextInjector.shouldApply(family, text);
+    }
 
     private static List<PipelineChunk> filterPipelineChunks(List<PipelineChunk> chunks) {
         if (chunks == null || chunks.isEmpty()) {

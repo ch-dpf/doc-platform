@@ -1,5 +1,6 @@
 package com.knowbase.pipeline.chunk;
 
+import com.knowbase.ingest.support.DocMetadataStore;
 import com.knowbase.ingest.support.DocumentCleaningService;
 import com.knowbase.ingest.support.ParsedTextNormalizer;
 import com.knowbase.library.config.CleaningRulesSettings;
@@ -10,6 +11,7 @@ import com.knowbase.library.service.LibraryConfigResolver;
 import com.knowbase.pipeline.config.ChunkProfileService;
 import com.knowbase.pipeline.config.EffectiveConfigResolver;
 import com.knowbase.pipeline.config.EffectivePipelineConfig;
+import com.knowbase.pipeline.content.ContentFamily;
 import com.knowbase.vector.chunk.ChunkingStrategy;
 import com.knowbase.vector.config.ChunkingProperties;
 import com.knowbase.vector.dto.ChunkPreviewRequest;
@@ -27,6 +29,7 @@ import org.mockito.quality.Strictness;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -86,6 +89,9 @@ class LibraryChunkPipelineParityTest {
     @Mock
     private EffectiveConfigResolver effectiveConfigResolver;
 
+    @Mock
+    private DocMetadataStore docMetadataStore;
+
     private LibraryChunkPipeline pipeline;
     private ChunkPreviewService previewService;
 
@@ -98,7 +104,8 @@ class LibraryChunkPipelineParityTest {
                 textNormalizer,
                 documentCleaningService,
                 libraryConfigResolver,
-                effectiveConfigResolver);
+                effectiveConfigResolver,
+                docMetadataStore);
         previewService = new ChunkPreviewService(pipeline, defaults, effectiveConfigResolver, chunkProfileService);
         when(chunkProfileService.computeForIngestWithContent(any(), any(), any(), any()))
                 .thenReturn("cp_parity_test");
@@ -129,6 +136,7 @@ class LibraryChunkPipelineParityTest {
         assertEquals(preview.chunks(), index.chunks());
         assertEquals(preview.rawTotalChunks(), index.rawTotalChunks());
         assertEquals(preview.filteredOutCount(), index.filteredOutCount());
+        assertTrue(preview.chunks().stream().anyMatch(chunk -> chunk.contains("【杜鹏飞·工作周报")));
     }
 
     @Test
@@ -158,7 +166,9 @@ class LibraryChunkPipelineParityTest {
                 new CleaningRulesSettings(),
                 libraryChunking(),
                 new ParsingRulesSettings(),
-                1);
+                1,
+                ContentFamily.TABULAR,
+                null);
     }
 
     private static ChunkingProperties libraryChunking() {

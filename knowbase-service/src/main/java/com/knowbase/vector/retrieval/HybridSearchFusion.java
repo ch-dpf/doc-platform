@@ -52,6 +52,7 @@ public final class HybridSearchFusion {
             if (source == null) {
                 continue;
             }
+            double fusedScore = entry.getValue() != null ? entry.getValue() : 0.0d;
             merged.add(new SearchHit(
                     source.chunkId(),
                     source.docId(),
@@ -59,7 +60,7 @@ public final class HybridSearchFusion {
                     source.version(),
                     source.chunkIndex(),
                     source.content(),
-                    entry.getValue(),
+                    fusedScore,
                     source.parentContext(),
                     source.chunkProfileId()));
         }
