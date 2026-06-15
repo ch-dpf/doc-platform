@@ -48,7 +48,7 @@ public final class IngestProfileSupport {
         if (raw.getParsing() != null || raw.getCleaning() != null) {
             throw InvalidDocumentException.of(
                     InvalidDocumentException.CODE_INGEST_PROFILE_INVALID,
-                    "ingestProfile 仅允许覆盖 chunkSize、chunkOverlap；解析与清洗由 MIME 与系统配置决定");
+                    "ingestProfile 仅允许覆盖 chunkSize、chunkOverlap、minParagraphLength；解析由 MIME 决定，分块策略由库配置决定");
         }
         IngestProfile normalized = new IngestProfile();
         if (raw.getChunkSize() != null) {
@@ -72,6 +72,11 @@ public final class IngestProfileSupport {
             return null;
         }
         return JsonSupport.toJson(profile);
+    }
+
+    public static boolean hasChunkingOverride(String json) {
+        IngestProfile profile = parse(json);
+        return profile != null && profile.hasChunkingOverride();
     }
 
     public static IngestProfileSummary toSummary(String json) {

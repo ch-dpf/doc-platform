@@ -64,7 +64,7 @@ public class LibraryChunkStrategySummaryService {
         CleaningRulesSettings cleaning =
                 PlatformPipelineDefaults.copyCleaning(PlatformPipelineDefaults.baselineCleaning());
         ChunkingProperties chunking = PlatformPipelineDefaults.copyChunking(libraryBase);
-        mimeDefaults.apply(mime, parsing, cleaning, chunking);
+        mimeDefaults.apply(mime, parsing, cleaning);
 
         String strategyWire = chunking.getStrategy() != null
                 ? chunking.getStrategy().toWire()
@@ -91,6 +91,6 @@ public class LibraryChunkStrategySummaryService {
         if (parsing.getTableExtraction() != null && !"skip".equals(parsing.getTableExtraction())) {
             parts.add("表格:" + parsing.getTableExtraction());
         }
-        return parts.isEmpty() ? "解析随 MIME 默认" : String.join("；", parts);
+        return parts.isEmpty() ? "解析随 MIME 默认；分块随库配置" : String.join("；", parts) + "；分块随库配置";
     }
 }

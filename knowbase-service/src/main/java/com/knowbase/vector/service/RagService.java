@@ -26,6 +26,7 @@ import com.knowbase.library.service.LibraryNotFoundException;
 import com.knowbase.library.service.VectorLibraryService;
 import com.knowbase.vector.retrieval.RetrievalTopKResolver;
 import com.knowbase.vector.rag.RagLibraryStatsSupport;
+import com.knowbase.vector.rag.RagMonthlyWorkSummarySupport;
 import com.knowbase.vector.rag.RagWeeklyReportSummarySupport;
 import com.knowbase.vector.rag.RagWeeklyReportWeekSupport;
 import com.knowbase.vector.rag.RagEmployeeRosterSupport;
@@ -208,6 +209,17 @@ public class RagService {
             return metadataRagResponse(weeklyWeekAnswer.get(), history.size());
         }
 
+        var monthlyWorkAnswer = RagMonthlyWorkSummarySupport.tryLibraryWideAnswer(
+                request.question(),
+                history,
+                request.libraryId(),
+                request.tenantId(),
+                docMetadataStore,
+                documentChunkMapper);
+        if (monthlyWorkAnswer.isPresent()) {
+            return metadataRagResponse(monthlyWorkAnswer.get(), history.size());
+        }
+
         int topK = RetrievalTopKResolver.resolve(
                 request.topK(),
                 libraryConfigResolver.retrievalFor(request.libraryId()),
@@ -262,11 +274,19 @@ public class RagService {
                     request.libraryId(), weeklySummary.get(), hits, fileNames, history.size(), searchQuery, trace);
         }
 
+        var monthlySummary = RagMonthlyWorkSummarySupport.tryRuleBasedAnswer(
+                request.question(), hits, fileNames, history);
+        if (monthlySummary.isPresent()) {
+            return ruleBasedRagResponse(
+                    request.libraryId(), monthlySummary.get(), hits, fileNames, history.size(), searchQuery, trace);
+        }
+
         String userMessage = promptBuilder.buildUserMessage(request.question(), hits, history, fileNames);
 
         String answer = chatClient.chat(ragProperties.getSystemPrompt(), history, userMessage, chatModel);
 
         answer = RagAnswerGuard.enforceGrounding(answer, request.question(), hits, fileNames);
+        answer = recoverMonthlyWorkIfIncomplete(answer, request.question(), hits, fileNames, history);
         answer = recoverWeeklySummaryIfEchoed(answer, request.question(), hits, fileNames);
 
         List<RagCitation> citations = toCitations(request.libraryId(), hits, fileNames);
@@ -484,6 +504,17 @@ public class RagService {
             return emitInstant(metadataRagResponse(weeklyWeekAnswer.get(), history.size()));
         }
 
+        var monthlyWorkAnswer = RagMonthlyWorkSummarySupport.tryLibraryWideAnswer(
+                request.question(),
+                history,
+                request.libraryId(),
+                request.tenantId(),
+                docMetadataStore,
+                documentChunkMapper);
+        if (monthlyWorkAnswer.isPresent()) {
+            return emitInstant(metadataRagResponse(monthlyWorkAnswer.get(), history.size()));
+        }
+
         int topK = RetrievalTopKResolver.resolve(
                 request.topK(),
                 libraryConfigResolver.retrievalFor(request.libraryId()),
@@ -533,6 +564,13 @@ public class RagService {
                     request.libraryId(), weeklySummary.get(), hits, fileNames, history.size(), searchQuery, trace));
         }
 
+        var monthlySummary = RagMonthlyWorkSummarySupport.tryRuleBasedAnswer(
+                request.question(), hits, fileNames, history);
+        if (monthlySummary.isPresent()) {
+            return emitInstant(ruleBasedRagResponse(
+                    request.libraryId(), monthlySummary.get(), hits, fileNames, history.size(), searchQuery, trace));
+        }
+
         String userMessage = promptBuilder.buildUserMessage(request.question(), hits, history, fileNames);
         List<SearchHit> finalHits = hits;
         RagRetrievalTrace finalTrace = trace;
@@ -546,6 +584,8 @@ public class RagService {
                 .concatWith(Flux.defer(() -> {
                     String answer = RagAnswerGuard.enforceGrounding(
                             answerBuilder.toString(), request.question(), finalHits, fileNames);
+                    answer = recoverMonthlyWorkIfIncomplete(
+                            answer, request.question(), finalHits, fileNames, history);
                     answer = recoverWeeklySummaryIfEchoed(answer, request.question(), finalHits, fileNames);
                     List<RagCitation> citations = toCitations(request.libraryId(), finalHits, fileNames);
                     boolean found = !answer.startsWith("未找到");
@@ -587,6 +627,41 @@ public class RagService {
             return answer;
         }
         return RagWeeklyReportSummarySupport.tryRuleBasedAnswer(question, hits, fileNames).orElse(answer);
+    }
+
+    /** 汇总类时间工作问句：规则抽取比 LLM 更完整时优先采用（主流 RAG 的 structured aggregation 路径）。 */
+    private String recoverMonthlyWorkIfIncomplete(
+            String answer,
+            String question,
+            List<SearchHit> hits,
+            Map<UUID, String> fileNames,
+            List<RagChatMessage> history) {
+        if (!RagMonthlyWorkSummarySupport.isMonthlyCompletedWorkQuestion(question)) {
+            return answer;
+        }
+        var rule = RagMonthlyWorkSummarySupport.tryRuleBasedAnswer(question, hits, fileNames, history);
+        if (rule.isEmpty()) {
+            return answer;
+        }
+        int ruleItems = countNumberedListItems(rule.get());
+        int llmItems = countNumberedListItems(answer);
+        if (ruleItems > llmItems) {
+            return rule.get();
+        }
+        return answer;
+    }
+
+    private static int countNumberedListItems(String text) {
+        if (text == null || text.isBlank()) {
+            return 0;
+        }
+        int count = 0;
+        for (String line : text.split("\n")) {
+            if (line.strip().matches("\\d+\\. .*")) {
+                count++;
+            }
+        }
+        return count;
     }
 
 }

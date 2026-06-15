@@ -31,6 +31,7 @@ public final class TabularTableScanner {
         List<RowBinding> bindings = new ArrayList<>();
         String headerLine = null;
         String columns = null;
+        String lastWeeklyReportColumns = null;
         String submitter = null;
         String sectionLabel = null;
         String period = null;
@@ -58,12 +59,16 @@ public final class TabularTableScanner {
             if (isTableHeaderLine(line, profile)) {
                 headerLine = line;
                 columns = TabularSectionContextIndex.compactColumns(line);
+                if (profile == TabularDocumentProfile.WEEKLY_REPORT && isWeeklyReportSchemaHeader(line)) {
+                    lastWeeklyReportColumns = columns;
+                }
                 continue;
             }
 
             if (isDataRow(line, headerLine, profile)) {
+                String effectiveColumns = resolveColumns(profile, columns, lastWeeklyReportColumns);
                 TabularSectionContext context = TabularSectionContext.forProfile(
-                        profile, fileName, submitter, sectionLabel, period, columns);
+                        profile, fileName, submitter, sectionLabel, period, effectiveColumns);
                 bindings.add(new RowBinding(line, context));
             } else if (!line.contains("\t")) {
                 headerLine = null;
@@ -94,8 +99,11 @@ public final class TabularTableScanner {
             return false;
         }
         if (profile == TabularDocumentProfile.WEEKLY_REPORT) {
-            return TabularRowLinearizer.isTableHeaderLine(line)
-                    || (line.contains("序号") && line.contains("工作内容") && !NUMBERED_DATA_ROW.matcher(line).find());
+            if (isWeeklyMetadataLine(line)) {
+                return false;
+            }
+            return isWeeklyReportSchemaHeader(line)
+                    || TabularRowLinearizer.isTableHeaderLine(line);
         }
         if (!TabularRowLinearizer.isTableHeaderLine(line) || isWeeklyMetadataLine(line)) {
             return false;
@@ -127,5 +135,25 @@ public final class TabularTableScanner {
             return false;
         }
         return line.contains("部门\t") && (line.contains("姓名\t") || line.contains("部门负责人\t"));
+    }
+
+    private static boolean isWeeklyReportSchemaHeader(String line) {
+        return line != null
+                && line.contains("序号")
+                && line.contains("工作内容")
+                && !NUMBERED_DATA_ROW.matcher(line).find();
+    }
+
+    private static String resolveColumns(
+            TabularDocumentProfile profile, String columns, String lastWeeklyReportColumns) {
+        if (columns != null && !columns.isBlank()) {
+            return columns;
+        }
+        if (profile == TabularDocumentProfile.WEEKLY_REPORT
+                && lastWeeklyReportColumns != null
+                && !lastWeeklyReportColumns.isBlank()) {
+            return lastWeeklyReportColumns;
+        }
+        return columns;
     }
 }

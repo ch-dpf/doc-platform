@@ -26,6 +26,14 @@ class ProjectParticipationCanonicalizerTest {
     }
 
     @Test
+    void groupedDisplayLabelMergesShanghaiFbVariants() {
+        assertEquals("上海fb项目", ProjectParticipationCanonicalizer.groupedDisplayLabel("上海fb项目"));
+        assertEquals("上海fb项目", ProjectParticipationCanonicalizer.groupedDisplayLabel("上海浮标项目"));
+        assertEquals("上海fb项目", ProjectParticipationCanonicalizer.groupedDisplayLabel("FB项目"));
+        assertEquals("海图项目", ProjectParticipationCanonicalizer.groupedDisplayLabel("海图项目"));
+    }
+
+    @Test
     void respectsUserDeclaredAliasGroup() {
         LinkedHashSet<String> raw = new LinkedHashSet<>(List.of(
                 "海图项目", "上海fb项目", "上海浮标项目", "FB项目", "上海项目"));

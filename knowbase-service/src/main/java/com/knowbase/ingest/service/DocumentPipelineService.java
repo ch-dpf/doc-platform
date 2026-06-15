@@ -15,6 +15,7 @@ import com.knowbase.pipeline.content.ContentSignalsSupport;
 import com.knowbase.platform.DocumentIndexCoordinator;
 import com.knowbase.ingest.support.DocumentCleaningService;
 import com.knowbase.ingest.support.ParsedTextNormalizer;
+import com.knowbase.vector.chunk.ChunkTextPreprocessor;
 import com.knowbase.ingest.storage.ObjectStorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,6 +109,7 @@ public class DocumentPipelineService {
                 plainText = textNormalizer.normalize(plainText, effective.normalization());
             }
             plainText = documentCleaningService.apply(plainText, effective.cleaning());
+            plainText = ChunkTextPreprocessor.prepare(plainText);
 
             EffectivePipelineConfig withContent = effectiveConfigResolver.forIngestWithContent(
                     doc.getLibraryId(),

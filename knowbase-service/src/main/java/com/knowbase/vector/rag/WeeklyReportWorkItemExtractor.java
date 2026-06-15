@@ -22,11 +22,43 @@ public final class WeeklyReportWorkItemExtractor {
     private static final Set<String> SKIP_CONTENT = Set.of(
             "工作内容", "执行情况", "执行要求", "计划完成", "说明", "类别", "序号", "责任人", "部门");
 
+    private static final Pattern PLAN_DATE = Pattern.compile("20\\d{2}\\.(\\d{1,2})\\.(\\d{1,2})");
+
     private WeeklyReportWorkItemExtractor() {}
 
     public record WorkItem(String project, String content, int refIndex, UUID docId) {}
 
     public static List<WorkItem> extract(List<SearchHit> hits, Map<UUID, String> fileNames) {
+        return extractInternal(hits, fileNames, false, null);
+    }
+
+    public static List<WorkItem> extractCompleted(List<SearchHit> hits, Map<UUID, String> fileNames) {
+        return extractInternal(hits, fileNames, true, null);
+    }
+
+    public static List<WorkItem> extractCompleted(
+            List<SearchHit> hits, Map<UUID, String> fileNames, TemporalQueryScope scope) {
+        return extractInternal(hits, fileNames, true, scope);
+    }
+
+    public static boolean hasCompletedWorkOnDay(String content, TemporalQueryScope scope) {
+        if (!scope.dayScoped() || content == null || content.isBlank()) {
+            return true;
+        }
+        Matcher matcher = WORK_ROW.matcher(content);
+        while (matcher.find()) {
+            if (!isCompletedWorkRow(content, matcher.start())) {
+                continue;
+            }
+            if (rowMatchesScopeDay(content, matcher.start(), scope)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static List<WorkItem> extractInternal(
+            List<SearchHit> hits, Map<UUID, String> fileNames, boolean completedOnly, TemporalQueryScope scope) {
         List<WorkItem> items = new ArrayList<>();
         if (hits == null) {
             return items;
@@ -36,8 +68,11 @@ public final class WeeklyReportWorkItemExtractor {
             if (hit.content() == null || hit.content().isBlank() || isHeaderOnlyChunk(hit.content())) {
                 continue;
             }
+            if (completedOnly && !hit.content().contains("\t已完成")) {
+                continue;
+            }
             int refIndex = i + 1;
-            collectFromChunk(hit.content(), hit.docId(), refIndex, items);
+            collectFromChunk(hit.content(), hit.docId(), refIndex, items, completedOnly, scope);
         }
         return dedupe(items);
     }
@@ -46,9 +81,21 @@ public final class WeeklyReportWorkItemExtractor {
         return WeeklyReportChunkHeuristics.isHeaderOnlyChunk(content);
     }
 
-    private static void collectFromChunk(String content, UUID docId, int refIndex, List<WorkItem> items) {
+    private static void collectFromChunk(
+            String content,
+            UUID docId,
+            int refIndex,
+            List<WorkItem> items,
+            boolean completedOnly,
+            TemporalQueryScope scope) {
         Matcher matcher = WORK_ROW.matcher(content);
         while (matcher.find()) {
+            if (completedOnly && !isCompletedWorkRow(content, matcher.start())) {
+                continue;
+            }
+            if (scope != null && scope.dayScoped() && !rowMatchesScopeDay(content, matcher.start(), scope)) {
+                continue;
+            }
             String work = matcher.group(1).strip();
             if (!isValidWorkContent(work)) {
                 continue;
@@ -56,6 +103,36 @@ public final class WeeklyReportWorkItemExtractor {
             String project = extractProject(content, matcher.start());
             items.add(new WorkItem(project, work, refIndex, docId));
         }
+    }
+
+    private static boolean isCompletedWorkRow(String content, int workMatchStart) {
+        return lineAt(content, workMatchStart).contains("\t已完成");
+    }
+
+    private static void collectFromChunk(String content, UUID docId, int refIndex, List<WorkItem> items) {
+        collectFromChunk(content, docId, refIndex, items, false, null);
+    }
+
+    private static boolean rowMatchesScopeDay(String content, int workMatchStart, TemporalQueryScope scope) {
+        if (!scope.dayScoped()) {
+            return true;
+        }
+        String line = lineAt(content, workMatchStart);
+        Matcher matcher = PLAN_DATE.matcher(line);
+        if (!matcher.find()) {
+            return false;
+        }
+        return Integer.parseInt(matcher.group(1)) == scope.month()
+                && Integer.parseInt(matcher.group(2)) == scope.dayOfMonth();
+    }
+
+    private static String lineAt(String content, int position) {
+        int lineStart = content.lastIndexOf('\n', position) + 1;
+        int lineEnd = content.indexOf('\n', position);
+        if (lineEnd < 0) {
+            lineEnd = content.length();
+        }
+        return content.substring(lineStart, lineEnd);
     }
 
     private static String extractProject(String content, int workMatchStart) {

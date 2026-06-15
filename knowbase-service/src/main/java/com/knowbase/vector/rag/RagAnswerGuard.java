@@ -1,10 +1,14 @@
 package com.knowbase.vector.rag;
 
 import com.knowbase.vector.dto.SearchHit;
+import com.knowbase.vector.retrieval.TemporalHitMatcher;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -27,6 +31,8 @@ public final class RagAnswerGuard {
     private static final Pattern BOGUS_TABLE_NAME = Pattern.compile(
             "\\d{5}[\\u4e00-\\u9fff]{2,4}(完成|配合|开发|相关|任务)");
 
+    private static final Pattern CITATION_REF = Pattern.compile("\\[(\\d+)]");
+
     private RagAnswerGuard() {}
 
     /** 参考资料中是否出现提交截止/期限类明文表述（不含单纯的工作周期日期）。 */
@@ -46,11 +52,21 @@ public final class RagAnswerGuard {
     }
 
     public static String enforceGrounding(String answer, String question, List<SearchHit> hits) {
-        return enforceGrounding(answer, question, hits, Map.of());
+        return enforceGrounding(answer, question, hits, Map.of(), TemporalQueryScope.none());
     }
 
     public static String enforceGrounding(
             String answer, String question, List<SearchHit> hits, Map<UUID, String> fileNames) {
+        TemporalQueryScope scope = RagTemporalQueryParser.parse(question, List.of());
+        return enforceGrounding(answer, question, hits, fileNames, scope);
+    }
+
+    public static String enforceGrounding(
+            String answer,
+            String question,
+            List<SearchHit> hits,
+            Map<UUID, String> fileNames,
+            TemporalQueryScope scope) {
         if (answer == null || answer.isBlank()) {
             return RagAnswerTemplates.INSUFFICIENT_IN_PROMPT;
         }
@@ -73,6 +89,13 @@ public final class RagAnswerGuard {
         }
 
         if (RagQuestionAnalyzer.isSynthesisQuestion(question)) {
+            if (RagMonthlyWorkSummarySupport.isMonthlyCompletedWorkQuestion(question)) {
+                var monthly = RagMonthlyWorkSummarySupport.tryRuleBasedAnswer(
+                        question, hits, fileNames != null ? fileNames : Map.of(), List.of());
+                if (monthly.isPresent()) {
+                    return monthly.get();
+                }
+            }
             if (RagWeeklyReportSummarySupport.looksLikeReferenceEcho(trimmed)) {
                 var recovered = RagWeeklyReportSummarySupport.tryRuleBasedAnswer(
                         question, hits, fileNames != null ? fileNames : Map.of());
@@ -97,6 +120,13 @@ public final class RagAnswerGuard {
             }
         }
 
+        if (scope != null && scope.scoped() && hits != null && !hits.isEmpty()) {
+            String temporalViolation = validateTemporalCitations(trimmed, hits, scope, fileNames);
+            if (temporalViolation != null) {
+                return temporalViolation;
+            }
+        }
+
         String lower = trimmed.toLowerCase();
         if (lower.contains("无法确定")
                 || lower.contains("无法回答")
@@ -109,6 +139,33 @@ public final class RagAnswerGuard {
             return RagAnswerTemplates.INSUFFICIENT_IN_PROMPT;
         }
         return trimmed;
+    }
+
+    static String validateTemporalCitations(
+            String answer,
+            List<SearchHit> hits,
+            TemporalQueryScope scope,
+            Map<UUID, String> fileNames) {
+        Set<Integer> cited = new HashSet<>();
+        Matcher matcher = CITATION_REF.matcher(answer);
+        while (matcher.find()) {
+            cited.add(Integer.parseInt(matcher.group(1)));
+        }
+        if (cited.isEmpty()) {
+            return null;
+        }
+        Map<UUID, String> names = fileNames != null ? fileNames : Map.of();
+        for (int index : cited) {
+            if (index < 1 || index > hits.size()) {
+                continue;
+            }
+            SearchHit hit = hits.get(index - 1);
+            String fileName = names.get(hit.docId());
+            if (!TemporalHitMatcher.matches(hit, scope, fileName, hit.temporalMetadataMap())) {
+                return RagAnswerTemplates.INSUFFICIENT_IN_PROMPT;
+            }
+        }
+        return null;
     }
 
     private static boolean containsIsoLikeDateRange(String text) {

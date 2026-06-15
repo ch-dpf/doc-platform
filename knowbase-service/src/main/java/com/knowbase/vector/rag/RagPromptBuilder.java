@@ -48,12 +48,13 @@ public class RagPromptBuilder {
                 : "";
         String strictHint = buildStrictHint(question);
         String synthesisHint = buildSynthesisHint(question, hits, fileNames);
+        String temporalHint = buildTemporalHint(question);
         return """
                 请仅根据下列「参考资料」回答「用户问题」。参考资料是回答的唯一依据。
                 - 不得使用参考资料以外的任何信息，不得推测、不得联想。
                 - 每个事实性陈述句末须标注引用编号，如 [1]；引用内容须与陈述严格对应。
                 %s- 若参考资料与问题无关、或未明确记载所问事实，必须只回复这一句（不要其它内容）：%s
-                %s%s%s
+                %s%s%s%s
                 【参考资料】
                 %s
                 【用户问题】
@@ -65,6 +66,7 @@ public class RagPromptBuilder {
                 RagAnswerTemplates.INSUFFICIENT_IN_PROMPT,
                 synthesisHint,
                 strictHint,
+                temporalHint,
                 followUpHint,
                 context,
                 question.trim());
@@ -101,6 +103,58 @@ public class RagPromptBuilder {
                 - 问「哪周周报含某项目」：周次以文件名中的日期区间为准；若库内仅有往年周报，须说明「今年」指当前日历年且当年无匹配周次，并列出历史年份周次。
 
                 """.formatted(rosterHint);
+    }
+
+    private static String buildTemporalHint(String question) {
+        TemporalQueryScope scope = RagTemporalQueryParser.parse(question, List.of());
+        if (!scope.scoped()) {
+            return "";
+        }
+        StringBuilder hint = new StringBuilder("\n                【时间范围约束】\n");
+        if (scope.year() != null) {
+            hint.append("                - 用户问题限定了时间：");
+            if (scope.yearScoped()) {
+                hint.append(scope.year())
+                        .append("年全年。仅使用与该年度相关的参考资料作答；忽略其它年份的片段。\n");
+            } else if (scope.month() != null && scope.dayScoped()) {
+                hint.append(scope.year())
+                        .append("年")
+                        .append(scope.month())
+                        .append("月")
+                        .append(scope.dayOfMonth())
+                        .append("日。")
+                        .append("仅归纳计划完成时间为该日且执行情况为「已完成」的工作项；忽略其它日期。\n");
+            } else if (scope.month() != null && scope.weekScoped()) {
+                hint.append(scope.year())
+                        .append("年")
+                        .append(scope.month())
+                        .append("月第")
+                        .append(scope.weekOfMonth())
+                        .append("周（")
+                        .append(scope.rangeStart().map(Object::toString).orElse(""))
+                        .append(" 至 ")
+                        .append(scope.rangeEnd().map(Object::toString).orElse(""))
+                        .append("）。")
+                        .append("仅使用与该周相关的参考资料作答。\n");
+            } else if (scope.month() != null) {
+                hint.append(scope.year()).append("年");
+                if (scope.effectiveMonthEnd() != scope.month()) {
+                    hint.append(scope.month()).append("-").append(scope.effectiveMonthEnd());
+                } else {
+                    hint.append(scope.month());
+                }
+                hint.append("月。仅使用与该时间范围相关的参考资料作答；忽略其它月份的片段。\n");
+            }
+        }
+        if (!scope.persons().isEmpty()) {
+            hint.append("                - 关注提交人/责任人：")
+                    .append(String.join("、", scope.persons()))
+                    .append("。\n");
+        }
+        if (scope.completedWorkOnly()) {
+            hint.append("                - 用户询问「完成了哪些工作」：仅归纳执行情况为「已完成」的事项，不要包含「待开展」计划。\n");
+        }
+        return hint.append("\n                ").toString();
     }
 
     private static String buildStrictHint(String question) {

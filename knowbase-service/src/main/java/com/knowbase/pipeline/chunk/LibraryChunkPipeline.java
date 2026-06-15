@@ -22,6 +22,7 @@ import com.knowbase.pipeline.config.PlatformPipelineDefaults;
 import com.knowbase.pipeline.content.ContentSignalsSupport;
 
 import com.knowbase.pipeline.content.ContentFamily;
+import com.knowbase.vector.chunk.ChunkTextPreprocessor;
 import com.knowbase.vector.chunk.IndexingChunkFilter;
 import com.knowbase.vector.chunk.TabularSectionContextInjector;
 
@@ -205,6 +206,8 @@ public class LibraryChunkPipeline {
             ChunkingProperties chunking,
             EffectivePipelineConfig effective,
             UUID docId) {
+
+        text = ChunkTextPreprocessor.prepare(text);
 
         boolean multiGranularity = effective != null
 

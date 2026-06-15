@@ -62,7 +62,7 @@ public final class RagWeeklyReportWeekSupport {
         return Optional.of(formatAnswer(question, person, projectToken, calendarYear, weeksByYear));
     }
 
-    static Integer extractYearFromFileName(String fileName) {
+    public static Integer extractYearFromFileName(String fileName) {
         if (fileName == null || fileName.isBlank()) {
             return null;
         }

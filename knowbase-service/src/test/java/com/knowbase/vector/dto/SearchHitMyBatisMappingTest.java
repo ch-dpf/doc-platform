@@ -13,7 +13,8 @@ class SearchHitMyBatisMappingTest {
         UUID chunkId = UUID.randomUUID();
         UUID docId = UUID.randomUUID();
         SearchHit hit = new SearchHit(
-                chunkId, docId, "demo", null, null, "content", null, null, null);
+                chunkId, docId, "demo", null, null, "content", null,
+                null, null, null, null, null, null, null, null, null);
 
         assertEquals(0, hit.version());
         assertEquals(0, hit.chunkIndex());

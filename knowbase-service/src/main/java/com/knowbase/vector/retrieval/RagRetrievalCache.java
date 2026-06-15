@@ -4,6 +4,7 @@ import com.knowbase.platform.JsonSupport;
 import com.knowbase.vector.config.RetrievalProperties;
 import com.knowbase.vector.dto.SearchHit;
 import com.knowbase.vector.dto.SearchRequest;
+import com.knowbase.vector.rag.RagTemporalConstants;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -76,7 +77,8 @@ public class RagRetrievalCache {
             Double minScore,
             SearchRequest.SearchFilter filter) {
         String filterJson = filter == null ? "" : JsonSupport.toJson(filter);
-        return libraryId
+        return RagTemporalConstants.PARSER_VERSION
+                + "|" + libraryId
                 + "|" + tenantId.trim()
                 + "|" + normalize(searchQuery)
                 + "|" + normalize(keywordQuery)

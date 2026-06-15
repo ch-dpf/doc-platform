@@ -38,7 +38,57 @@ public final class ChunkMetadataBuilder {
             metadata.put("parentIndex", String.valueOf(pipelineChunk.parentIndex()));
             metadata.put("parentContext", pipelineChunk.parentContext());
         }
+        if (pipelineChunk != null) {
+            mergeTemporalMetadata(metadata, doc, pipelineChunk.content());
+        }
         return metadata.isEmpty() ? null : JsonSupport.toJson(metadata);
+    }
+
+    /** 将时间元数据合并进已有 chunk.metadata JSON（用于存量回填）。 */
+    public static String mergeTemporalIntoExisting(String existingMetadataJson, DocMetadata doc, String content) {
+        if (doc == null) {
+            return existingMetadataJson;
+        }
+        Map<String, String> metadata = parseMetadataMap(existingMetadataJson);
+        mergeTemporalMetadata(metadata, doc, content);
+        return metadata.isEmpty() ? existingMetadataJson : JsonSupport.toJson(metadata);
+    }
+
+    public static boolean hasCompleteTemporalFields(String metadataJson) {
+        Map<String, String> metadata = parseMetadataMap(metadataJson);
+        return metadata.containsKey(TemporalMetadataFields.PERIOD_YEAR)
+                && metadata.containsKey(TemporalMetadataFields.PERIOD_START)
+                && metadata.containsKey(TemporalMetadataFields.SUBMITTER);
+    }
+
+    private static Map<String, String> parseMetadataMap(String metadataJson) {
+        Map<String, String> metadata = new LinkedHashMap<>();
+        if (metadataJson == null || metadataJson.isBlank()) {
+            return metadata;
+        }
+        Map<?, ?> raw = JsonSupport.fromJson(metadataJson, Map.class);
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) {
+                continue;
+            }
+            String key = String.valueOf(entry.getKey()).trim();
+            if (!key.isEmpty()) {
+                metadata.put(key, String.valueOf(entry.getValue()).trim());
+            }
+        }
+        return metadata;
+    }
+
+    private static void mergeTemporalMetadata(Map<String, String> metadata, DocMetadata doc, String content) {
+        ChunkTemporalMetadataExtractor.TemporalMetadata temporal =
+                ChunkTemporalMetadataExtractor.extract(doc, content);
+        putIfPresent(metadata, TemporalMetadataFields.PERIOD_YEAR, temporal.periodYear());
+        putIfPresent(metadata, TemporalMetadataFields.PERIOD_START, temporal.periodStart());
+        putIfPresent(metadata, TemporalMetadataFields.PERIOD_END, temporal.periodEnd());
+        putIfPresent(metadata, TemporalMetadataFields.PERIOD_MONTHS, temporal.periodMonths());
+        putIfPresent(metadata, TemporalMetadataFields.SUBMITTER, temporal.submitter());
+        putIfPresent(metadata, TemporalMetadataFields.SECTION_LABEL, temporal.sectionLabel());
+        putIfPresent(metadata, TemporalMetadataFields.HAS_COMPLETED_WORK, temporal.hasCompletedWork());
     }
 
     private static void mergeCustomMetadata(Map<String, String> target, String customMetadataJson) {

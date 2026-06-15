@@ -42,6 +42,18 @@ class RagQuestionAnalyzerTest {
     }
 
     @Test
+    void temporalCompletedWorkQuestionRecognized() {
+        assertTrue(RagQuestionAnalyzer.isTemporalCompletedWorkQuestion(
+                "杜鹏飞2025年第九个月都完成了哪些工作？"));
+        assertTrue(RagQuestionAnalyzer.isTemporalCompletedWorkQuestion(
+                "杜鹏飞在2025年9月第一周完成了哪些工作？"));
+        assertFalse(RagQuestionAnalyzer.isTemporalCompletedWorkQuestion(
+                "杜鹏飞参与了哪些项目？"));
+        assertFalse(RagQuestionAnalyzer.isTemporalCompletedWorkQuestion(
+                "2025年周报截止时间？"));
+    }
+
+    @Test
     void calendarYearQuestionRecognized() {
         assertTrue(RagQuestionAnalyzer.isCalendarYearQuestion("今年是哪一年"));
         assertTrue(RagQuestionAnalyzer.isCalendarYearQuestion("今年是哪一年？"));

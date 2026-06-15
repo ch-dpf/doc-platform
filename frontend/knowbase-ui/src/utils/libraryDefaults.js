@@ -39,7 +39,18 @@ export function defaultLibraryConfig() {
       hybridSearchEnabled: true,
       rerankEnabled: true,
       rerankModel: '',
-      metadataFilterFields: [],
+      metadataFilterFields: [
+        'periodYear',
+        'periodStart',
+        'periodEnd',
+        'periodMonths',
+        'submitter',
+        'sectionLabel',
+        'hasCompletedWork',
+        'docType',
+        'fileName',
+        'mimeType'
+      ],
       similarityThreshold: 0.4,
       defaultTopK: 12
     },

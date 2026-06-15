@@ -86,6 +86,10 @@ class RagServiceTest {
         org.mockito.Mockito.lenient()
                 .when(chunkProfileService.isPrimaryProfile(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(true);
+        com.knowbase.vector.retrieval.LibrarySubmitterIndex submitterIndex =
+                new com.knowbase.vector.retrieval.LibrarySubmitterIndex(documentChunkMapper);
+        com.knowbase.vector.retrieval.TemporalRetrievalMetrics temporalMetrics =
+                new com.knowbase.vector.retrieval.TemporalRetrievalMetrics();
         RagRetrievalService retrievalService = new RagRetrievalService(
                 searchService,
                 new RagRetrievalCache(retrievalProps),
@@ -94,7 +98,9 @@ class RagServiceTest {
                 docMetadataStore,
                 queryRewriteService,
                 libraryConfigResolver,
-                chunkProfileService);
+                chunkProfileService,
+                submitterIndex,
+                temporalMetrics);
         return new RagService(
                 props,
                 ollama,

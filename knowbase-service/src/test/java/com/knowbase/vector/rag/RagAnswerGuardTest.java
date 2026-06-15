@@ -4,6 +4,7 @@ import com.knowbase.vector.dto.SearchHit;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -65,5 +66,67 @@ class RagAnswerGuardTest {
         assertTrue(result.contains("不存在其他员工"));
         assertTrue(result.contains("杜鹏飞"));
         assertFalse(result.contains("45969"));
+    }
+
+    @Test
+    void rejectsCitationOutsideTemporalScope() {
+        TemporalQueryScope scope = TemporalQueryScope.scopedSingleMonth(
+                2025, 9, "杜鹏飞", true, TemporalParseConfidence.HIGH);
+        SearchHit wrongPerson = new SearchHit(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "demo",
+                1,
+                0,
+                "【王明·工作周报】",
+                0.9,
+                null,
+                null,
+                "2025",
+                "2025-09-01",
+                "2025-09-07",
+                "9",
+                "王明",
+                "工作周报",
+                "true");
+        String answer = "王明完成了开发任务 [1]";
+        String result = RagAnswerGuard.enforceGrounding(
+                answer, "杜鹏飞2025年9月工作", List.of(wrongPerson), Map.of(), scope);
+        assertEquals(RagAnswerTemplates.INSUFFICIENT_IN_PROMPT, result);
+    }
+
+    @Test
+    void prefersRuleBasedMonthlyWorkOverIncompleteLlmAnswer() {
+        UUID docId = UUID.randomUUID();
+        SearchHit chunk = new SearchHit(
+                UUID.randomUUID(),
+                docId,
+                "demo",
+                1,
+                0,
+                """
+                【杜鹏飞·工作周报·2025年9月1日--9月6日】
+                1\t海图项目\t完成项目部署文档编写\t\t2025.9.4\t杜鹏飞\t完成文档编写\t\t已完成
+                2\t海图项目\t优化开发出所测试提出的部分问题\t\t2025.9.5\t杜鹏飞\t修复相关问题\t\t已完成
+                """,
+                0.9,
+                null,
+                null,
+                "2025",
+                "2025-09-01",
+                "2025-09-06",
+                "9",
+                "杜鹏飞",
+                "工作周报",
+                "true");
+        String llmAnswer = "根据周报，杜鹏飞完成了部署文档编写。";
+        String result = RagAnswerGuard.enforceGrounding(
+                llmAnswer,
+                "杜鹏飞2025年9月都完成了哪些工作？",
+                List.of(chunk),
+                Map.of(docId, "杜鹏飞-周报（9.1-9.6）.xlsx"));
+        assertTrue(result.contains("1."));
+        assertTrue(result.contains("2."));
+        assertTrue(result.contains("部署文档"));
     }
 }

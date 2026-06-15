@@ -1,5 +1,7 @@
 package com.knowbase.library.config;
 
+import com.knowbase.vector.retrieval.TemporalMetadataFields;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +42,11 @@ public final class VectorLibraryConfigFactory {
         }
         if (cfg.getRetrieval().getDefaultTopK() <= 0) {
             cfg.getRetrieval().setDefaultTopK(12);
+        }
+        if (cfg.getRetrieval().getMetadataFilterFields() == null
+                || cfg.getRetrieval().getMetadataFilterFields().isEmpty()) {
+            cfg.getRetrieval().setMetadataFilterFields(
+                    new ArrayList<>(TemporalMetadataFields.defaultFilterWhitelist()));
         }
         if (cfg.getGovernance() == null) {
             cfg.setGovernance(new GovernanceRulesSettings());

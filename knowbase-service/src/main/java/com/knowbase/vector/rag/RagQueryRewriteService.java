@@ -55,6 +55,13 @@ public class RagQueryRewriteService {
             return base;
         }
         String question = originalQuestion == null ? base : originalQuestion.strip();
+        if (RagQuestionAnalyzer.isTemporalCompletedWorkQuestion(question)) {
+            String expanded = RagSearchQueryEnhancer.expandCompletedWorkQuery(question);
+            if (!expanded.isBlank()) {
+                log.debug("Temporal completed-work query rule-expanded: [{}] -> [{}]", base, expanded);
+                return expanded;
+            }
+        }
         if (RagQuestionAnalyzer.isEmployeeProjectQuestion(question)) {
             String expanded = RagSearchQueryEnhancer.expandEmployeeProjectQuery(question);
             if (!expanded.isBlank()) {
@@ -113,6 +120,10 @@ public class RagQueryRewriteService {
     }
 
     private static String fallbackAfterRejectedRewrite(String originalQuestion, String conversationQuery) {
+        String completedWork = RagSearchQueryEnhancer.expandCompletedWorkQuery(originalQuestion);
+        if (!completedWork.isBlank()) {
+            return completedWork;
+        }
         String expanded = RagSearchQueryEnhancer.expandSynthesisQuery(originalQuestion);
         if (!expanded.isBlank()) {
             return expanded;

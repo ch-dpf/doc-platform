@@ -5,6 +5,8 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
+import com.knowbase.vector.retrieval.MetadataFilterClause;
+
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -16,10 +18,12 @@ public record SearchRequest(
         @Min(1) @Max(50) int topK,
         SearchFilter filter,
         Boolean includeAllChunkProfiles,
-        List<String> chunkProfileIds) {
+        List<String> chunkProfileIds,
+        List<MetadataFilterClause> temporalMetadataFilters,
+        TemporalOverlapFilter temporalOverlapFilter) {
 
     public SearchRequest(UUID libraryId, String tenantId, String query, int topK, SearchFilter filter) {
-        this(libraryId, tenantId, query, topK, filter, false, null);
+        this(libraryId, tenantId, query, topK, filter, false, null, List.of(), null);
     }
 
     public record SearchFilter(List<UUID> docIds, Map<String, String> metadata) {

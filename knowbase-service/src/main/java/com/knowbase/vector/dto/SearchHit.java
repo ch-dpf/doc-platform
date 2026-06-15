@@ -1,5 +1,6 @@
 package com.knowbase.vector.dto;
 
+import java.util.Map;
 import java.util.UUID;
 
 public record SearchHit(
@@ -11,7 +12,8 @@ public record SearchHit(
         String content,
         double score,
         String parentContext,
-        String chunkProfileId) {
+        String chunkProfileId,
+        TemporalChunkMetadata temporal) {
 
     /**
      * MyBatis 行映射构造：JDBC 数值列可能为 null，不可直接写入 primitive 字段。
@@ -25,7 +27,14 @@ public record SearchHit(
             String content,
             Double score,
             String parentContext,
-            String chunkProfileId) {
+            String chunkProfileId,
+            String periodYear,
+            String periodStart,
+            String periodEnd,
+            String periodMonths,
+            String submitter,
+            String sectionLabel,
+            String hasCompletedWork) {
         this(
                 chunkId,
                 docId,
@@ -35,7 +44,15 @@ public record SearchHit(
                 content,
                 score != null ? score : 0.0,
                 parentContext,
-                chunkProfileId);
+                chunkProfileId,
+                new TemporalChunkMetadata(
+                        periodYear,
+                        periodStart,
+                        periodEnd,
+                        periodMonths,
+                        submitter,
+                        sectionLabel,
+                        hasCompletedWork));
     }
 
     public SearchHit(
@@ -46,7 +63,7 @@ public record SearchHit(
             int chunkIndex,
             String content,
             double score) {
-        this(chunkId, docId, tenantId, version, chunkIndex, content, score, null, null);
+        this(chunkId, docId, tenantId, version, chunkIndex, content, score, null, null, TemporalChunkMetadata.empty());
     }
 
     public SearchHit(
@@ -58,7 +75,34 @@ public record SearchHit(
             String content,
             double score,
             String parentContext) {
-        this(chunkId, docId, tenantId, version, chunkIndex, content, score, parentContext, null);
+        this(chunkId, docId, tenantId, version, chunkIndex, content, score, parentContext, null, TemporalChunkMetadata.empty());
+    }
+
+    public SearchHit(
+            UUID chunkId,
+            UUID docId,
+            String tenantId,
+            int version,
+            int chunkIndex,
+            String content,
+            double score,
+            String parentContext,
+            String chunkProfileId) {
+        this(
+                chunkId,
+                docId,
+                tenantId,
+                version,
+                chunkIndex,
+                content,
+                score,
+                parentContext,
+                chunkProfileId,
+                TemporalChunkMetadata.empty());
+    }
+
+    public Map<String, String> temporalMetadataMap() {
+        return temporal != null ? temporal.asMap() : Map.of();
     }
 
     public String contextForPrompt() {

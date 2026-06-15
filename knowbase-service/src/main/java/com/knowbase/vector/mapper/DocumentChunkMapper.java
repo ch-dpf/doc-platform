@@ -2,6 +2,7 @@ package com.knowbase.vector.mapper;
 
 import com.knowbase.vector.dto.DocChunkCountRow;
 import com.knowbase.vector.dto.DocVersionPair;
+import com.knowbase.vector.dto.DocumentChunkBackfillRow;
 import com.knowbase.vector.dto.DocumentChunkRow;
 import com.knowbase.vector.dto.SearchHit;
 import com.knowbase.vector.retrieval.MetadataFilterClause;
@@ -42,12 +43,18 @@ public interface DocumentChunkMapper {
             @Param("topK") int topK,
             @Param("docIds") List<UUID> docIds,
             @Param("metadataFilters") List<MetadataFilterClause> metadataFilters,
-            @Param("chunkProfileIds") List<String> chunkProfileIds);
+            @Param("chunkProfileIds") List<String> chunkProfileIds,
+            @Param("temporalOverlap") com.knowbase.vector.dto.TemporalOverlapFilter temporalOverlap);
 
     int backfillChunkProfileMetadata(
             @Param("docId") UUID docId,
             @Param("version") int version,
             @Param("chunkProfileId") String chunkProfileId);
+
+    List<DocumentChunkBackfillRow> listChunksForTemporalBackfill(
+            @Param("docId") UUID docId, @Param("version") int version);
+
+    int updateChunkMetadata(@Param("chunkId") UUID chunkId, @Param("metadataJson") String metadataJson);
 
     List<SearchHit> keywordSearch(
             @Param("libraryId") UUID libraryId,
@@ -56,7 +63,10 @@ public interface DocumentChunkMapper {
             @Param("topK") int topK,
             @Param("docIds") List<UUID> docIds,
             @Param("metadataFilters") List<MetadataFilterClause> metadataFilters,
-            @Param("chunkProfileIds") List<String> chunkProfileIds);
+            @Param("chunkProfileIds") List<String> chunkProfileIds,
+            @Param("temporalOverlap") com.knowbase.vector.dto.TemporalOverlapFilter temporalOverlap);
+
+    List<String> findDistinctSubmitters(@Param("libraryId") UUID libraryId);
 
     List<DocumentChunkRow> listByDocIdAndVersion(
             @Param("docId") UUID docId,

@@ -11,6 +11,9 @@ import java.util.Set;
 /** 周报「类别/项目」列名归一化，合并同一项目的不同写法。 */
 public final class ProjectParticipationCanonicalizer {
 
+    private static final String SHANGHAI_FB_CANONICAL = "上海fb浮标";
+    private static final String SHANGHAI_FB_DISPLAY = "上海fb项目";
+
     private ProjectParticipationCanonicalizer() {}
 
     public static LinkedHashSet<String> dedupe(Collection<String> raw, List<Set<String>> forcedAliasGroups) {
@@ -27,6 +30,23 @@ public final class ProjectParticipationCanonicalizer {
         return new LinkedHashSet<>(canonicalToDisplay.values());
     }
 
+    /** 工作汇总分组键：合并上海fb/浮标/FB 等别名。 */
+    public static String groupingKey(String project) {
+        if (project == null || project.isBlank()) {
+            return "";
+        }
+        return canonicalKey(project.strip());
+    }
+
+    /** 工作汇总展示名：同一规范键使用统一中文项目名。 */
+    public static String groupedDisplayLabel(String project) {
+        if (project == null || project.isBlank()) {
+            return "";
+        }
+        String stripped = project.strip();
+        return fixedGroupedDisplayName(canonicalKey(stripped), stripped);
+    }
+
     static String canonicalKey(String project) {
         String raw = project.strip();
         String compact = raw.toLowerCase(Locale.ROOT).replace("项目", "").replaceAll("\\s+", "");
@@ -34,7 +54,7 @@ public final class ProjectParticipationCanonicalizer {
             return "海图";
         }
         if (isShanghaiFbFamily(raw, compact)) {
-            return "上海fb浮标";
+            return SHANGHAI_FB_CANONICAL;
         }
         return matchKey(raw);
     }
@@ -52,10 +72,18 @@ public final class ProjectParticipationCanonicalizer {
         return false;
     }
 
+    private static String fixedGroupedDisplayName(String canonical, String original) {
+        return switch (canonical) {
+            case "海图" -> "海图项目";
+            case SHANGHAI_FB_CANONICAL -> SHANGHAI_FB_DISPLAY;
+            default -> original;
+        };
+    }
+
     private static String displayName(String canonical, String resolved) {
         return switch (canonical) {
             case "海图" -> "海图项目";
-            case "上海fb浮标" -> preferShanghaiFbLabel(resolved);
+            case SHANGHAI_FB_CANONICAL -> preferShanghaiFbLabel(resolved);
             default -> resolved;
         };
     }

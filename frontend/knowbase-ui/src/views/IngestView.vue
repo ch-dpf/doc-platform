@@ -249,12 +249,12 @@
                         effect="plain"
                         class="ingest-advanced-collapse__tag"
                       >
-                        已启用
+                        非主档
                       </el-tag>
                     </template>
                     <p class="settings-form__tip">
-                      默认使用库配置（{{ rulesSummary?.chunkSize }} / {{ rulesSummary?.chunkOverlap }}）。
-                      仅当本批文件需要不同分块大小时启用。
+                      默认使用库配置（{{ rulesSummary?.chunkSize }} / {{ rulesSummary?.chunkOverlap }}），所有文件类型统一分块。
+                      覆盖后将进入<strong>非主档</strong>，默认问答不会检索这些文档。
                     </p>
                     <el-form label-width="96px" label-position="left" size="small" class="settings-form">
                       <el-form-item label="启用覆盖">

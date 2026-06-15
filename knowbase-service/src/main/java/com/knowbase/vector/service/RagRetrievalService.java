@@ -40,11 +40,29 @@ import com.knowbase.vector.rag.RagQueryRewriteService;
 
 import com.knowbase.vector.rag.RagSearchQueryEnhancer;
 
+import com.knowbase.vector.rag.RagTemporalQueryParser;
+
+import com.knowbase.vector.rag.TemporalQueryScope;
+
 import com.knowbase.vector.rag.WeeklyReportWorkItemExtractor;
+
+import com.knowbase.vector.retrieval.TemporalRetrievalSupport.PreFilterPlan;
+
+import com.knowbase.vector.retrieval.TemporalRetrievalSupport;
+
+import com.knowbase.vector.dto.TemporalOverlapFilter;
 
 import com.knowbase.vector.retrieval.RagRetrievalCache;
 
 import com.knowbase.vector.retrieval.RetrievalHitFilter;
+
+import com.knowbase.vector.retrieval.LibrarySubmitterIndex;
+
+import com.knowbase.vector.retrieval.TemporalRetrievalMetrics;
+
+import com.knowbase.vector.rag.TemporalParseConfidence;
+
+import com.knowbase.vector.retrieval.MetadataFilterClause;
 
 import org.springframework.stereotype.Service;
 
@@ -82,6 +100,8 @@ public class RagRetrievalService {
 
     private final LibraryConfigResolver libraryConfigResolver;
     private final ChunkProfileService chunkProfileService;
+    private final LibrarySubmitterIndex submitterIndex;
+    private final TemporalRetrievalMetrics temporalMetrics;
 
     public RagRetrievalService(
 
@@ -98,7 +118,9 @@ public class RagRetrievalService {
             RagQueryRewriteService queryRewriteService,
 
             LibraryConfigResolver libraryConfigResolver,
-            ChunkProfileService chunkProfileService) {
+            ChunkProfileService chunkProfileService,
+            LibrarySubmitterIndex submitterIndex,
+            TemporalRetrievalMetrics temporalMetrics) {
 
         this.searchService = searchService;
 
@@ -114,6 +136,8 @@ public class RagRetrievalService {
 
         this.libraryConfigResolver = libraryConfigResolver;
         this.chunkProfileService = chunkProfileService;
+        this.submitterIndex = submitterIndex;
+        this.temporalMetrics = temporalMetrics;
     }
 
 
@@ -128,7 +152,8 @@ public class RagRetrievalService {
             List<SearchHit> preRerankHits,
             boolean rerankEnabled,
             String rerankModel,
-            boolean hybridUsed) {}
+            boolean hybridUsed,
+            String retrievalNote) {}
 
     public RagRetrievalTrace buildTrace(UUID libraryId, RetrievalResult result) {
         List<SearchHit> allHits = new ArrayList<>(result.hits());
@@ -161,10 +186,8 @@ public class RagRetrievalService {
                 preRerankHits.size(),
                 previewHits,
                 preRerankHits,
-                null);
+                result.retrievalNote());
     }
-
-
 
     public RetrievalResult retrieve(RagChatRequest request, int topK) {
 
@@ -184,7 +207,8 @@ public class RagRetrievalService {
 
         String keywordQuery = resolveKeywordQuery(request.question(), searchQuery, conversationQuery);
 
-
+        TemporalQueryScope scope =
+                RagTemporalQueryParser.parse(request.question(), history, request.libraryId(), submitterIndex);
 
         var cached = retrievalCache.get(
 
@@ -213,11 +237,12 @@ public class RagRetrievalService {
                     List.of(),
                     false,
                     null,
-                    false);
+                    false,
+                    null);
         }
 
         PreviewTraceResult traceResult = retrieveUncachedWithTrace(
-                request, searchQuery, keywordQuery, effectiveTopK);
+                request, searchQuery, keywordQuery, effectiveTopK, scope);
         retrievalCache.put(
                 request.libraryId(),
                 request.tenantId(),
@@ -237,7 +262,8 @@ public class RagRetrievalService {
                 traceResult.preRerankHits(),
                 traceResult.rerankEnabled(),
                 traceResult.rerankModel(),
-                traceResult.hybridUsed());
+                traceResult.hybridUsed(),
+                traceResult.retrievalNote());
 
     }
 
@@ -280,11 +306,13 @@ public class RagRetrievalService {
 
         String searchQuery = queryRewriteService.rewrite(conversationQuery, request.question(), history);
 
+        TemporalQueryScope scope =
+                RagTemporalQueryParser.parse(request.question(), history, request.libraryId(), submitterIndex);
+
         String keywordQuery = resolveKeywordQuery(request.question(), searchQuery, conversationQuery);
 
         PreviewTraceResult traceResult = retrieveUncachedWithTrace(
-
-                ragRequest, searchQuery, keywordQuery, effectiveTopK);
+                ragRequest, searchQuery, keywordQuery, effectiveTopK, scope);
 
         Map<UUID, String> fileNames = resolveFileNames(traceResult.allHits());
 
@@ -328,8 +356,25 @@ public class RagRetrievalService {
 
                 previewHits,
 
-                null);
+                traceResult.retrievalNote(),
+                scopeSummary(scope),
+                confidenceLabel(scope));
 
+    }
+
+    private static String scopeSummary(TemporalQueryScope scope) {
+        if (scope == null || !scope.scoped()) {
+            return null;
+        }
+        String summary = scope.toSummary();
+        return summary.isBlank() ? null : summary;
+    }
+
+    private static String confidenceLabel(TemporalQueryScope scope) {
+        if (scope == null || scope.confidence() == null || scope.confidence() == TemporalParseConfidence.NONE) {
+            return null;
+        }
+        return scope.confidence().name();
     }
 
     private static RagRetrievalPreviewResponse calendarYearPreviewResponse(
@@ -350,7 +395,9 @@ public class RagRetrievalService {
                 0,
                 List.of(),
                 List.of(),
-                "历法锚点问题：将依据系统当前日期作答，不走向量检索");
+                "历法锚点问题：将依据系统当前日期作答，不走向量检索",
+                null,
+                null);
     }
 
 
@@ -365,7 +412,9 @@ public class RagRetrievalService {
 
             String rerankModel,
 
-            boolean hybridUsed) {
+            boolean hybridUsed,
+
+            String retrievalNote) {
 
 
 
@@ -391,25 +440,11 @@ public class RagRetrievalService {
 
             String keywordQuery,
 
-            int topK) {
+            int topK,
 
-        SearchRequest primary = toSearchRequest(request, topK, searchQuery);
+            TemporalQueryScope scope) {
 
-        List<SearchHit> hits = new ArrayList<>(searchService.searchForRag(primary, request.minScore()).hits());
-
-        if (!keywordQuery.isBlank() && !keywordQuery.equals(searchQuery.strip())) {
-
-            int expandedTopK = Math.min(topK * 2, 50);
-
-            SearchRequest keywordReq = toSearchRequest(request, expandedTopK, keywordQuery);
-
-            List<SearchHit> keywordHits = searchService.searchForRag(keywordReq, request.minScore()).hits();
-
-            hits = RagHitMerger.merge(hits, keywordHits, expandedTopK);
-
-        }
-
-        return RetrievalHitFilter.preferContentChunks(hits, topK);
+        return retrieveUncachedWithTrace(request, searchQuery, keywordQuery, topK, scope).hits();
 
     }
 
@@ -423,9 +458,16 @@ public class RagRetrievalService {
 
             String keywordQuery,
 
-            int topK) {
+            int topK,
 
-        SearchRequest primary = toSearchRequest(request, topK, searchQuery);
+            TemporalQueryScope scope) {
+
+        var retrieval = libraryConfigResolver.retrievalFor(request.libraryId());
+        PreFilterPlan preFilterPlan = TemporalRetrievalSupport.buildPreFilterPlan(scope, retrieval);
+        List<MetadataFilterClause> temporalFilters = preFilterPlan.equalityFilters();
+        TemporalOverlapFilter overlapFilter = preFilterPlan.overlapFilter();
+
+        SearchRequest primary = toSearchRequest(request, topK, searchQuery, temporalFilters, overlapFilter);
 
         RagSearchTrace trace = searchService.searchForRagWithTrace(primary, request.minScore());
 
@@ -433,13 +475,24 @@ public class RagRetrievalService {
 
         List<SearchHit> preRerankHits = trace.preRerankHits();
 
-
+        List<String> notes = new ArrayList<>();
+        boolean usedTemporalPrefilter = scope != null && scope.scoped()
+                && (!temporalFilters.isEmpty() || overlapFilter != null);
+        if (usedTemporalPrefilter) {
+            temporalMetrics.recordPrefilterApplied();
+            if (preFilterPlan.routingNote() != null) {
+                notes.add(preFilterPlan.routingNote());
+            } else {
+                notes.add("已应用时间/人员元数据预过滤");
+            }
+        }
 
         if (!keywordQuery.isBlank() && !keywordQuery.equals(searchQuery.strip())) {
 
             int expandedTopK = Math.min(topK * 2, 50);
 
-            SearchRequest keywordReq = toSearchRequest(request, expandedTopK, keywordQuery);
+            SearchRequest keywordReq =
+                    toSearchRequest(request, expandedTopK, keywordQuery, temporalFilters, overlapFilter);
 
             List<SearchHit> keywordHits = searchService.searchForRag(keywordReq, request.minScore()).hits();
 
@@ -447,7 +500,45 @@ public class RagRetrievalService {
 
         }
 
+        if (hits.isEmpty() && scope != null && scope.scoped()) {
+
+            SearchRequest fallback = toSearchRequest(request, topK, searchQuery, List.of(), null);
+
+            hits = new ArrayList<>(searchService.searchForRag(fallback, request.minScore()).hits());
+            temporalMetrics.recordPrefilterFallback();
+            notes.add("元数据预过滤无命中，已去掉预过滤重试");
+
+            if (!keywordQuery.isBlank() && !keywordQuery.equals(searchQuery.strip())) {
+
+                int expandedTopK = Math.min(topK * 2, 50);
+
+                SearchRequest keywordFallback =
+                        toSearchRequest(request, expandedTopK, keywordQuery, List.of(), null);
+
+                List<SearchHit> keywordHits =
+                        searchService.searchForRag(keywordFallback, request.minScore()).hits();
+
+                hits = RagHitMerger.merge(hits, keywordHits, expandedTopK);
+
+            }
+
+        }
+
+        List<SearchHit> beforePostFilter = new ArrayList<>(hits);
+        hits = applyTemporalPostFilter(hits, scope);
+        if (beforePostFilter.size() > hits.size()) {
+            temporalMetrics.recordPostfilterDropped(beforePostFilter.size() - hits.size());
+        }
+        if (hits.isEmpty() && !beforePostFilter.isEmpty() && scope != null && scope.scoped()) {
+            TemporalQueryScope relaxed = scope.withoutPersons();
+            hits = applyTemporalPostFilter(beforePostFilter, relaxed);
+            temporalMetrics.recordPersonRelaxed();
+            notes.add("后过滤剔除全部候选，已放宽人员约束仅保留时间范围");
+        }
+
         hits = RetrievalHitFilter.preferContentChunks(hits, topK);
+
+        String retrievalNote = notes.isEmpty() ? null : String.join("；", notes);
 
         return new PreviewTraceResult(
 
@@ -459,8 +550,17 @@ public class RagRetrievalService {
 
                 trace.rerankModel(),
 
-                trace.hybridUsed());
+                trace.hybridUsed(),
 
+                retrievalNote);
+
+    }
+
+    private List<SearchHit> applyTemporalPostFilter(List<SearchHit> hits, TemporalQueryScope scope) {
+        if (scope == null || !scope.scoped() || hits == null || hits.isEmpty()) {
+            return hits;
+        }
+        return TemporalRetrievalSupport.applyPostFilter(hits, scope, resolveFileNames(hits));
     }
 
 
@@ -546,6 +646,12 @@ public class RagRetrievalService {
 
         }
 
+        if (RagQuestionAnalyzer.isTemporalCompletedWorkQuestion(question)) {
+
+            return Math.min(Math.max(topK * 2, 12), 24);
+
+        }
+
         return topK;
 
     }
@@ -562,7 +668,12 @@ public class RagRetrievalService {
 
 
 
-    private static SearchRequest toSearchRequest(RagChatRequest request, int topK, String searchQuery) {
+    private static SearchRequest toSearchRequest(
+            RagChatRequest request,
+            int topK,
+            String searchQuery,
+            List<MetadataFilterClause> temporalMetadataFilters,
+            TemporalOverlapFilter temporalOverlapFilter) {
 
         SearchRequest.SearchFilter filter = null;
 
@@ -579,7 +690,9 @@ public class RagRetrievalService {
                 topK,
                 filter,
                 request.includeAllChunkProfiles(),
-                request.chunkProfileIds());
+                request.chunkProfileIds(),
+                temporalMetadataFilters != null ? temporalMetadataFilters : List.of(),
+                temporalOverlapFilter);
 
     }
 

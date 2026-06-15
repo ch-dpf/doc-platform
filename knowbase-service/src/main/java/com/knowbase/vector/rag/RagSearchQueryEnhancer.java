@@ -27,6 +27,22 @@ public final class RagSearchQueryEnhancer {
             return List.of();
         }
         Set<String> terms = new LinkedHashSet<>();
+        TemporalQueryScope scope = RagTemporalQueryParser.parse(question, null);
+        if (scope.scoped()) {
+            if (scope.year() != null) {
+                terms.add(String.valueOf(scope.year()));
+            }
+            if (scope.month() != null) {
+                terms.add(scope.month() + "月");
+            }
+            if (!scope.persons().isEmpty()) {
+                terms.addAll(scope.persons());
+            }
+            if (scope.completedWorkOnly()) {
+                terms.add("工作");
+                terms.add("周报");
+            }
+        }
         Matcher yearMatcher = YEAR.matcher(question);
         while (yearMatcher.find()) {
             terms.add(yearMatcher.group(1));
@@ -44,6 +60,39 @@ public final class RagSearchQueryEnhancer {
             }
         }
         return List.copyOf(terms);
+    }
+
+    /**
+     * 时间 + 已完成工作类问题的规则检索扩展（避免 LLM 改写出库描述或遗漏时间词）。
+     */
+    public static String expandCompletedWorkQuery(String question) {
+        if (!RagQuestionAnalyzer.isTemporalCompletedWorkQuestion(question)) {
+            return "";
+        }
+        TemporalQueryScope scope = RagTemporalQueryParser.parse(question, null);
+        Set<String> terms = new LinkedHashSet<>();
+        if (!scope.persons().isEmpty()) {
+            terms.addAll(scope.persons());
+        }
+        if (scope.year() != null) {
+            terms.add(scope.year() + "年");
+        }
+        if (scope.month() != null) {
+            terms.add(scope.month() + "月");
+        }
+        if (scope.weekScoped()) {
+            terms.add("第" + scope.weekOfMonth() + "周");
+        }
+        if (scope.dayScoped()) {
+            terms.add(scope.dayOfMonth() + "日");
+        }
+        terms.add("完成");
+        terms.add("工作");
+        terms.add("周报");
+        terms.add("月报");
+        terms.addAll(extractTerms(question));
+        pruneSubstringTerms(terms);
+        return terms.size() < 3 ? "" : String.join(" ", terms);
     }
 
     /**

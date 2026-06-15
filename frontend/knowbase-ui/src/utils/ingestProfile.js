@@ -1,6 +1,6 @@
 /**
  * v2 采集级 ingest profile — 与 documentMetadata（语义标签）分离。
- * 持久化到 doc_metadata.ingest_profile_json；仅可覆盖分块数值（策略由 MIME 决定）。
+ * 持久化到 doc_metadata.ingest_profile_json；可覆盖分块数值，覆盖后进入非主档。
  */
 
 const CHUNK_SIZE_MIN = 100

@@ -7,7 +7,7 @@ import com.knowbase.vector.config.ChunkingProperties;
 
 /**
  * 平台级解析/清洗基线（代码权威，非库 config_json）。
- * 入库时由 {@link MimeTypePipelineDefaults} 按 MIME 覆盖分块策略与类型相关解析项。
+ * 入库时由 {@link MimeTypePipelineDefaults} 按 MIME 覆盖类型相关解析/清洗项；分块由库级配置统一。
  */
 public final class PlatformPipelineDefaults {
 

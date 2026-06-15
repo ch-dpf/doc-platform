@@ -22,6 +22,21 @@ public final class RagQuestionAnalyzer {
                     + "|是否存在|有没有|是否还有|有无|其它员工|其他员工|别的员工|除.*外).*",
             Pattern.CASE_INSENSITIVE);
 
+    /** 带时间范围且询问已完成工作的汇总类问题（宜库级扫描 + 规则抽取，不宜 Top-K + LLM）。 */
+    private static final Pattern TEMPORAL_COMPLETED_WORK = Pattern.compile(
+            ".*(完成|已完成|做了|做过).*(工作|内容|任务|事项).*|.*(工作|内容|任务|事项).*(完成|已完成|做了|做过).*",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    private static final Pattern TEMPORAL_HINT = Pattern.compile(
+            "(20\\d{2})\\s*年"
+                    + "|(?:今年|本年|去年|上月|本月|这个月)"
+                    + "|第[一二三四五六七八九十两\\d]{1,2}个?月"
+                    + "|第[一二三四五1-5]周"
+                    + "|第[一二三四五六七八九十两\\d]{1,2}天"
+                    + "|第[一二三四1234]季度"
+                    + "|[Qq][1-4]",
+            Pattern.CASE_INSENSITIVE);
+
     private RagQuestionAnalyzer() {}
 
     public static boolean isDeadlineQuestion(String question) {
@@ -36,6 +51,24 @@ public final class RagQuestionAnalyzer {
             return false;
         }
         return SYNTHESIS_QUESTION.matcher(question.strip()).matches();
+    }
+
+    /**
+     * 识别「某人在某时段完成了哪些工作」类汇总问句（与 {@link RagTemporalQueryParser} 配合：
+     * 本方法看意图，解析器负责结构化时间范围）。
+     */
+    public static boolean isTemporalCompletedWorkQuestion(String question) {
+        if (question == null || question.isBlank()) {
+            return false;
+        }
+        String normalized = normalizeQuestion(question);
+        if (!TEMPORAL_COMPLETED_WORK.matcher(normalized).matches()) {
+            return false;
+        }
+        if (!TEMPORAL_HINT.matcher(normalized).find()) {
+            return false;
+        }
+        return normalized.contains("工作") || normalized.contains("内容") || normalized.contains("任务");
     }
 
     private static final Pattern EMPLOYEE_EXISTENCE = Pattern.compile(

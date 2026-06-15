@@ -18,5 +18,9 @@ public record RagRetrievalPreviewResponse(
         List<RagRetrievalPreviewHit> preRerankHits,
         List<RagRetrievalPreviewHit> hits,
         /** 非空时表示无需/不应走向量检索（如历法锚点问题） */
-        String retrievalNote
+        String retrievalNote,
+        /** 问句解析出的时间/人员范围摘要 */
+        String temporalScopeSummary,
+        /** 时间解析置信度：NONE/LOW/MEDIUM/HIGH */
+        String parseConfidence
 ) {}

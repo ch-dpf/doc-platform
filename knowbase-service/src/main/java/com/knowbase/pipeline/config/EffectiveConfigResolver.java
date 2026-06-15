@@ -16,10 +16,8 @@ import com.knowbase.library.config.TextNormalizationSettings;
 import com.knowbase.library.config.VectorLibraryConfig;
 import com.knowbase.library.service.LibraryConfigResolver;
 import com.knowbase.pipeline.content.ContentFamily;
-import com.knowbase.pipeline.content.ContentFamilyChunkBounds;
 import com.knowbase.pipeline.content.ContentFamilyResolver;
 import com.knowbase.pipeline.content.ContentSignals;
-import com.knowbase.pipeline.content.ContentSignalsChunkingAdjuster;
 import com.knowbase.pipeline.content.ContentSignalsDetector;
 import com.knowbase.vector.config.ChunkingProperties;
 import org.springframework.stereotype.Service;
@@ -35,8 +33,6 @@ public class EffectiveConfigResolver {
     private final OcrProperties ocrProperties;
     private final TextNormalizationProperties globalNormalization;
     private final ContentSignalsDetector contentSignalsDetector;
-    private final ContentSignalsChunkingAdjuster chunkingAdjuster;
-    private final ContentFamilyChunkBounds familyChunkBounds;
 
     public EffectiveConfigResolver(
             LibraryConfigResolver libraryConfigResolver,
@@ -44,17 +40,13 @@ public class EffectiveConfigResolver {
             MimeTypePipelineDefaults mimeDefaults,
             OcrProperties ocrProperties,
             TextNormalizationProperties globalNormalization,
-            ContentSignalsDetector contentSignalsDetector,
-            ContentSignalsChunkingAdjuster chunkingAdjuster,
-            ContentFamilyChunkBounds familyChunkBounds) {
+            ContentSignalsDetector contentSignalsDetector) {
         this.libraryConfigResolver = libraryConfigResolver;
         this.docMetadataStore = docMetadataStore;
         this.mimeDefaults = mimeDefaults;
         this.ocrProperties = ocrProperties;
         this.globalNormalization = globalNormalization;
         this.contentSignalsDetector = contentSignalsDetector;
-        this.chunkingAdjuster = chunkingAdjuster;
-        this.familyChunkBounds = familyChunkBounds;
     }
 
     /** 解析前：族群/MIME 基线 + ingest profile，不含内容信号（供 extract/OCR 选项）。 */
@@ -84,7 +76,7 @@ public class EffectiveConfigResolver {
     }
 
     /**
-     * 批量重索引 / 迁移到主档：库 + MIME + 内容信号，不叠加采集级分块覆盖。
+     * 批量重索引 / 迁移到主档：库 + MIME 解析，不叠加采集级分块覆盖。
      */
     public EffectivePipelineConfig forDocumentLibraryRebuild(UUID libraryId, UUID docId, String parsedText) {
         DocMetadata doc = docMetadataStore.findById(docId)
@@ -99,7 +91,7 @@ public class EffectiveConfigResolver {
         CleaningRulesSettings cleaning =
                 PlatformPipelineDefaults.copyCleaning(PlatformPipelineDefaults.baselineCleaning());
         ChunkingProperties chunking = new ChunkingProperties();
-        mimeDefaults.apply(mimeType, parsing, cleaning, chunking);
+        mimeDefaults.apply(mimeType, parsing, cleaning);
         boolean textNormEnabled = globalNormalization.isEnabled();
         TextNormalizationSettings normalization = systemNormalization();
         ContentFamily family = ContentFamilyResolver.resolve(mimeType);
@@ -144,13 +136,11 @@ public class EffectiveConfigResolver {
         boolean textNormEnabled = globalNormalization.isEnabled();
         TextNormalizationSettings normalization = systemNormalization();
 
-        mimeDefaults.apply(mimeType, parsing, cleaning, chunking);
-        familyChunkBounds.apply(family, chunking);
+        mimeDefaults.apply(mimeType, parsing, cleaning);
 
         ContentSignals signals = null;
         if (parsedText != null && !parsedText.isBlank()) {
             signals = contentSignalsDetector.detect(family, mimeType, parsedText);
-            chunkingAdjuster.apply(family, signals, chunking);
         }
 
         if (profile != null) {

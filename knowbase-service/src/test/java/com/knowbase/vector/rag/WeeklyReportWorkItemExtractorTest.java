@@ -52,4 +52,18 @@ class WeeklyReportWorkItemExtractorTest {
         assertTrue(items.get(0).content().contains("配合苏研院"));
         assertEquals("海图项目", items.get(0).project());
     }
+
+    @Test
+    void extractCompletedKeepsOnlyCompletedRows() {
+        UUID docId = UUID.randomUUID();
+        String mixed = """
+                1\t海图项目\t完成项目部署文档编写，补充用户培训ppt\t\t2025.9.4\t杜鹏飞\t完成文档编写\t\t已完成
+
+                2\t海图项目\t下周待开展任务\t\t2025.9.5\t杜鹏飞\t待开展\t\t待开展
+                """;
+        SearchHit hit = new SearchHit(UUID.randomUUID(), docId, "demo", 1, 0, mixed, 0.8);
+        var items = WeeklyReportWorkItemExtractor.extractCompleted(List.of(hit), Map.of());
+        assertEquals(1, items.size());
+        assertTrue(items.getFirst().content().contains("部署文档"));
+    }
 }

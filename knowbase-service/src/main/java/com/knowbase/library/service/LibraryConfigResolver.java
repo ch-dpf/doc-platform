@@ -15,6 +15,7 @@ import com.knowbase.library.config.EmbeddingSpec;
 import com.knowbase.library.config.GovernanceRulesSettings;
 import com.knowbase.library.config.ParsingRulesSettings;
 import com.knowbase.library.config.RetrievalRulesSettings;
+import com.knowbase.vector.retrieval.TemporalMetadataFields;
 import com.knowbase.pipeline.config.PlatformPipelineDefaults;
 import com.knowbase.library.config.TextNormalizationSettings;
 import com.knowbase.library.config.VectorLibraryConfig;
@@ -30,6 +31,7 @@ import com.knowbase.vector.config.ChunkingProperties;
 import com.knowbase.vector.chunk.ChunkingStrategy;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -155,7 +157,25 @@ public class LibraryConfigResolver {
 
     public RetrievalRulesSettings retrievalFor(UUID libraryId) {
         VectorLibraryConfig cfg = config(libraryId);
-        return cfg.getRetrieval() != null ? cfg.getRetrieval() : new RetrievalRulesSettings();
+        RetrievalRulesSettings retrieval = cfg.getRetrieval() != null ? cfg.getRetrieval() : new RetrievalRulesSettings();
+        return withDefaultMetadataFilterFields(retrieval);
+    }
+
+    private static RetrievalRulesSettings withDefaultMetadataFilterFields(RetrievalRulesSettings retrieval) {
+        if (retrieval == null) {
+            retrieval = new RetrievalRulesSettings();
+        }
+        if (retrieval.getMetadataFilterFields() != null && !retrieval.getMetadataFilterFields().isEmpty()) {
+            return retrieval;
+        }
+        RetrievalRulesSettings copy = new RetrievalRulesSettings();
+        copy.setDefaultTopK(retrieval.getDefaultTopK());
+        copy.setHybridSearchEnabled(retrieval.isHybridSearchEnabled());
+        copy.setRerankEnabled(retrieval.isRerankEnabled());
+        copy.setRerankModel(retrieval.getRerankModel());
+        copy.setRetainChunkMetadata(retrieval.isRetainChunkMetadata());
+        copy.setMetadataFilterFields(new ArrayList<>(TemporalMetadataFields.defaultFilterWhitelist()));
+        return copy;
     }
 
     public GovernanceRulesSettings governanceFor(UUID libraryId) {

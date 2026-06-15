@@ -75,18 +75,55 @@
             <arg column="score" javaType="java.lang.Double"/>
             <arg column="parentContext" javaType="java.lang.String"/>
             <arg column="chunkProfileId" javaType="java.lang.String"/>
+            <arg column="periodYear" javaType="java.lang.String"/>
+            <arg column="periodStart" javaType="java.lang.String"/>
+            <arg column="periodEnd" javaType="java.lang.String"/>
+            <arg column="periodMonths" javaType="java.lang.String"/>
+            <arg column="submitter" javaType="java.lang.String"/>
+            <arg column="sectionLabel" javaType="java.lang.String"/>
+            <arg column="hasCompletedWork" javaType="java.lang.String"/>
         </constructor>
     </resultMap>
 
+    <sql id="searchHitSelectColumns">
+        chunk_id AS chunkId,
+        doc_id AS docId,
+        tenant_id AS tenantId,
+        version,
+        chunk_index AS chunkIndex,
+        content,
+        metadata->>'parentContext' AS parentContext,
+        metadata->>'chunkProfileId' AS chunkProfileId,
+        metadata->>'periodYear' AS periodYear,
+        metadata->>'periodStart' AS periodStart,
+        metadata->>'periodEnd' AS periodEnd,
+        metadata->>'periodMonths' AS periodMonths,
+        metadata->>'submitter' AS submitter,
+        metadata->>'sectionLabel' AS sectionLabel,
+        metadata->>'hasCompletedWork' AS hasCompletedWork
+    </sql>
+
+    <sql id="temporalOverlapClause">
+        <if test="temporalOverlap != null">
+            AND metadata->>'periodYear' = #{temporalOverlap.periodYear}
+            AND (
+                (metadata->>'periodStart' IS NOT NULL AND metadata->>'periodStart' &lt;&gt; ''
+                 AND metadata->>'periodEnd' IS NOT NULL AND metadata->>'periodEnd' &lt;&gt; ''
+                 AND metadata->>'periodStart' &lt;= #{temporalOverlap.rangeEnd}
+                 AND metadata->>'periodEnd' &gt;= #{temporalOverlap.rangeStart})
+                <if test="temporalOverlap.months != null and temporalOverlap.months.size() &gt; 0">
+                    OR (
+                    <foreach collection="temporalOverlap.months" item="m" separator=" OR ">
+                        CONCAT(',', COALESCE(metadata->>'periodMonths',''), ',') LIKE CONCAT('%,', #{m}, ',%')
+                    </foreach>
+                    )
+                </if>
+            )
+        </if>
+    </sql>
+
     <select id="search" resultMap="searchHitMap">
-        SELECT chunk_id AS chunkId,
-               doc_id AS docId,
-               tenant_id AS tenantId,
-               version,
-               chunk_index AS chunkIndex,
-               content,
-               metadata->>'parentContext' AS parentContext,
-               metadata->>'chunkProfileId' AS chunkProfileId,
+        SELECT <include refid="searchHitSelectColumns"/>,
                COALESCE(1 - (embedding &lt;=&gt; #{embedding,typeHandler=com.knowbase.vector.mybatis.PGvectorTypeHandler}), 0) AS score
         FROM document_chunk
         WHERE library_id = #{libraryId}
@@ -100,9 +137,20 @@
         </if>
         <if test="metadataFilters != null and metadataFilters.size() &gt; 0">
             <foreach collection="metadataFilters" item="clause">
-                AND metadata->>#{clause.field} = #{clause.value}
+                <choose>
+                    <when test="clause.operator != null and clause.operator.name() == 'GTE'">
+                        AND metadata->>#{clause.field} &gt;= #{clause.value}
+                    </when>
+                    <when test="clause.operator != null and clause.operator.name() == 'LTE'">
+                        AND metadata->>#{clause.field} &lt;= #{clause.value}
+                    </when>
+                    <otherwise>
+                        AND metadata->>#{clause.field} = #{clause.value}
+                    </otherwise>
+                </choose>
             </foreach>
         </if>
+        <include refid="temporalOverlapClause"/>
         <if test="chunkProfileIds != null and chunkProfileIds.size() &gt; 0">
             AND metadata->>'chunkProfileId' IN
             <foreach collection="chunkProfileIds" item="profileId" open="(" separator="," close=")">
@@ -115,14 +163,7 @@
     </select>
 
     <select id="keywordSearch" resultMap="searchHitMap">
-        SELECT chunk_id AS chunkId,
-               doc_id AS docId,
-               tenant_id AS tenantId,
-               version,
-               chunk_index AS chunkIndex,
-               content,
-               metadata->>'parentContext' AS parentContext,
-               metadata->>'chunkProfileId' AS chunkProfileId,
+        SELECT <include refid="searchHitSelectColumns"/>,
                COALESCE(ts_rank_cd(to_tsvector('simple', content), plainto_tsquery('simple', #{query})), 0) AS score
         FROM document_chunk
         WHERE library_id = #{libraryId}
@@ -136,9 +177,20 @@
         </if>
         <if test="metadataFilters != null and metadataFilters.size() &gt; 0">
             <foreach collection="metadataFilters" item="clause">
-                AND metadata->>#{clause.field} = #{clause.value}
+                <choose>
+                    <when test="clause.operator != null and clause.operator.name() == 'GTE'">
+                        AND metadata->>#{clause.field} &gt;= #{clause.value}
+                    </when>
+                    <when test="clause.operator != null and clause.operator.name() == 'LTE'">
+                        AND metadata->>#{clause.field} &lt;= #{clause.value}
+                    </when>
+                    <otherwise>
+                        AND metadata->>#{clause.field} = #{clause.value}
+                    </otherwise>
+                </choose>
             </foreach>
         </if>
+        <include refid="temporalOverlapClause"/>
         <if test="chunkProfileIds != null and chunkProfileIds.size() &gt; 0">
             AND metadata->>'chunkProfileId' IN
             <foreach collection="chunkProfileIds" item="profileId" open="(" separator="," close=")">
@@ -149,11 +201,36 @@
         LIMIT #{topK}
     </select>
 
+    <select id="findDistinctSubmitters" resultType="java.lang.String">
+        SELECT DISTINCT metadata->>'submitter'
+        FROM document_chunk
+        WHERE library_id = #{libraryId}
+          AND metadata->>'submitter' IS NOT NULL
+          AND metadata->>'submitter' &lt;&gt; ''
+    </select>
+
     <update id="backfillChunkProfileMetadata">
         UPDATE document_chunk
         SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('chunkProfileId', #{chunkProfileId})
         WHERE doc_id = #{docId}
           AND version = #{version}
+    </update>
+
+    <select id="listChunksForTemporalBackfill" resultType="com.knowbase.vector.dto.DocumentChunkBackfillRow">
+        SELECT chunk_id AS chunkId,
+               chunk_index AS chunkIndex,
+               content,
+               metadata::text AS metadataJson
+        FROM document_chunk
+        WHERE doc_id = #{docId}
+          AND version = #{version}
+        ORDER BY chunk_index ASC
+    </select>
+
+    <update id="updateChunkMetadata">
+        UPDATE document_chunk
+        SET metadata = #{metadataJson}::jsonb
+        WHERE chunk_id = #{chunkId}
     </update>
 
     <select id="findDistinctChunkProfileIds" resultType="java.lang.String">

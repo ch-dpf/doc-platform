@@ -5,9 +5,7 @@ import com.knowbase.ingest.config.TextNormalizationProperties;
 import com.knowbase.ingest.support.DocMetadataStore;
 import com.knowbase.library.config.VectorLibraryConfig;
 import com.knowbase.library.service.LibraryConfigResolver;
-import com.knowbase.pipeline.content.ContentFamilyChunkBounds;
 import com.knowbase.pipeline.content.ContentFamilyPipelineDefaults;
-import com.knowbase.pipeline.content.ContentSignalsChunkingAdjuster;
 import com.knowbase.pipeline.content.DefaultContentSignalsDetector;
 import com.knowbase.vector.chunk.ChunkingStrategy;
 import com.knowbase.vector.config.ChunkingProperties;
@@ -20,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,18 +43,16 @@ class EffectiveConfigResolverContentSignalsTest {
                 mimeDefaults,
                 ocrProperties,
                 new TextNormalizationProperties(),
-                new DefaultContentSignalsDetector(),
-                new ContentSignalsChunkingAdjuster(),
-                new ContentFamilyChunkBounds());
+                new DefaultContentSignalsDetector());
     }
 
     @Test
-    void shortWordDocumentDowngradesHeadingLevelWithContent() {
+    void contentSignalsDoNotChangeLibraryChunkingStrategy() {
         UUID libraryId = UUID.randomUUID();
         VectorLibraryConfig library = new VectorLibraryConfig();
         library.setConfigVersion(2);
         ChunkingProperties chunking = new ChunkingProperties();
-        chunking.setStrategy(ChunkingStrategy.SEMANTIC);
+        chunking.setStrategy(ChunkingStrategy.HEADING_LEVEL);
         when(libraryConfigResolver.config(libraryId)).thenReturn(library);
         when(libraryConfigResolver.chunkingFor(libraryId)).thenReturn(chunking);
 
@@ -66,7 +63,7 @@ class EffectiveConfigResolverContentSignalsTest {
                 null,
                 shortDoc);
 
-        assertEquals(ChunkingStrategy.PARAGRAPH_FIRST, effective.chunking().getStrategy());
-        assertEquals("short-document-downgrade-heading", effective.contentSignals().getChunkingAdjustmentReason());
+        assertEquals(ChunkingStrategy.HEADING_LEVEL, effective.chunking().getStrategy());
+        assertNotNull(effective.contentSignals());
     }
 }

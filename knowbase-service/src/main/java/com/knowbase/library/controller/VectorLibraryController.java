@@ -5,6 +5,7 @@ import com.knowbase.library.dto.ArchiveCandidatesResponse;
 import com.knowbase.library.dto.ArchiveChunkProfileRequest;
 import com.knowbase.library.dto.ArchiveChunkProfileResponse;
 import com.knowbase.library.dto.ChunkProfileBackfillResponse;
+import com.knowbase.library.dto.TemporalMetadataBackfillResponse;
 import com.knowbase.library.dto.ChunkProfileSummaryResponse;
 import com.knowbase.library.dto.SetPrimaryChunkProfileRequest;
 import com.knowbase.library.dto.UpdateChunkGovernanceRequest;
@@ -115,7 +116,7 @@ public class VectorLibraryController {
 
     @Operation(
             summary = "分块策略摘要（只读）",
-            description = "按系统支持的文件类型展示 MIME 路由后的生效分块策略与解析要点，含库级父子块/分隔符影响说明。")
+            description = "按系统支持的文件类型展示 MIME 解析要点与库级统一分块策略，含库级父子块/分隔符影响说明。")
     @ApiResponse(responseCode = "200", description = "策略摘要列表")
     @GetMapping("/{libraryId}/chunk-strategy-summary")
     public List<ChunkStrategySummaryRow> chunkStrategySummary(
@@ -158,7 +159,7 @@ public class VectorLibraryController {
             summary = "更新分块向量化配置",
             description = """
                     对应库配置 Tab「分块向量化」。
-                    库级仅含分块大小、分块重叠与 Embedding；最小/最大分块等合并规则由系统 chunking.* 决定；分块策略由 MIME 代码决定。
+                    库级含分块策略、分块大小、分块重叠与 Embedding；最小/最大分块等合并规则由系统 chunking.* 决定；MIME 仅影响解析与清洗。
                     **锁定规则**：当 `chunkCount > 0` 时返回 409，拒绝修改（避免与已入库向量不一致）。
                     空库首次入库前可自由调整；变更 Embedding 后 `warnings` 可能提示补偿重索引。
                     """)
@@ -242,6 +243,20 @@ public class VectorLibraryController {
     public ChunkProfileBackfillResponse backfillChunkProfiles(
             @Parameter(description = "知识库 ID", required = true) @PathVariable UUID libraryId) {
         return libraryService.backfillChunkProfiles(libraryId);
+    }
+
+    @Operation(
+            summary = "回填历史分块时间元数据",
+            description = "为缺少 periodYear/submitter 等字段的存量分块补写时间元数据，便于时间感知检索预过滤。")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "回填完成"),
+            @ApiResponse(responseCode = "404", description = "知识库不存在")
+    })
+    @PostMapping("/{libraryId}/temporal-metadata/backfill")
+    public TemporalMetadataBackfillResponse backfillTemporalMetadata(
+            @Parameter(description = "知识库 ID", required = true) @PathVariable UUID libraryId,
+            @RequestParam(required = false) String tenantId) {
+        return libraryService.backfillTemporalMetadata(libraryId, tenantId);
     }
 
     @Operation(

@@ -66,4 +66,9 @@ public class IngestProfile {
                 && chunkOverlap == null
                 && minParagraphLength == null;
     }
+
+    @JsonIgnore
+    public boolean hasChunkingOverride() {
+        return chunkSize != null || chunkOverlap != null || minParagraphLength != null;
+    }
 }

@@ -46,6 +46,29 @@ class TabularSectionContextIndexTest {
         String injected = index.injectPrefix(chunk);
 
         assertTrue(injected.startsWith("【杜鹏飞·周工作计划·9.22-9.26】"));
+        assertTrue(injected.contains("列：序号|类别|工作内容|计划完成时间|责任人|执行要求|执行情况|说明"));
+        assertTrue(injected.contains(chunk));
+    }
+
+    @Test
+    void inheritsWeeklyReportColumnsWhenPlanSectionOmitsHeaderRow() {
+        String sample = """
+                星图深海软件事业部工作周报
+                部门\t软件事业部\t\t姓名\t杜鹏飞\t\t\t更新日期\t2025.9.12
+                2025年9月8日--9月12日
+                序号\t类别\t工作内容\t计划完成时间\t责任人\t执行要求\t执行情况\t说明
+                1\t海图项目\t海图用户系统培训并对用户演示系统功能\t\t45912\t杜鹏飞\t完成系统培训\t\t已完成
+                星图深海软件事业部周工作计划
+                部门\t软件事业部\t\t部门负责人\t杜鹏飞\t\t\t更新日期\t2025.9.12
+                9.15-9.19
+                1\t海图项目\t开发服务订阅的消息触发、新门户的后台接口\t\t45919\t杜鹏飞\t完成开发任务\t\t待开展""";
+
+        TabularSectionContextIndex index = TabularSectionContextIndex.parse(sample);
+        String chunk = "1\t海图项目\t开发服务订阅的消息触发、新门户的后台接口\t\t45919\t杜鹏飞\t完成开发任务\t\t待开展";
+        String injected = index.injectPrefix(chunk);
+
+        assertTrue(injected.startsWith("【杜鹏飞·周工作计划·9.15-9.19】"));
+        assertTrue(injected.contains("列：序号|类别|工作内容|计划完成时间|责任人|执行要求|执行情况|说明"));
         assertTrue(injected.contains(chunk));
     }
 

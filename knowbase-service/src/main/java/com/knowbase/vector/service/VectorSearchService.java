@@ -14,6 +14,7 @@ import com.knowbase.vector.retrieval.ChunkRerankService;
 import com.knowbase.vector.retrieval.HybridSearchFusion;
 import com.knowbase.vector.retrieval.MetadataFilterClause;
 import com.knowbase.vector.retrieval.MetadataFilterResolver;
+import com.knowbase.vector.retrieval.TemporalRetrievalSupport;
 import com.knowbase.vector.retrieval.RetrievalHitFilter;
 import com.knowbase.vector.retrieval.RetrievalMinScoreResolver;
 import com.knowbase.vector.retrieval.RetrievalOrderStabilizer;
@@ -94,7 +95,11 @@ public class VectorSearchService {
         List<UUID> docFilter = docIds.isEmpty() ? null : docIds;
         Map<String, String> metadataRequest = request.filter() != null ? request.filter().metadata() : null;
         List<MetadataFilterClause> metadataFilters =
-                MetadataFilterResolver.resolve(metadataRequest, retrieval);
+                TemporalRetrievalSupport.mergeFilters(
+                        MetadataFilterResolver.resolve(metadataRequest, retrieval),
+                        request.temporalMetadataFilters() != null
+                                ? request.temporalMetadataFilters()
+                                : List.of());
         List<String> chunkProfileIds = chunkProfileService.resolveRetrievalProfileIds(
                 request.libraryId(),
                 Boolean.TRUE.equals(request.includeAllChunkProfiles()),
@@ -108,7 +113,8 @@ public class VectorSearchService {
                 candidateK,
                 docFilter,
                 metadataFilters,
-                chunkProfileIds);
+                chunkProfileIds,
+                request.temporalOverlapFilter());
         Map<UUID, Double> vectorScoresByChunkId = toScoreMap(vectorHits);
 
         List<SearchHit> hits;
@@ -127,7 +133,8 @@ public class VectorSearchService {
                     candidateK,
                     docFilter,
                     metadataFilters,
-                    chunkProfileIds);
+                    chunkProfileIds,
+                    request.temporalOverlapFilter());
             hits = HybridSearchFusion.mergeByReciprocalRankFusion(
                     vectorHits,
                     keywordHits,

@@ -113,6 +113,14 @@
                   <br />
                   有效 Top-K：{{ retrievalPreview.effectiveTopK }}，最终命中 {{ retrievalPreview.hitCount }} 条
                   <br />
+                  <template v-if="retrievalPreview.temporalScopeSummary">
+                    时间范围：{{ retrievalPreview.temporalScopeSummary }}
+                    <br />
+                  </template>
+                  <template v-if="retrievalPreview.parseConfidence">
+                    解析置信度：{{ retrievalPreview.parseConfidence }}
+                    <br />
+                  </template>
                   重排模型：{{
                     retrievalPreview.rerankEnabled
                       ? (retrievalPreview.rerankModel || '库级 Embedding 模型')

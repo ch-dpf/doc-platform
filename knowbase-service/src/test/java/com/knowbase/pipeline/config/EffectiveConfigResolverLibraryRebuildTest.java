@@ -6,9 +6,7 @@ import com.knowbase.ingest.domain.DocMetadata;
 import com.knowbase.ingest.support.DocMetadataStore;
 import com.knowbase.library.config.VectorLibraryConfig;
 import com.knowbase.library.service.LibraryConfigResolver;
-import com.knowbase.pipeline.content.ContentFamilyChunkBounds;
 import com.knowbase.pipeline.content.ContentFamilyPipelineDefaults;
-import com.knowbase.pipeline.content.ContentSignalsChunkingAdjuster;
 import com.knowbase.pipeline.content.DefaultContentSignalsDetector;
 import com.knowbase.platform.JsonSupport;
 import com.knowbase.vector.config.ChunkingProperties;
@@ -48,9 +46,7 @@ class EffectiveConfigResolverLibraryRebuildTest {
                 new MimeTypePipelineDefaults(new ContentFamilyPipelineDefaults(ocrProperties)),
                 ocrProperties,
                 new TextNormalizationProperties(),
-                new DefaultContentSignalsDetector(),
-                new ContentSignalsChunkingAdjuster(),
-                new ContentFamilyChunkBounds());
+                new DefaultContentSignalsDetector());
     }
 
     @Test

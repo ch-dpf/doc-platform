@@ -68,20 +68,22 @@ public class ChunkProfileService {
 
     public void validateNewProfileAllowed(UUID libraryId, String mimeType, String ingestProfileJson) {
         VectorLibraryConfig cfg = libraryConfigResolver.config(libraryId);
-        if (!cfg.isAllowCustomChunkProfiles()) {
-            String prospective = computeForIngest(libraryId, mimeType, ingestProfileJson);
-            String primary = cfg.getPrimaryChunkProfileId();
-            if (primary != null && !primary.isBlank() && !primary.equals(prospective)) {
-                throw InvalidDocumentException.of(
-                        InvalidDocumentException.CODE_INGEST_PROFILE_NOT_ALLOWED,
-                        "该知识库已禁止自定义分块档，请使用库默认配置");
-            }
-            return;
-        }
         String prospective = computeForIngest(libraryId, mimeType, ingestProfileJson);
         String primary = cfg.getPrimaryChunkProfileId();
         if (primary != null && !primary.isBlank() && primary.equals(prospective)) {
             return;
+        }
+
+        boolean explicitOverride = IngestProfileSupport.hasChunkingOverride(ingestProfileJson);
+        if (!explicitOverride) {
+            throw InvalidDocumentException.of(
+                    InvalidDocumentException.CODE_INGEST_PROFILE_NOT_ALLOWED,
+                    "文档分块档与库主档不一致，请刷新库主档配置后重试");
+        }
+        if (!cfg.isAllowCustomChunkProfiles()) {
+            throw InvalidDocumentException.of(
+                    InvalidDocumentException.CODE_INGEST_PROFILE_NOT_ALLOWED,
+                    "该知识库已禁止采集侧分块覆盖；覆盖后将进入非主档且默认问答不可检索");
         }
         if (docMetadataStore.existsChunkProfileId(libraryId, prospective)) {
             return;

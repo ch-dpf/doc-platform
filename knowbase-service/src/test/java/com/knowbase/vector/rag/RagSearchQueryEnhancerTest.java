@@ -27,6 +27,25 @@ class RagSearchQueryEnhancerTest {
     }
 
     @Test
+    void expandsCompletedWorkQueryWithOrdinalMonth() {
+        String expanded = RagSearchQueryEnhancer.expandCompletedWorkQuery(
+                "杜鹏飞2025年第九个月都完成了哪些工作？");
+        assertTrue(expanded.contains("杜鹏飞"));
+        assertTrue(expanded.contains("2025"));
+        assertTrue(expanded.contains("9月"));
+        assertTrue(expanded.contains("周报"));
+    }
+
+    @Test
+    void extractsTermsFromOrdinalMonthQuestion() {
+        String keywordQuery = RagSearchQueryEnhancer.toKeywordQuery(
+                "杜鹏飞2025年第九个月都完成了哪些工作？");
+        assertTrue(keywordQuery.contains("2025"));
+        assertTrue(keywordQuery.contains("9月"));
+        assertTrue(keywordQuery.contains("杜鹏飞"));
+    }
+
+    @Test
     void prunesGenericDeadlineTokensFromFieldListText() {
         var terms = RagSearchQueryEnhancer.extractTerms(
                 "知识库「项目参与人库」：项目名称、参与人、部门、工作内容、截止时间");

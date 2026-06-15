@@ -12,6 +12,7 @@ import com.knowbase.library.config.VectorLibraryConfigMerger;
 import com.knowbase.library.domain.LibraryStatus;
 import com.knowbase.library.domain.VectorLibrary;
 import com.knowbase.library.dto.ChunkProfileBackfillResponse;
+import com.knowbase.library.dto.TemporalMetadataBackfillResponse;
 import com.knowbase.library.dto.CreateVectorLibraryRequest;
 import com.knowbase.library.dto.SetPrimaryChunkProfileRequest;
 import com.knowbase.library.dto.UpdateChunkGovernanceRequest;
@@ -27,6 +28,7 @@ import com.knowbase.library.mapper.VectorLibraryMapper;
 import com.knowbase.pipeline.config.ChunkProfileService;
 import com.knowbase.platform.JsonSupport;
 import com.knowbase.vector.mapper.DocumentChunkMapper;
+import com.knowbase.vector.service.TemporalMetadataBackfillService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -50,6 +52,7 @@ public class VectorLibraryService {
     private final DocMetadataStore metadataStore;
     private final DocumentChunkMapper chunkMapper;
     private final ChunkProfileService chunkProfileService;
+    private final TemporalMetadataBackfillService temporalMetadataBackfillService;
 
     public VectorLibraryService(
             VectorLibraryMapper mapper,
@@ -57,13 +60,15 @@ public class VectorLibraryService {
             LibraryDeletionService libraryDeletionService,
             DocMetadataStore metadataStore,
             DocumentChunkMapper chunkMapper,
-            ChunkProfileService chunkProfileService) {
+            ChunkProfileService chunkProfileService,
+            TemporalMetadataBackfillService temporalMetadataBackfillService) {
         this.mapper = mapper;
         this.ingestProperties = ingestProperties;
         this.libraryDeletionService = libraryDeletionService;
         this.metadataStore = metadataStore;
         this.chunkMapper = chunkMapper;
         this.chunkProfileService = chunkProfileService;
+        this.temporalMetadataBackfillService = temporalMetadataBackfillService;
     }
 
     public PageResponse<VectorLibraryListItemResponse> list(VectorLibraryListQuery query) {
@@ -133,6 +138,12 @@ public class VectorLibraryService {
     public ChunkProfileBackfillResponse backfillChunkProfiles(UUID libraryId) {
         require(libraryId);
         return chunkProfileService.backfillLibrary(libraryId);
+    }
+
+    @Transactional
+    public TemporalMetadataBackfillResponse backfillTemporalMetadata(UUID libraryId, String tenantId) {
+        require(libraryId);
+        return temporalMetadataBackfillService.backfillLibrary(libraryId, tenantId);
     }
 
     private void persistConfigOnly(VectorLibrary lib, VectorLibraryConfig cfg) {
