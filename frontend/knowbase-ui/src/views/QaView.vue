@@ -2,9 +2,18 @@
   <div class="page-wrap page-wrap--fluid qa-page">
     <PageCard title="智能问答">
       <template #actions>
-        <el-tag v-if="selectedLibraryName" size="small" type="info" effect="plain">
-          {{ selectedLibraryName }}
-        </el-tag>
+        <template v-if="orchestrationLibraryIds.length">
+          <el-tag
+            v-for="(id, idx) in orchestrationLibraryIds"
+            :key="id"
+            size="small"
+            :type="idx === 0 ? 'primary' : 'info'"
+            effect="plain"
+            class="qa-orchestration-tag"
+          >
+            {{ libraryName(id) }}{{ idx === 0 ? '（主）' : '' }}
+          </el-tag>
+        </template>
         <el-button round size="small" :loading="creatingConversation" @click="startNewChat">
           新对话
         </el-button>
@@ -13,11 +22,14 @@
       <div class="qa-layout">
             <aside class="qa-sidebar">
               <el-form label-position="top" size="small" class="qa-sidebar-form">
-                <el-form-item label="知识库" required>
+                <el-form-item label="知识库编排" required>
                   <el-select
-                    v-model="libraryId"
+                    v-model="orchestrationLibraryIds"
+                    multiple
                     filterable
-                    placeholder="选择知识库"
+                    collapse-tags
+                    collapse-tags-tooltip
+                    placeholder="选择一个或多个知识库"
                     class="full-width"
                   >
                     <el-option
@@ -27,6 +39,7 @@
                       :value="lib.libraryId"
                     />
                   </el-select>
+                  <p class="qa-field-hint">首个知识库为主检索源，会话绑定主库；检索测试请前往各知识库详情</p>
                 </el-form-item>
                 <el-form-item label="租户 ID" required>
                   <el-input v-model="chatSettings.tenantId" clearable />
@@ -77,120 +90,14 @@
                         placeholder="可选，每行一个 docId"
                       />
                     </el-form-item>
-                    <el-form-item label="检索诊断">
-                      <el-button
-                        size="small"
-                        :loading="previewLoading"
-                        :disabled="!inputText?.trim()"
-                        @click="previewRetrieval"
-                      >
-                        预览 RAG 检索
-                      </el-button>
-                    </el-form-item>
                   </el-form>
                 </el-collapse-item>
               </el-collapse>
 
-              <div v-if="retrievalPreview" class="qa-retrieval-preview">
-                <div class="qa-retrieval-preview__head">
-                  <span>检索预览</span>
-                  <el-tag size="small" type="info">实时检索</el-tag>
-                  <el-tag
-                    v-if="retrievalPreview.rerankEnabled"
-                    size="small"
-                    type="warning"
-                  >
-                    重排序已启用
-                  </el-tag>
-                  <el-tag v-else size="small">未重排序</el-tag>
-                </div>
-                <p class="qa-retrieval-preview__meta">
-                  原始/追问语句：{{ retrievalPreview.conversationQuery || retrievalPreview.searchQuery || '—' }}
-                  <br />
-                  改写后向量检索：{{ retrievalPreview.searchQuery || '—' }}
-                  <br />
-                  关键字检索：{{ retrievalPreview.keywordQuery || '—' }}
-                  <br />
-                  有效 Top-K：{{ retrievalPreview.effectiveTopK }}，最终命中 {{ retrievalPreview.hitCount }} 条
-                  <br />
-                  <template v-if="retrievalPreview.temporalScopeSummary">
-                    时间范围：{{ retrievalPreview.temporalScopeSummary }}
-                    <br />
-                  </template>
-                  <template v-if="retrievalPreview.parseConfidence">
-                    解析置信度：{{ retrievalPreview.parseConfidence }}
-                    <br />
-                  </template>
-                  重排模型：{{
-                    retrievalPreview.rerankEnabled
-                      ? (retrievalPreview.rerankModel || '库级 Embedding 模型')
-                      : '—'
-                  }}
-                </p>
-                <el-alert
-                  v-if="retrievalHeaderWarning"
-                  type="warning"
-                  :closable="false"
-                  show-icon
-                  :title="retrievalHeaderWarning"
-                  class="qa-retrieval-preview__warn"
-                />
-                <el-tabs v-model="previewTab" class="qa-retrieval-preview__tabs" size="small">
-                  <el-tab-pane label="重排后结果" name="after">
-                    <el-table :data="retrievalPreview.hits" size="small" stripe max-height="220">
-                      <el-table-column prop="rank" label="#" width="36" />
-                      <el-table-column
-                        prop="score"
-                        :label="retrievalPreview.finalScoreLabel || '分数'"
-                        width="88"
-                      >
-                        <template #default="{ row }">{{ row.score?.toFixed(4) }}</template>
-                      </el-table-column>
-                      <el-table-column prop="fileName" label="文件" min-width="100" show-overflow-tooltip />
-                      <el-table-column prop="chunkIndex" label="块" width="44" />
-                      <el-table-column label="表头" width="52">
-                        <template #default="{ row }">
-                          <el-tag v-if="row.headerOnlyChunk" size="small" type="warning">是</el-tag>
-                        </template>
-                      </el-table-column>
-                      <el-table-column prop="excerpt" label="摘录" min-width="120" show-overflow-tooltip />
-                    </el-table>
-                  </el-tab-pane>
-                  <el-tab-pane
-                    :label="`重排前候选 (${retrievalPreview.preRerankHitCount || 0})`"
-                    name="before"
-                  >
-                    <el-table
-                      :data="retrievalPreview.preRerankHits || []"
-                      size="small"
-                      stripe
-                      max-height="220"
-                    >
-                      <el-table-column prop="rank" label="#" width="36" />
-                      <el-table-column
-                        prop="score"
-                        :label="retrievalPreview.preRerankScoreLabel || '分数'"
-                        width="88"
-                      >
-                        <template #default="{ row }">{{ row.score?.toFixed(4) }}</template>
-                      </el-table-column>
-                      <el-table-column prop="fileName" label="文件" min-width="100" show-overflow-tooltip />
-                      <el-table-column prop="chunkIndex" label="块" width="44" />
-                      <el-table-column label="表头" width="52">
-                        <template #default="{ row }">
-                          <el-tag v-if="row.headerOnlyChunk" size="small" type="warning">是</el-tag>
-                        </template>
-                      </el-table-column>
-                      <el-table-column prop="excerpt" label="摘录" min-width="120" show-overflow-tooltip />
-                    </el-table>
-                  </el-tab-pane>
-                </el-tabs>
-              </div>
-
               <div class="qa-conv-list">
                 <div class="qa-conv-list__head">
                   <span>会话历史</span>
-                  <el-button link type="primary" size="small" :disabled="!libraryId" @click="loadConversations">
+                  <el-button link type="primary" size="small" :disabled="!primaryLibraryId" @click="loadConversations">
                     刷新
                   </el-button>
                 </div>
@@ -213,7 +120,7 @@
             <main class="qa-chat">
               <div ref="chatScrollRef" class="qa-chat__messages">
                 <div v-if="!messages.length" class="qa-chat__empty">
-                  <el-empty description="选择知识库后开始提问" :image-size="96" />
+                  <el-empty description="选择知识库编排后开始提问" :image-size="96" />
                 </div>
 
                 <div
@@ -468,14 +375,16 @@ import {
 } from '../api/conversation'
 import { getVectorLibrary, listVectorLibraries } from '../api/library'
 import { flattenLibraryConfig } from '../utils/libraryConfigView'
-import { ragRetrievalPreview, buildRetrievalPreviewPayload } from '../api/search'
 import { useLibraryContext } from '../composables/useLibraryContext'
 import PageCard from '../components/PageCard.vue'
+
+const QA_ORCHESTRATION_KEY = 'qaOrchestrationLibraryIds'
 
 const route = useRoute()
 const router = useRouter()
 const { libraryId, tenantId, persist } = useLibraryContext()
 const libraries = ref([])
+const orchestrationLibraryIds = ref([])
 const settingsOpen = ref(['advanced'])
 const libraryDefaultTopK = ref(null)
 
@@ -496,32 +405,25 @@ const inputText = ref('')
 const chatScrollRef = ref(null)
 const expandedCitations = ref(new Set())
 const expandedTrace = ref(new Set())
-const skipLibraryWatch = ref(false)
-const previewLoading = ref(false)
-const retrievalPreview = ref(null)
-const previewTab = ref('after')
+const skipOrchestrationWatch = ref(false)
 
-const selectedLibraryName = computed(() => {
-  const lib = libraries.value.find((l) => l.libraryId === libraryId.value)
-  return lib?.name || ''
-})
+const primaryLibraryId = computed(() => orchestrationLibraryIds.value[0] || '')
 
-const retrievalHeaderWarning = computed(() => {
-  const note = retrievalPreview.value?.retrievalNote
-  if (note) return note
-  const hits = retrievalPreview.value?.hits
-  if (!hits?.length) return ''
-  const headerCount = hits.filter((h) => h.headerOnlyChunk).length
-  if (headerCount === 0) return ''
-  if (headerCount >= Math.ceil(hits.length / 2)) {
-    return `命中 ${headerCount}/${hits.length} 条为表头块，建议在知识库设置中调低相似度阈值，并到文档库执行「批量重索引」。`
+function libraryName(id) {
+  return libraries.value.find((l) => l.libraryId === id)?.name || id
+}
+
+function persistOrchestration() {
+  localStorage.setItem(QA_ORCHESTRATION_KEY, JSON.stringify(orchestrationLibraryIds.value))
+  if (primaryLibraryId.value) {
+    libraryId.value = primaryLibraryId.value
+    persist()
   }
-  return ''
-})
+}
 
 const canSend = computed(
   () =>
-    !!libraryId.value
+    !!primaryLibraryId.value
     && !!chatSettings.tenantId?.trim()
     && !!inputText.value?.trim()
     && !chatLoading.value
@@ -573,23 +475,25 @@ async function syncRetrievalDefaultsFromLibrary(id) {
   }
 }
 
-watch(libraryId, async (next, prev) => {
-  await syncRetrievalDefaultsFromLibrary(next)
-  if (skipLibraryWatch.value || !prev || next === prev || !messages.value.length) return
+watch(orchestrationLibraryIds, async (next, prev) => {
+  persistOrchestration()
+  await syncRetrievalDefaultsFromLibrary(primaryLibraryId.value)
+  if (skipOrchestrationWatch.value || !prev?.length || JSON.stringify(next) === JSON.stringify(prev) || !messages.value.length) {
+    return
+  }
   try {
-    await ElMessageBox.confirm('切换知识库将清空当前对话，是否继续？', '切换知识库', {
+    await ElMessageBox.confirm('变更知识库编排将清空当前对话，是否继续？', '变更编排', {
       type: 'warning',
       confirmButtonText: '继续',
       cancelButtonText: '取消'
     })
     await startNewChat()
-    persist()
   } catch {
-    skipLibraryWatch.value = true
-    libraryId.value = prev
-    skipLibraryWatch.value = false
+    skipOrchestrationWatch.value = true
+    orchestrationLibraryIds.value = [...prev]
+    skipOrchestrationWatch.value = false
   }
-})
+}, { deep: true })
 
 async function scrollToBottom() {
   await nextTick()
@@ -629,7 +533,7 @@ function openCitation(citation) {
     name: 'documentChunks',
     params: { docId: citation.docId },
     query: {
-      libraryId: libraryId.value || undefined,
+      libraryId: primaryLibraryId.value || undefined,
       from: 'qa',
       chunkIndex: citation.chunkIndex != null ? String(citation.chunkIndex) : undefined
     }
@@ -654,10 +558,10 @@ function traceHeaderWarning(trace) {
 }
 
 async function loadConversations() {
-  if (!libraryId.value || !chatSettings.tenantId?.trim()) return
+  if (!primaryLibraryId.value || !chatSettings.tenantId?.trim()) return
   try {
     const { data } = await listConversations({
-      libraryId: libraryId.value,
+      libraryId: primaryLibraryId.value,
       tenantId: chatSettings.tenantId.trim(),
       page: 1,
       size: 50
@@ -672,7 +576,7 @@ async function ensureConversation() {
   if (currentConversationId.value) return currentConversationId.value
   creatingConversation.value = true
   try {
-    const { data } = await createConversation(libraryId.value, {
+    const { data } = await createConversation(primaryLibraryId.value, {
       tenantId: chatSettings.tenantId.trim(),
       title: '新对话'
     })
@@ -714,39 +618,6 @@ async function startNewChat() {
   expandedCitations.value = new Set()
   expandedTrace.value = new Set()
   currentConversationId.value = null
-  retrievalPreview.value = null
-}
-
-async function previewRetrieval() {
-  const question = inputText.value?.trim()
-  if (!libraryId.value || !chatSettings.tenantId?.trim() || !question) {
-    ElMessage.warning('请选择知识库并输入要预览的问题')
-    return
-  }
-  previewLoading.value = true
-  try {
-    const { data } = await ragRetrievalPreview(
-      buildRetrievalPreviewPayload({
-        libraryId: libraryId.value,
-        tenantId: chatSettings.tenantId,
-        question,
-        topK: chatSettings.topK,
-        minScore: chatSettings.minScore,
-        docIds: parseDocIds(docIdsText.value),
-        messages: messages.value,
-        includeAllChunkProfiles: chatSettings.includeAllChunkProfiles
-      })
-    )
-    retrievalPreview.value = data
-    previewTab.value = 'after'
-    if (!settingsOpen.value.includes('advanced')) {
-      settingsOpen.value = [...settingsOpen.value, 'advanced']
-    }
-  } catch (e) {
-    ElMessage.error(e?.message || '检索预览失败')
-  } finally {
-    previewLoading.value = false
-  }
 }
 
 function onEnterKey(event) {
@@ -757,12 +628,12 @@ function onEnterKey(event) {
 
 async function sendMessage() {
   const question = inputText.value?.trim()
-  if (!libraryId.value || !chatSettings.tenantId?.trim() || !question) {
-    ElMessage.warning('请选择知识库并填写租户与问题')
+  if (!primaryLibraryId.value || !chatSettings.tenantId?.trim() || !question) {
+    ElMessage.warning('请选择知识库编排并填写租户与问题')
     return
   }
 
-  persist()
+  persistOrchestration()
   tenantId.value = chatSettings.tenantId.trim()
   localStorage.setItem('tenantId', chatSettings.tenantId.trim())
 
@@ -850,25 +721,43 @@ async function sendMessage() {
 }
 
 onMounted(async () => {
-  if (route.query.libraryId && typeof route.query.libraryId === 'string') {
-    libraryId.value = route.query.libraryId
-  }
   chatSettings.tenantId = tenantId.value
   persist()
   const { data } = await listVectorLibraries({ tenantId: tenantId.value, page: 1, size: 200 })
   libraries.value = data.items || []
-  if (libraryId.value) {
-    await syncRetrievalDefaultsFromLibrary(libraryId.value)
+
+  let savedIds = []
+  try {
+    const raw = localStorage.getItem(QA_ORCHESTRATION_KEY)
+    if (raw) savedIds = JSON.parse(raw)
+  } catch {
+    savedIds = []
+  }
+  if (Array.isArray(savedIds) && savedIds.length) {
+    orchestrationLibraryIds.value = savedIds.filter((id) =>
+      libraries.value.some((l) => l.libraryId === id)
+    )
+  }
+  if (!orchestrationLibraryIds.value.length) {
+    if (route.query.libraryId && typeof route.query.libraryId === 'string') {
+      orchestrationLibraryIds.value = [route.query.libraryId]
+    } else if (libraryId.value) {
+      orchestrationLibraryIds.value = [libraryId.value]
+    }
+  }
+  persistOrchestration()
+  if (primaryLibraryId.value) {
+    await syncRetrievalDefaultsFromLibrary(primaryLibraryId.value)
   }
   if (route.query.new === '1') {
     await startNewChat()
-    router.replace({ name: 'qa', query: route.query.libraryId ? { libraryId: route.query.libraryId } : {} })
+    router.replace({ name: 'qa' })
   } else {
     await loadConversations()
   }
 })
 
-watch(libraryId, () => {
+watch(primaryLibraryId, () => {
   loadConversations()
 })
 </script>
@@ -988,39 +877,8 @@ watch(libraryId, () => {
   50% { opacity: 0; }
 }
 
-.qa-retrieval-preview {
-  margin: 12px 0;
-  padding: 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.qa-retrieval-preview__head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #475569;
-}
-
-.qa-retrieval-preview__meta {
-  margin: 0 0 8px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: #64748b;
-}
-
-.qa-retrieval-preview__tabs {
-  margin-top: 4px;
-}
-
-.qa-retrieval-preview__hint {
-  margin: 0 0 6px;
-  font-size: 11px;
-  color: #94a3b8;
+.qa-orchestration-tag {
+  margin-right: 6px;
 }
 
 .qa-sidebar-tip {

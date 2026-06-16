@@ -278,6 +278,15 @@ body,
   overflow: hidden;
 }
 
+.library-page-fill .library-detail-layout {
+  flex: 1;
+  min-height: 0;
+}
+
+.library-page-fill .library-detail-content .library-page-content {
+  padding: 0;
+}
+
 /* —— 知识库配置弹窗（创建 / 编辑）：高度随内容，超出上限后仅在内容区滚动 —— */
 .library-config-dialog {
   --library-config-body-max-h: min(400px, calc(100vh - 180px));

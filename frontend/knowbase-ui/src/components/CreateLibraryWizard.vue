@@ -107,7 +107,7 @@ async function submit() {
     emit('created', lib)
     ElMessage.success('知识库已创建')
     visible.value = false
-    router.push({ name: 'vectorLibraryDetail', params: { libraryId: lib.libraryId } })
+    router.push({ name: 'libraryDocuments', params: { libraryId: lib.libraryId } })
   } finally {
     submitting.value = false
   }

@@ -438,7 +438,7 @@ function goBack() {
     return
   }
   if (fromSource.value === 'library' && libraryId.value) {
-    router.push({ name: 'vectorLibraryDetail', params: { libraryId: libraryId.value } })
+    router.push({ name: 'libraryDocuments', params: { libraryId: libraryId.value } })
     return
   }
   router.push({

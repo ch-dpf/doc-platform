@@ -909,7 +909,7 @@ function docStatusLabel(doc) {
 
 function goBackToLibrary() {
   if (libraryId.value) {
-    router.push({ name: 'vectorLibraryDetail', params: { libraryId: libraryId.value } })
+    router.push({ name: 'libraryDocuments', params: { libraryId: libraryId.value } })
   } else {
     router.push('/vector-libraries')
   }
@@ -928,7 +928,7 @@ function openDoc(docId) {
   if (!docId || !libraryId.value) return
   persist()
   router.push({
-    name: 'vectorLibraryDetail',
+    name: 'libraryDocuments',
     params: { libraryId: libraryId.value },
     query: { docId }
   })

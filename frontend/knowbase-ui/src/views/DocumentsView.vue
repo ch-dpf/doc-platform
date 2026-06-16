@@ -444,7 +444,7 @@ function onLibraryChange() {
 
 function goToLibraryForIngest() {
   if (libraryId.value) {
-    router.push({ name: 'vectorLibraryDetail', params: { libraryId: libraryId.value } })
+    router.push({ name: 'libraryDocuments', params: { libraryId: libraryId.value } })
   } else {
     router.push('/vector-libraries')
   }

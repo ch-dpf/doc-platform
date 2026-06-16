@@ -736,7 +736,7 @@ function drillDown(row) {
 
   persist()
 
-  router.push({ name: 'vectorLibraryDetail', params: { libraryId: row.libraryId } })
+  router.push({ name: 'libraryDocuments', params: { libraryId: row.libraryId } })
 
 }
 
@@ -757,13 +757,13 @@ function onCreated(lib) {
 
 
 function openEdit(row, tab = 'basic') {
-
-  editInitialTab.value = tab
-
-  editLibraryId.value = row.libraryId
-
-  editVisible.value = true
-
+  libraryId.value = row.libraryId
+  persist()
+  router.push({
+    name: 'librarySettings',
+    params: { libraryId: row.libraryId },
+    query: tab !== 'basic' ? { tab } : {}
+  })
 }
 
 
