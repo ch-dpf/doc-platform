@@ -289,7 +289,7 @@ body,
 
 /* —— 知识库配置弹窗（创建 / 编辑）：高度随内容，超出上限后仅在内容区滚动 —— */
 .library-config-dialog {
-  --library-config-body-max-h: min(400px, calc(100vh - 180px));
+  --library-config-body-max-h: min(480px, calc(100vh - 160px));
   display: flex;
   flex-direction: column;
   max-height: calc(100vh - 48px);
@@ -353,6 +353,97 @@ body.el-popup-parent--hidden .library-page-fill .library-card-grid,
 body.el-popup-parent--hidden .library-page-fill .library-list-body,
 body.el-popup-parent--hidden .library-page-fill .library-table--fixed .el-table__body-wrapper {
   overflow: hidden !important;
+}
+
+/* —— 快速创建弹窗 —— */
+.quick-create-library-dialog .el-dialog__body {
+  padding-top: 8px;
+}
+
+.quick-create-library-dialog .quick-create-form .el-form-item {
+  margin-bottom: 18px;
+}
+
+.quick-create-library-dialog .quick-create-form .el-form-item__label {
+  padding-bottom: 6px;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--dp-text);
+}
+
+.quick-create-library-dialog .quick-create-form .el-input,
+.quick-create-library-dialog .quick-create-form .el-textarea {
+  width: 100%;
+}
+
+.quick-create-library-dialog .quick-create-form .el-form-item:last-child {
+  margin-bottom: 0;
+}
+
+/* —— 设置页新建引导条（紧凑） —— */
+.library-onboarding-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(14, 165, 233, 0.28);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #fff 100%);
+  font-size: 13px;
+}
+
+.library-onboarding-strip__badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #0ea5e9;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.library-onboarding-strip__steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.library-onboarding-strip__step {
+  color: var(--dp-text-secondary);
+  font-weight: 500;
+}
+
+.library-onboarding-strip__step--active {
+  color: var(--dp-primary);
+  font-weight: 600;
+}
+
+.library-onboarding-strip__step--done {
+  color: var(--dp-accent);
+}
+
+.library-onboarding-strip__step--disabled {
+  opacity: 0.45;
+}
+
+.library-onboarding-strip__arrow {
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.library-onboarding-strip__hint {
+  flex: 1 1 160px;
+  margin: 0;
+  color: var(--dp-text-secondary);
+  font-size: 12px;
+}
+
+.library-onboarding-strip__skip {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .library-page-fill .filter-panel {

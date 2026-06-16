@@ -2,12 +2,15 @@
  * 将分节 libraryConfig API 视图展平为表单/规则摘要使用的 config 结构。
  */
 
+import { defaultParsingConfig, normalizeParserRules } from './parserEngines'
+
 export function flattenLibraryConfig(lib) {
   const lc = lib?.libraryConfig
   if (!lc) {
     return {}
   }
   const pipe = lc.indexPipeline || {}
+  const parsingRaw = lc.parsing || {}
   return {
     configVersion: lc.configVersion ?? 1,
     metadataDbType: lc.metadataDbType || 'postgresql',
@@ -19,6 +22,11 @@ export function flattenLibraryConfig(lib) {
     embeddingProvider: 'ollama',
     embeddingModel: pipe.embeddingModel,
     embeddingDimension: pipe.embeddingDimension,
+    parsing: {
+      parserRules: normalizeParserRules(parsingRaw.parserRules),
+      defaultLanguage: parsingRaw.defaultLanguage || 'zh-CN',
+      autoDetectEncoding: parsingRaw.autoDetectEncoding !== false
+    },
     retrieval: lc.retrieval || {},
     primaryChunkProfileId: lc.primaryChunkProfileId || '',
     allowCustomChunkProfiles: lc.allowCustomChunkProfiles !== false,
@@ -41,6 +49,20 @@ export function buildIndexPipelinePayload(cfg) {
 
 export function buildRetrievalPayload(cfg) {
   return { retrieval: cfg.retrieval || {} }
+}
+
+export function buildParsingPayload(cfg) {
+  const parsing = cfg.parsing || defaultParsingConfig()
+  return {
+    parsing: {
+      parserRules: normalizeParserRules(parsing.parserRules).map((rule) => ({
+        fileType: rule.fileType,
+        parserId: rule.parserId || 'auto'
+      })),
+      defaultLanguage: parsing.defaultLanguage || 'zh-CN',
+      autoDetectEncoding: parsing.autoDetectEncoding !== false
+    }
+  }
 }
 
 const PIPELINE_FIELDS = [
@@ -79,6 +101,10 @@ export function hasPipelineChanges(changes = []) {
 
 export function hasRetrievalChanges(changes = []) {
   return changes.some((c) => String(c.field || '').startsWith('retrieval.'))
+}
+
+export function hasParsingChanges(changes = []) {
+  return changes.some((c) => String(c.field || '').startsWith('parsing.'))
 }
 
 export function normalizeSubmitConfig(cfg) {

@@ -19,6 +19,7 @@ import com.knowbase.library.dto.UpdateChunkGovernanceRequest;
 import com.knowbase.library.dto.DeleteVectorLibraryResponse;
 import com.knowbase.library.dto.UpdateLibraryBasicRequest;
 import com.knowbase.library.dto.UpdateLibraryIndexPipelineRequest;
+import com.knowbase.library.dto.UpdateLibraryParsingRequest;
 import com.knowbase.library.dto.UpdateLibraryRetrievalRequest;
 import com.knowbase.library.dto.VectorLibraryListItemResponse;
 import com.knowbase.library.dto.VectorLibraryListQuery;
@@ -191,6 +192,16 @@ public class VectorLibraryService {
         if (request.tags() != null && !request.tags().isEmpty()) {
             cfg.setTags(request.tags());
         }
+        if (request.indexPipeline() != null) {
+            VectorLibraryConfigMerger.mergeIndexPipeline(cfg, request.indexPipeline());
+            validateEmbeddingProvider(cfg.getEmbeddingProvider());
+        }
+        if (request.parsing() != null) {
+            VectorLibraryConfigMerger.mergeParsing(cfg, request.parsing());
+        }
+        if (request.retrieval() != null) {
+            VectorLibraryConfigMerger.mergeRetrieval(cfg, request.retrieval());
+        }
         cfg.setConfigVersion(1);
         syncAllowedMimeTypes(cfg);
 
@@ -200,7 +211,7 @@ public class VectorLibraryService {
         lib.setLibraryId(libraryId);
         lib.setTenantId(request.tenantId().trim());
         lib.setName(request.name().trim());
-        lib.setDescription(request.description().trim());
+        lib.setDescription(normalizeDescription(request.description()));
         lib.setStatus(LibraryStatus.ACTIVE);
         lib.setConfigJson(JsonSupport.toJson(cfg));
         lib.setDocumentCount(0);
@@ -217,7 +228,7 @@ public class VectorLibraryService {
     public VectorLibraryUpdateResponse updateBasic(UUID libraryId, UpdateLibraryBasicRequest request) {
         VectorLibrary lib = require(libraryId);
         lib.setName(request.name().trim());
-        lib.setDescription(request.description().trim());
+        lib.setDescription(normalizeDescription(request.description()));
 
         VectorLibraryConfig existing = JsonSupport.parseLibraryConfig(lib.getConfigJson());
         VectorLibraryConfigMerger.mergeBasic(existing, request.tags());
@@ -253,6 +264,23 @@ public class VectorLibraryService {
         if (embeddingConfigChanged(prevModel, prevDimension, prevProvider, existing) && chunkCount > 0) {
             warnings.add(
                     "Embedding 模型、维度或提供方已变更：已有向量与检索可能不一致，请在文档库中对相关文档执行补偿重索引。");
+        }
+        return persistConfig(lib, existing, warnings, documentCount, chunkCount);
+    }
+
+    @KnowbaseTransactional
+    public VectorLibraryUpdateResponse updateParsing(UUID libraryId, UpdateLibraryParsingRequest request) {
+        VectorLibrary lib = require(libraryId);
+        VectorLibraryConfig existing = JsonSupport.parseLibraryConfig(lib.getConfigJson());
+        VectorLibraryConfigMerger.mergeParsing(existing, request.parsing());
+
+        int documentCount = liveDocumentCount(libraryId);
+        int chunkCount = liveChunkCount(libraryId);
+        syncCountsIfNeeded(lib, documentCount, chunkCount);
+
+        List<String> warnings = new ArrayList<>();
+        if (documentCount > 0) {
+            warnings.add("解析配置已变更：已有文档需重新解析并重索引后才会按新解析器生效。");
         }
         return persistConfig(lib, existing, warnings, documentCount, chunkCount);
     }
@@ -349,6 +377,10 @@ public class VectorLibraryService {
 
     private void syncAllowedMimeTypes(VectorLibraryConfig cfg) {
         cfg.setAllowedMimeTypes(ingestProperties.getAllowedMimeTypes());
+    }
+
+    private static String normalizeDescription(String description) {
+        return description != null ? description.trim() : "";
     }
 
     private VectorLibraryConfig defaultConfig() {

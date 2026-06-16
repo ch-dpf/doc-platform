@@ -66,6 +66,7 @@ export function archiveChunkProfile(libraryId, body) {
   return client.post(`/api/v1/vector-libraries/${libraryId}/chunk-profiles/archive`, body)
 }
 
+/** POST /api/v1/vector-libraries — 原子创建（basic + 可选 indexPipeline / parsing / retrieval） */
 export function createVectorLibrary(body) {
   return client.post('/api/v1/vector-libraries', body)
 }
@@ -76,6 +77,14 @@ export function updateLibraryBasic(libraryId, body) {
 
 export function updateLibraryIndexPipeline(libraryId, body) {
   return client.put(`/api/v1/vector-libraries/${libraryId}/index-pipeline`, body)
+}
+
+export function listParserEngines() {
+  return client.get('/api/v1/parser-engines')
+}
+
+export function updateLibraryParsing(libraryId, body) {
+  return client.put(`/api/v1/vector-libraries/${libraryId}/parsing`, body)
 }
 
 export function updateLibraryRetrieval(libraryId, body) {

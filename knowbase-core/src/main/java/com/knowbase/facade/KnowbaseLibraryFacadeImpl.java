@@ -29,7 +29,7 @@ public class KnowbaseLibraryFacadeImpl implements KnowbaseLibraryFacade {
     public LibraryCreatedResult createLibrary(CreateLibraryCommand command) {
         String tenantId = tenantSupport.resolve(command.tenantId());
         VectorLibraryResponse created = libraryService.create(new CreateVectorLibraryRequest(
-                tenantId, command.name(), command.description(), command.tags()));
+                tenantId, command.name(), command.description(), command.tags(), null, null, null));
         return new LibraryCreatedResult(created.libraryId(), created.tenantId(), created.name());
     }
 

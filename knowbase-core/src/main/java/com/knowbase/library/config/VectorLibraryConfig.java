@@ -45,6 +45,8 @@ public class VectorLibraryConfig {
     private List<String> tags = new java.util.ArrayList<>();
     private IngestAccessSettings ingestAccess = new IngestAccessSettings();
     private ParsingRulesSettings parsing = new ParsingRulesSettings();
+    /** 按文件类型选择内置解析器（WeKnora parser_engine_rules 简化版） */
+    private List<ParserEngineRule> parserRules = new java.util.ArrayList<>();
     private CleaningRulesSettings cleaning = new CleaningRulesSettings();
     private RetrievalRulesSettings retrieval = new RetrievalRulesSettings();
     private GovernanceRulesSettings governance = new GovernanceRulesSettings();
@@ -247,6 +249,14 @@ public class VectorLibraryConfig {
 
     public void setParsing(ParsingRulesSettings parsing) {
         this.parsing = parsing;
+    }
+
+    public List<ParserEngineRule> getParserRules() {
+        return parserRules;
+    }
+
+    public void setParserRules(List<ParserEngineRule> parserRules) {
+        this.parserRules = parserRules != null ? parserRules : new java.util.ArrayList<>();
     }
 
     public CleaningRulesSettings getCleaning() {

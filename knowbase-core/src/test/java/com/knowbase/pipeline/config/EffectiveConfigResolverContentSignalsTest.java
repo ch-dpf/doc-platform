@@ -5,6 +5,7 @@ import com.knowbase.ingest.config.TextNormalizationProperties;
 import com.knowbase.ingest.support.DocMetadataStore;
 import com.knowbase.library.config.VectorLibraryConfig;
 import com.knowbase.library.service.LibraryConfigResolver;
+import com.knowbase.ingest.parse.ParserEngineRegistry;
 import com.knowbase.pipeline.content.ContentFamilyPipelineDefaults;
 import com.knowbase.pipeline.content.DefaultContentSignalsDetector;
 import com.knowbase.vector.chunk.ChunkingStrategy;
@@ -43,7 +44,8 @@ class EffectiveConfigResolverContentSignalsTest {
                 mimeDefaults,
                 ocrProperties,
                 new TextNormalizationProperties(),
-                new DefaultContentSignalsDetector());
+                new DefaultContentSignalsDetector(),
+                new ParserEngineRegistry());
     }
 
     @Test

@@ -1,4 +1,4 @@
-import { SYSTEM_SUPPORTED_FILE_TYPES } from './libraryDefaults'
+import { parserLabel } from './parserEngines'
 
 const CHUNKING_LABELS = {
   'paragraph-first': '按段落',
@@ -42,6 +42,11 @@ const RETRIEVAL_FIELD_LABELS = {
   similarityThreshold: '相似度阈值',
   defaultTopK: '默认 Top K',
   metadataFilterFields: '过滤字段'
+}
+
+const PARSING_FIELD_LABELS = {
+  defaultLanguage: '默认语言',
+  autoDetectEncoding: '自动检测编码'
 }
 
 export function chunkingStrategyLabel(strategy) {
@@ -91,6 +96,29 @@ const CONFIG_FIELD_SPECS = [
   { key: 'embeddingModel', label: 'Embedding 模型' },
   { key: 'embeddingDimension', label: '向量维度' }
 ]
+
+function parserRulesSignature(rules) {
+  return JSON.stringify(
+    (rules || [])
+      .map((r) => `${r.fileType}:${r.parserId || 'auto'}`)
+      .sort()
+  )
+}
+
+function formatParserRulesDiff(beforeRules, afterRules) {
+  const beforeMap = new Map((beforeRules || []).map((r) => [r.fileType, r.parserId || 'auto']))
+  const afterMap = new Map((afterRules || []).map((r) => [r.fileType, r.parserId || 'auto']))
+  const types = [...new Set([...beforeMap.keys(), ...afterMap.keys()])].sort()
+  const detail = []
+  for (const fileType of types) {
+    const prev = beforeMap.get(fileType) || 'auto'
+    const next = afterMap.get(fileType) || 'auto'
+    if (prev !== next) {
+      detail.push(`${fileType}: ${parserLabel(prev)} → ${parserLabel(next)}`)
+    }
+  }
+  return detail
+}
 
 /**
  * @returns {{ field: string, label: string, before: string, after: string, needsReindex: boolean }[]}
@@ -143,6 +171,43 @@ export function diffLibraryConfig(before = {}, after = {}) {
         label,
         before: prev,
         after: next
+      })
+    }
+  }
+
+  const beforeParsing = before.parsing || {}
+  const afterParsing = after.parsing || {}
+  if (parserRulesSignature(beforeParsing.parserRules) !== parserRulesSignature(afterParsing.parserRules)) {
+    const detail = formatParserRulesDiff(beforeParsing.parserRules, afterParsing.parserRules)
+    pushChange(changes, {
+      field: 'parsing.parserRules',
+      label: '解析器规则',
+      before: '—',
+      after: '—',
+      needsReindex: true,
+      detail
+    })
+  }
+  for (const [key, label] of Object.entries(PARSING_FIELD_LABELS)) {
+    const prev = beforeParsing[key]
+    const next = afterParsing[key]
+    if (typeof prev === 'boolean' || typeof next === 'boolean') {
+      if (prev !== next) {
+        pushChange(changes, {
+          field: `parsing.${key}`,
+          label,
+          before: formatBool(prev),
+          after: formatBool(next),
+          needsReindex: true
+        })
+      }
+    } else if (prev !== next) {
+      pushChange(changes, {
+        field: `parsing.${key}`,
+        label,
+        before: prev,
+        after: next,
+        needsReindex: true
       })
     }
   }

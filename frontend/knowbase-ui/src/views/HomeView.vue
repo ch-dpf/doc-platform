@@ -29,8 +29,8 @@
       </button>
     </div>
 
-    <CreateLibraryWizard
-      v-model="wizardVisible"
+    <CreateLibraryFlow
+      v-model="flowVisible"
       :tenant-id="tenantId"
     />
   </div>
@@ -40,15 +40,15 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, ChatLineRound, Coin } from '@element-plus/icons-vue'
-import CreateLibraryWizard from '../components/CreateLibraryWizard.vue'
+import CreateLibraryFlow from '../components/CreateLibraryFlow.vue'
 import { useLibraryContext } from '../composables/useLibraryContext'
 
 const router = useRouter()
 const { tenantId } = useLibraryContext()
-const wizardVisible = ref(false)
+const flowVisible = ref(false)
 
 function openCreateLibrary() {
-  wizardVisible.value = true
+  flowVisible.value = true
 }
 
 function goCreateQa() {

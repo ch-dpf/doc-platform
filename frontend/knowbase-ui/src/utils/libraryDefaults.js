@@ -1,3 +1,9 @@
+import {
+  buildIndexPipelinePayload,
+  buildParsingPayload,
+  buildRetrievalPayload
+} from './libraryConfigView'
+
 export const FILE_TYPE_OPTIONS = [
   { value: 'pdf', label: 'PDF' },
   { value: 'word', label: 'Word' },
@@ -56,7 +62,15 @@ export function defaultLibraryConfig() {
     },
     primaryChunkProfileId: '',
     allowCustomChunkProfiles: true,
-    maxActiveChunkProfiles: 5
+    maxActiveChunkProfiles: 5,
+    parsing: {
+      parserRules: SYSTEM_SUPPORTED_FILE_TYPES.map((fileType) => ({
+        fileType,
+        parserId: 'auto'
+      })),
+      defaultLanguage: 'zh-CN',
+      autoDetectEncoding: true
+    }
   }
 }
 
@@ -73,7 +87,21 @@ export function buildCreatePayload({ tenantId, name, description, tags }) {
   return {
     tenantId,
     name: name.trim(),
-    description: description.trim(),
+    description: (description || '').trim(),
     tags: tags || []
+  }
+}
+
+/** 原子创建：basic + indexPipeline + parsing + retrieval 一次提交 */
+export function buildAtomicCreatePayload({ tenantId, name, description, tags, config }) {
+  const base = buildCreatePayload({ tenantId, name, description, tags })
+  if (!config) {
+    return base
+  }
+  return {
+    ...base,
+    ...buildIndexPipelinePayload(config),
+    ...buildParsingPayload(config),
+    ...buildRetrievalPayload(config)
   }
 }

@@ -7,7 +7,7 @@ import java.util.List;
 public record CreateLibraryCommand(
         String tenantId,
         @NotBlank String name,
-        @NotBlank String description,
+        String description,
         List<String> tags) {
 
     public CreateLibraryCommand(String tenantId, String name, String description) {

@@ -14,6 +14,7 @@ import com.knowbase.library.dto.CreateVectorLibraryRequest;
 import com.knowbase.library.dto.DeleteVectorLibraryResponse;
 import com.knowbase.library.dto.UpdateLibraryBasicRequest;
 import com.knowbase.library.dto.UpdateLibraryIndexPipelineRequest;
+import com.knowbase.library.dto.UpdateLibraryParsingRequest;
 import com.knowbase.library.dto.UpdateLibraryRetrievalRequest;
 import com.knowbase.library.dto.VectorLibraryListItemResponse;
 import com.knowbase.library.dto.VectorLibraryListQuery;
@@ -128,8 +129,9 @@ public class VectorLibraryController {
     @Operation(
             summary = "新增知识库",
             description = """
-                    仅提交基本信息（tenantId、name、description、tags）。
-                    分块/向量化/检索等库级流水线配置由服务端 `defaults()` 写入 `config_json`；解析/清洗按文件类型由代码规则决定，初始 `configVersion=1`。
+                    原子创建：提交基本信息，并可一次附带 indexPipeline / parsing / retrieval 分节。
+                    省略分节时由服务端写入产品默认 config_json；编辑已有库仍使用各分节 PUT。
+                    初始 `configVersion=1`。
                     """)
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "创建成功", content = @Content(schema = @Schema(implementation = VectorLibraryResponse.class))),
@@ -174,6 +176,20 @@ public class VectorLibraryController {
             @Parameter(description = "知识库 ID", required = true) @PathVariable UUID libraryId,
             @Valid @RequestBody UpdateLibraryIndexPipelineRequest request) {
         return libraryService.updateIndexPipeline(libraryId, request);
+    }
+
+    @Operation(
+            summary = "更新解析配置",
+            description = "对应库配置 Tab「解析配置」。按文件类型选择内置解析器；变更后已有文档需重新解析/重索引。")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "更新成功"),
+            @ApiResponse(responseCode = "404", description = "知识库不存在")
+    })
+    @PutMapping("/{libraryId}/parsing")
+    public VectorLibraryUpdateResponse updateParsing(
+            @Parameter(description = "知识库 ID", required = true) @PathVariable UUID libraryId,
+            @Valid @RequestBody UpdateLibraryParsingRequest request) {
+        return libraryService.updateParsing(libraryId, request);
     }
 
     @Operation(

@@ -10,30 +10,13 @@
           <header class="cfg-section__head">
             <span class="cfg-section__title">基本信息</span>
           </header>
-          <el-form-item :label="LIBRARY_NAME_LABEL" required>
-            <el-input v-model="form.name" :placeholder="LIBRARY_NAME_PLACEHOLDER" />
-          </el-form-item>
-          <el-form-item :label="LIBRARY_DESCRIPTION_LABEL" required>
-            <el-input
-              v-model="form.description"
-              type="textarea"
-              :rows="2"
-              :placeholder="LIBRARY_DESCRIPTION_PLACEHOLDER"
-            />
-          </el-form-item>
-          <el-form-item label="标签">
-            <el-select
-              v-model="form.tags"
-              multiple
-              filterable
-              allow-create
-              default-first-option
-              :placeholder="LIBRARY_TAGS_PLACEHOLDER"
-              class="full-width"
-            />
-          </el-form-item>
+          <LibraryBasicFields :form="form" layout="inline" />
         </section>
       </div>
+    </el-tab-pane>
+
+    <el-tab-pane label="解析配置" name="parsing">
+      <LibraryParsingConfigTab :form="form" />
     </el-tab-pane>
 
     <el-tab-pane label="分块配置" name="pipeline">
@@ -689,6 +672,8 @@ import {
 } from '../api/vector'
 import { useBatchJobPoll, isBatchJobTerminal } from '../composables/useBatchJobPoll'
 import { useLibraryContext } from '../composables/useLibraryContext'
+import LibraryParsingConfigTab from './LibraryParsingConfigTab.vue'
+import LibraryBasicFields from './LibraryBasicFields.vue'
 import { formatListTime } from '../utils/documentDisplay'
 import {
   batchJobProgressStatus,
@@ -706,13 +691,6 @@ import {
   LIBRARY_CHUNK_OVERLAP_RANGE,
   LIBRARY_CHUNK_SIZE_RANGE
 } from '../utils/libraryDefaults'
-import {
-  LIBRARY_DESCRIPTION_LABEL,
-  LIBRARY_DESCRIPTION_PLACEHOLDER,
-  LIBRARY_NAME_LABEL,
-  LIBRARY_NAME_PLACEHOLDER,
-  LIBRARY_TAGS_PLACEHOLDER
-} from '../utils/libraryFormLabels'
 
 const STRATEGY_TAG_TYPES = {
   'paragraph-first': 'info',

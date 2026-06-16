@@ -7,6 +7,8 @@ import com.knowbase.ingest.parse.DocumentParseOptions;
 import com.knowbase.ingest.parse.FormulaExtractionMode;
 import com.knowbase.ingest.parse.ImageExtractionMode;
 import com.knowbase.ingest.parse.OcrLanguageMapper;
+import com.knowbase.ingest.parse.ParserEngineRegistry;
+import com.knowbase.ingest.parse.ParserRuleResolver;
 import com.knowbase.ingest.parse.TableExtractionMode;
 import com.knowbase.ingest.parse.TikaEncodingMapper;
 import com.knowbase.ingest.support.DocMetadataStore;
@@ -33,6 +35,7 @@ public class EffectiveConfigResolver {
     private final OcrProperties ocrProperties;
     private final TextNormalizationProperties globalNormalization;
     private final ContentSignalsDetector contentSignalsDetector;
+    private final ParserEngineRegistry parserEngineRegistry;
 
     public EffectiveConfigResolver(
             LibraryConfigResolver libraryConfigResolver,
@@ -40,13 +43,15 @@ public class EffectiveConfigResolver {
             MimeTypePipelineDefaults mimeDefaults,
             OcrProperties ocrProperties,
             TextNormalizationProperties globalNormalization,
-            ContentSignalsDetector contentSignalsDetector) {
+            ContentSignalsDetector contentSignalsDetector,
+            ParserEngineRegistry parserEngineRegistry) {
         this.libraryConfigResolver = libraryConfigResolver;
         this.docMetadataStore = docMetadataStore;
         this.mimeDefaults = mimeDefaults;
         this.ocrProperties = ocrProperties;
         this.globalNormalization = globalNormalization;
         this.contentSignalsDetector = contentSignalsDetector;
+        this.parserEngineRegistry = parserEngineRegistry;
     }
 
     /** 解析前：族群/MIME 基线 + ingest profile，不含内容信号（供 extract/OCR 选项）。 */
@@ -137,6 +142,7 @@ public class EffectiveConfigResolver {
         TextNormalizationSettings normalization = systemNormalization();
 
         mimeDefaults.apply(mimeType, parsing, cleaning);
+        applyLibraryParsing(library, mimeType, parsing);
 
         ContentSignals signals = null;
         if (parsedText != null && !parsedText.isBlank()) {
@@ -157,6 +163,24 @@ public class EffectiveConfigResolver {
                 configVersion,
                 family,
                 signals);
+    }
+
+    private void applyLibraryParsing(VectorLibraryConfig library, String mimeType, ParsingRulesSettings parsing) {
+        String fileType = ParserRuleResolver.resolveFileType(mimeType, null);
+        String parserId = ParserRuleResolver.resolveParserId(library.getParserRules(), fileType);
+        parserEngineRegistry.apply(parserId, parsing);
+        overlayLibraryParsingAdvanced(library.getParsing(), parsing);
+    }
+
+    /** 库级高级解析项（语言/编码）覆盖引擎与 MIME 默认。 */
+    private static void overlayLibraryParsingAdvanced(ParsingRulesSettings libraryParsing, ParsingRulesSettings target) {
+        if (libraryParsing == null || target == null) {
+            return;
+        }
+        if (libraryParsing.getDefaultLanguage() != null && !libraryParsing.getDefaultLanguage().isBlank()) {
+            target.setDefaultLanguage(libraryParsing.getDefaultLanguage().trim());
+        }
+        target.setAutoDetectEncoding(libraryParsing.isAutoDetectEncoding());
     }
 
     private static void overlayProfileChunking(IngestProfile profile, ChunkingProperties chunking) {

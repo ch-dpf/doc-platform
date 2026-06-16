@@ -1,6 +1,7 @@
 package com.knowbase.library.config;
 
 import com.knowbase.library.dto.config.LibraryIndexPipelineDto;
+import com.knowbase.library.dto.config.LibraryParsingDto;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +38,24 @@ public final class VectorLibraryConfigMerger {
     public static void mergeRetrieval(VectorLibraryConfig target, RetrievalRulesSettings retrieval) {
         if (retrieval != null) {
             target.setRetrieval(retrieval);
+        }
+    }
+
+    public static void mergeParsing(VectorLibraryConfig target, LibraryParsingDto dto) {
+        if (dto == null) {
+            return;
+        }
+        if (dto.parserRules() != null) {
+            target.setParserRules(new ArrayList<>(dto.parserRules()));
+        }
+        if (target.getParsing() == null) {
+            target.setParsing(new ParsingRulesSettings());
+        }
+        if (dto.defaultLanguage() != null && !dto.defaultLanguage().isBlank()) {
+            target.getParsing().setDefaultLanguage(dto.defaultLanguage().trim());
+        }
+        if (dto.autoDetectEncoding() != null) {
+            target.getParsing().setAutoDetectEncoding(dto.autoDetectEncoding());
         }
     }
 

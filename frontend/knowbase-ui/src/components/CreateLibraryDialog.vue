@@ -2,21 +2,15 @@
   <el-dialog
     v-model="visible"
     title="创建知识库"
-    width="720px"
+    width="480px"
     destroy-on-close
     append-to-body
     lock-scroll
-    class="library-config-dialog"
+    class="quick-create-library-dialog"
     @closed="onClosed"
   >
-    <el-form class="create-form" label-width="100px" label-position="right">
-      <LibraryConfigTabs
-        ref="tabsRef"
-        v-model:active-tab="activeTab"
-        :form="form"
-        :chunk-strategy-rows="chunkStrategyRows"
-        strategy-empty-text="系统默认策略"
-      />
+    <el-form class="quick-create-form" label-position="top" @submit.prevent="submit">
+      <LibraryBasicFields :form="form" layout="top" />
     </el-form>
 
     <template #footer>
@@ -30,22 +24,10 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import LibraryConfigTabs from './LibraryConfigTabs.vue'
-import {
-  createVectorLibrary,
-  updateLibraryIndexPipeline,
-  updateLibraryRetrieval
-} from '../api/library'
-import { buildDefaultChunkStrategyRows } from '../utils/chunkStrategyDefaults'
-import {
-  buildCreatePayload,
-  createEmptyLibraryForm
-} from '../utils/libraryDefaults'
-import {
-  buildIndexPipelinePayload,
-  buildRetrievalPayload,
-  normalizeSubmitConfig
-} from '../utils/libraryConfigView'
+import LibraryBasicFields from './LibraryBasicFields.vue'
+import { createVectorLibrary } from '../api/library'
+import { buildCreatePayload, createEmptyLibraryForm } from '../utils/libraryDefaults'
+import { librarySettingsRoute } from '../utils/libraryOnboarding'
 import { usePageTitle } from '../composables/usePageTitle'
 
 const props = defineProps({
@@ -57,31 +39,25 @@ const emit = defineEmits(['update:modelValue', 'created'])
 
 const router = useRouter()
 const { setPageTitle, clearPageTitle } = usePageTitle()
+
 const visible = computed({
   get: () => props.modelValue,
   set: (v) => emit('update:modelValue', v)
 })
 
 const submitting = ref(false)
-const activeTab = ref('basic')
-const tabsRef = ref(null)
-
 const form = reactive(createEmptyLibraryForm())
 
-const chunkStrategyRows = computed(() =>
-  buildDefaultChunkStrategyRows({
-    hierarchicalChunkingEnabled: form.config.hierarchicalChunkingEnabled,
-    chunkDelimiter: form.config.chunkDelimiter
-  })
-)
+function resetForm() {
+  const empty = createEmptyLibraryForm()
+  form.name = empty.name
+  form.description = empty.description
+  form.tags = empty.tags
+}
 
 async function submit() {
   if (!form.name?.trim()) {
     ElMessage.warning('请填写知识库名称')
-    return
-  }
-  if (!form.description?.trim()) {
-    ElMessage.warning('请填写知识库描述')
     return
   }
   submitting.value = true
@@ -99,28 +75,18 @@ async function submit() {
       )
       return
     }
-    const config = normalizeSubmitConfig(form.config)
-    await Promise.all([
-      updateLibraryIndexPipeline(lib.libraryId, buildIndexPipelinePayload(config)),
-      updateLibraryRetrieval(lib.libraryId, buildRetrievalPayload(config))
-    ])
     emit('created', lib)
     ElMessage.success('知识库已创建')
     visible.value = false
-    router.push({ name: 'libraryDocuments', params: { libraryId: lib.libraryId } })
+    router.push(
+      librarySettingsRoute(lib.libraryId, {
+        onboarding: true,
+        tab: 'parsing'
+      })
+    )
   } finally {
     submitting.value = false
   }
-}
-
-function resetForm() {
-  const empty = createEmptyLibraryForm()
-  form.name = empty.name
-  form.description = empty.description
-  form.tags = empty.tags
-  form.config = empty.config
-  activeTab.value = 'basic'
-  tabsRef.value?.resetUi?.()
 }
 
 function onClosed() {
@@ -138,3 +104,11 @@ watch(visible, (v) => {
 })
 </script>
 
+<style scoped>
+.quick-create-library-dialog__hint {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--dp-text-secondary);
+}
+</style>

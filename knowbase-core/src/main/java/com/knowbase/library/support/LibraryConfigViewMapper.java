@@ -1,9 +1,13 @@
 package com.knowbase.library.support;
 
+import com.knowbase.library.config.ParserEngineRule;
+import com.knowbase.library.config.ParsingRulesSettings;
 import com.knowbase.library.config.RetrievalRulesSettings;
 import com.knowbase.library.config.VectorLibraryConfig;
+import com.knowbase.library.config.VectorLibraryConfigFactory;
 import com.knowbase.library.dto.config.LibraryConfigView;
 import com.knowbase.library.dto.config.LibraryIndexPipelineDto;
+import com.knowbase.library.dto.config.LibraryParsingDto;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -22,11 +26,53 @@ public final class LibraryConfigViewMapper {
                 Math.max(1, cfg.getConfigVersion()),
                 cfg.getMetadataDbType(),
                 copyTags(cfg.getTags()),
+                toParsing(cfg),
                 toIndexPipeline(cfg),
                 copyRetrieval(cfg.getRetrieval()),
                 cfg.getPrimaryChunkProfileId(),
                 cfg.isAllowCustomChunkProfiles(),
                 cfg.getMaxActiveChunkProfiles());
+    }
+
+    public static LibraryParsingDto toParsing(VectorLibraryConfig cfg) {
+        List<ParserEngineRule> rules = cfg.getParserRules();
+        if (rules == null || rules.isEmpty()) {
+            rules = defaultParserRules(cfg);
+        }
+        ParsingRulesSettings parsing = cfg.getParsing() != null ? cfg.getParsing() : new ParsingRulesSettings();
+        return new LibraryParsingDto(
+                copyParserRules(rules),
+                parsing.getDefaultLanguage(),
+                parsing.isAutoDetectEncoding());
+    }
+
+    private static List<ParserEngineRule> defaultParserRules(VectorLibraryConfig cfg) {
+        List<String> fileTypes = VectorLibraryConfigFactory.systemSupportedFileTypes(cfg.getAllowedMimeTypes());
+        List<ParserEngineRule> rules = new ArrayList<>();
+        for (String fileType : fileTypes) {
+            ParserEngineRule rule = new ParserEngineRule();
+            rule.setFileType(fileType);
+            rule.setParserId("auto");
+            rules.add(rule);
+        }
+        return rules;
+    }
+
+    private static List<ParserEngineRule> copyParserRules(List<ParserEngineRule> src) {
+        List<ParserEngineRule> copy = new ArrayList<>();
+        if (src == null) {
+            return copy;
+        }
+        for (ParserEngineRule rule : src) {
+            if (rule == null || rule.getFileType() == null || rule.getFileType().isBlank()) {
+                continue;
+            }
+            ParserEngineRule item = new ParserEngineRule();
+            item.setFileType(rule.getFileType().trim().toLowerCase());
+            item.setParserId(rule.getParserId() != null ? rule.getParserId() : "auto");
+            copy.add(item);
+        }
+        return copy;
     }
 
     public static LibraryIndexPipelineDto toIndexPipeline(VectorLibraryConfig cfg) {

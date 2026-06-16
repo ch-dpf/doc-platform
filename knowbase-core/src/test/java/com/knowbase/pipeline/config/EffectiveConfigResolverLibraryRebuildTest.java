@@ -6,6 +6,7 @@ import com.knowbase.ingest.domain.DocMetadata;
 import com.knowbase.ingest.support.DocMetadataStore;
 import com.knowbase.library.config.VectorLibraryConfig;
 import com.knowbase.library.service.LibraryConfigResolver;
+import com.knowbase.ingest.parse.ParserEngineRegistry;
 import com.knowbase.pipeline.content.ContentFamilyPipelineDefaults;
 import com.knowbase.pipeline.content.DefaultContentSignalsDetector;
 import com.knowbase.platform.JsonSupport;
@@ -46,7 +47,8 @@ class EffectiveConfigResolverLibraryRebuildTest {
                 new MimeTypePipelineDefaults(new ContentFamilyPipelineDefaults(ocrProperties)),
                 ocrProperties,
                 new TextNormalizationProperties(),
-                new DefaultContentSignalsDetector());
+                new DefaultContentSignalsDetector(),
+                new ParserEngineRegistry());
     }
 
     @Test

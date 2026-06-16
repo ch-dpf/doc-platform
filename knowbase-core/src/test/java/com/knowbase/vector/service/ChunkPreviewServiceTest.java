@@ -10,6 +10,7 @@ import com.knowbase.pipeline.config.EffectiveConfigResolver;
 import com.knowbase.pipeline.config.MimeTypePipelineDefaults;
 import com.knowbase.ingest.config.OcrProperties;
 import com.knowbase.ingest.config.TextNormalizationProperties;
+import com.knowbase.ingest.parse.ParserEngineRegistry;
 import com.knowbase.pipeline.content.ContentFamilyPipelineDefaults;
 import com.knowbase.pipeline.content.DefaultContentSignalsDetector;
 import com.knowbase.vector.config.ChunkingProperties;
@@ -59,7 +60,8 @@ class ChunkPreviewServiceTest {
                 new MimeTypePipelineDefaults(new ContentFamilyPipelineDefaults(ocrProperties)),
                 ocrProperties,
                 new TextNormalizationProperties(),
-                new DefaultContentSignalsDetector());
+                new DefaultContentSignalsDetector(),
+                new ParserEngineRegistry());
         LibraryChunkPipeline pipeline = new LibraryChunkPipeline(
                 chunkingService,
                 textNormalizer,

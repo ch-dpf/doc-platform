@@ -11,7 +11,7 @@
           <strong>{{ pendingMigrationLibraries }}</strong> 个待迁移
         </span>
 
-        <el-button type="primary" round @click="wizardVisible = true">创建知识库</el-button>
+        <el-button type="primary" round @click="flowVisible = true">创建知识库</el-button>
 
       </template>
 
@@ -109,29 +109,7 @@
 
         </el-form>
 
-        <div v-if="tagOptions.length" class="tag-index">
-
-          <span class="tag-index__label">标签：</span>
-
-          <el-check-tag
-
-            v-for="t in tagOptions"
-
-            :key="t"
-
-            :checked="tagFilter === t"
-
-            class="tag-index__item"
-
-            @change="(checked) => onTagIndexToggle(t, checked)"
-
-          >
-
-            {{ t }}
-
-          </el-check-tag>
-
-        </div>
+        
 
       </div>
 
@@ -247,11 +225,9 @@
 
         </el-table-column>
 
-        <el-table-column label="操作" min-width="120" fixed="right" align="center">
+        <el-table-column label="操作" min-width="72" fixed="right" align="center">
 
           <template #default="{ row }">
-
-            <el-button link type="primary" @click.stop="openEdit(row)">库配置</el-button>
 
             <el-button
 
@@ -367,8 +343,6 @@
 
           <footer class="library-card__foot" @click.stop>
 
-            <el-button link type="primary" size="small" @click="openEdit(row)">库配置</el-button>
-
             <el-button
 
               link
@@ -445,26 +419,10 @@
 
 
 
-    <CreateLibraryWizard
-
-      v-model="wizardVisible"
-
+    <CreateLibraryFlow
+      v-model="flowVisible"
       :tenant-id="tenantId"
-
       @created="onCreated"
-
-    />
-
-    <EditLibrarySettingsDrawer
-
-      v-model="editVisible"
-
-      :library-id="editLibraryId"
-
-      :initial-tab="editInitialTab"
-
-      @saved="onSettingsSaved"
-
     />
 
   </div>
@@ -497,9 +455,7 @@ import { useLibraryContext } from '../composables/useLibraryContext'
 
 import PageCard from '../components/PageCard.vue'
 
-import CreateLibraryWizard from '../components/CreateLibraryWizard.vue'
-
-import EditLibrarySettingsDrawer from '../components/EditLibrarySettingsDrawer.vue'
+import CreateLibraryFlow from '../components/CreateLibraryFlow.vue'
 import { labelForEmbeddingModel } from '../utils/embeddingModels'
 
 const DEFAULT_LIBRARY_ID = '00000000-0000-0000-0000-000000000001'
@@ -530,13 +486,7 @@ const tagFilter = ref('')
 
 const tagOptions = ref([])
 
-const wizardVisible = ref(false)
-
-const editVisible = ref(false)
-
-const editLibraryId = ref('')
-
-const editInitialTab = ref('basic')
+const flowVisible = ref(false)
 
 const pendingMigrationLibraries = computed(
   () => items.value.filter((row) => (row.pendingMigrationCount || 0) > 0).length
@@ -743,15 +693,10 @@ function drillDown(row) {
 
 
 function onCreated(lib) {
-
   libraryId.value = lib.libraryId
-
+  persist()
   loadTagOptions()
-
   load(1)
-
-  drillDown(lib)
-
 }
 
 
@@ -764,16 +709,6 @@ function openEdit(row, tab = 'basic') {
     params: { libraryId: row.libraryId },
     query: tab !== 'basic' ? { tab } : {}
   })
-}
-
-
-
-async function onSettingsSaved() {
-
-  await loadTagOptions()
-
-  await load(page.value)
-
 }
 
 

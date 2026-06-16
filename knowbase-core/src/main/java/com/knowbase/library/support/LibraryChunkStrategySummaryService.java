@@ -1,5 +1,7 @@
 package com.knowbase.library.support;
 
+import com.knowbase.ingest.parse.ParserEngineRegistry;
+import com.knowbase.ingest.parse.ParserRuleResolver;
 import com.knowbase.library.config.CleaningRulesSettings;
 import com.knowbase.library.config.ParsingRulesSettings;
 import com.knowbase.library.config.VectorLibraryConfig;
@@ -35,11 +37,15 @@ public class LibraryChunkStrategySummaryService {
 
     private final LibraryConfigResolver libraryConfigResolver;
     private final MimeTypePipelineDefaults mimeDefaults;
+    private final ParserEngineRegistry parserEngineRegistry;
 
     public LibraryChunkStrategySummaryService(
-            LibraryConfigResolver libraryConfigResolver, MimeTypePipelineDefaults mimeDefaults) {
+            LibraryConfigResolver libraryConfigResolver,
+            MimeTypePipelineDefaults mimeDefaults,
+            ParserEngineRegistry parserEngineRegistry) {
         this.libraryConfigResolver = libraryConfigResolver;
         this.mimeDefaults = mimeDefaults;
+        this.parserEngineRegistry = parserEngineRegistry;
     }
 
     public List<ChunkStrategySummaryRow> summarize(UUID libraryId) {
@@ -65,6 +71,14 @@ public class LibraryChunkStrategySummaryService {
                 PlatformPipelineDefaults.copyCleaning(PlatformPipelineDefaults.baselineCleaning());
         ChunkingProperties chunking = PlatformPipelineDefaults.copyChunking(libraryBase);
         mimeDefaults.apply(mime, parsing, cleaning);
+        String parserId = ParserRuleResolver.resolveParserId(cfg.getParserRules(), fileType);
+        parserEngineRegistry.apply(parserId, parsing);
+        if (cfg.getParsing() != null) {
+            if (cfg.getParsing().getDefaultLanguage() != null && !cfg.getParsing().getDefaultLanguage().isBlank()) {
+                parsing.setDefaultLanguage(cfg.getParsing().getDefaultLanguage().trim());
+            }
+            parsing.setAutoDetectEncoding(cfg.getParsing().isAutoDetectEncoding());
+        }
 
         String strategyWire = chunking.getStrategy() != null
                 ? chunking.getStrategy().toWire()
@@ -80,11 +94,12 @@ public class LibraryChunkStrategySummaryService {
                 strategyWire,
                 STRATEGY_LABELS.getOrDefault(strategyWire, strategyWire),
                 hierarchical,
-                buildParsingNote(parsing) + delimiterNote);
+                buildParsingNote(parsing, parserId) + delimiterNote);
     }
 
-    private static String buildParsingNote(ParsingRulesSettings parsing) {
+    private String buildParsingNote(ParsingRulesSettings parsing, String parserId) {
         List<String> parts = new ArrayList<>();
+        parts.add("解析器:" + parserEngineRegistry.labelFor(parserId));
         if (parsing.isOcrEnabled()) {
             parts.add("OCR 开启");
         }

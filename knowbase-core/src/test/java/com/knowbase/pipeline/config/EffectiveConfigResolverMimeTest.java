@@ -3,6 +3,7 @@ package com.knowbase.pipeline.config;
 import com.knowbase.ingest.config.OcrProperties;
 import com.knowbase.ingest.config.TextNormalizationProperties;
 import com.knowbase.ingest.support.DocMetadataStore;
+import com.knowbase.ingest.parse.ParserEngineRegistry;
 import com.knowbase.pipeline.content.ContentFamilyPipelineDefaults;
 import com.knowbase.pipeline.content.DefaultContentSignalsDetector;
 import com.knowbase.library.config.VectorLibraryConfig;
@@ -45,7 +46,8 @@ class EffectiveConfigResolverMimeTest {
                 mimeDefaults,
                 ocrProperties,
                 new TextNormalizationProperties(),
-                new DefaultContentSignalsDetector());
+                new DefaultContentSignalsDetector(),
+                new ParserEngineRegistry());
     }
 
     @Test

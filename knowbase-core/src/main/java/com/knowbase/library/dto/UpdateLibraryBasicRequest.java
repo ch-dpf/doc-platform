@@ -11,7 +11,6 @@ public record UpdateLibraryBasicRequest(
         @Schema(description = "知识库名称", example = "研发文档库", requiredMode = Schema.RequiredMode.REQUIRED)
         @NotBlank
         String name,
-        @Schema(description = "简介说明", requiredMode = Schema.RequiredMode.REQUIRED)
-        @NotBlank
+        @Schema(description = "简介说明（选填）")
         String description,
         @Schema(description = "标签列表", example = "[\"研发\"]") List<String> tags) {}

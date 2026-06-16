@@ -40,14 +40,8 @@ public final class VectorLibraryConfigFactory {
         if (cfg.getRetrieval() == null) {
             cfg.setRetrieval(new RetrievalRulesSettings());
         }
-        if (cfg.getRetrieval().getDefaultTopK() <= 0) {
-            cfg.getRetrieval().setDefaultTopK(12);
-        }
-        if (cfg.getRetrieval().getMetadataFilterFields() == null
-                || cfg.getRetrieval().getMetadataFilterFields().isEmpty()) {
-            cfg.getRetrieval().setMetadataFilterFields(
-                    new ArrayList<>(TemporalMetadataFields.defaultFilterWhitelist()));
-        }
+        applyRetrievalDefaults(cfg.getRetrieval());
+        applyParsingDefaults(cfg, globalMimeTypes);
         if (cfg.getGovernance() == null) {
             cfg.setGovernance(new GovernanceRulesSettings());
         }
@@ -60,7 +54,55 @@ public final class VectorLibraryConfigFactory {
         if (cfg.getChunkOverlap() <= 0) {
             cfg.setChunkOverlap(120);
         }
+        if (cfg.getEmbeddingProvider() == null || cfg.getEmbeddingProvider().isBlank()) {
+            cfg.setEmbeddingProvider("ollama");
+        }
+        if (cfg.getEmbeddingModel() == null || cfg.getEmbeddingModel().isBlank()) {
+            cfg.setEmbeddingModel("nomic-embed-text");
+        }
+        if (cfg.getEmbeddingDimension() <= 0) {
+            cfg.setEmbeddingDimension(768);
+        }
         return cfg;
+    }
+
+    private static void applyRetrievalDefaults(RetrievalRulesSettings retrieval) {
+        if (retrieval == null) {
+            return;
+        }
+        retrieval.setHybridSearchEnabled(true);
+        retrieval.setRerankEnabled(true);
+        if (retrieval.getSimilarityThreshold() <= 0.0) {
+            retrieval.setSimilarityThreshold(0.4);
+        }
+        if (retrieval.getDefaultTopK() <= 0) {
+            retrieval.setDefaultTopK(12);
+        }
+        if (retrieval.getMetadataFilterFields() == null
+                || retrieval.getMetadataFilterFields().isEmpty()) {
+            retrieval.setMetadataFilterFields(
+                    new ArrayList<>(TemporalMetadataFields.defaultFilterWhitelist()));
+        }
+    }
+
+    private static void applyParsingDefaults(VectorLibraryConfig cfg, List<String> globalMimeTypes) {
+        if (cfg.getParsing() == null) {
+            cfg.setParsing(new ParsingRulesSettings());
+        }
+        ParsingRulesSettings parsing = cfg.getParsing();
+        if (parsing.getDefaultLanguage() == null || parsing.getDefaultLanguage().isBlank()) {
+            parsing.setDefaultLanguage("zh-CN");
+        }
+        if (cfg.getParserRules() == null || cfg.getParserRules().isEmpty()) {
+            List<ParserEngineRule> rules = new ArrayList<>();
+            for (String fileType : systemSupportedFileTypes(globalMimeTypes)) {
+                ParserEngineRule rule = new ParserEngineRule();
+                rule.setFileType(fileType);
+                rule.setParserId("auto");
+                rules.add(rule);
+            }
+            cfg.setParserRules(rules);
+        }
     }
 
     /** 由系统 MIME 白名单推导对外展示的文件类型标识（一期只读）。 */
@@ -76,6 +118,39 @@ public final class VectorLibraryConfigFactory {
             }
         }
         return types;
+    }
+
+    /** 由 MIME 或文件名扩展名解析文件类型标识（pdf/word/excel/txt/markdown）。 */
+    public static String resolveFileType(String mimeType, String fileName) {
+        if (mimeType != null && !mimeType.isBlank()) {
+            String m = mimeType.trim().toLowerCase();
+            for (Map.Entry<String, List<String>> entry : FILE_TYPE_MIMES.entrySet()) {
+                for (String mapped : entry.getValue()) {
+                    if (mapped.equalsIgnoreCase(m)) {
+                        return entry.getKey();
+                    }
+                }
+            }
+        }
+        if (fileName != null) {
+            String lower = fileName.trim().toLowerCase();
+            if (lower.endsWith(".pdf")) {
+                return "pdf";
+            }
+            if (lower.endsWith(".doc") || lower.endsWith(".docx")) {
+                return "word";
+            }
+            if (lower.endsWith(".xls") || lower.endsWith(".xlsx")) {
+                return "excel";
+            }
+            if (lower.endsWith(".txt")) {
+                return "txt";
+            }
+            if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
+                return "markdown";
+            }
+        }
+        return "";
     }
 
     public static List<String> resolveMimeTypes(List<String> fileTypes, List<String> globalFallback) {
