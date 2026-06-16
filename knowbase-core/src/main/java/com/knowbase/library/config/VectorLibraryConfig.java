@@ -15,7 +15,7 @@ public class VectorLibraryConfig {
     private String embeddingModel = "nomic-embed-text";
     private int embeddingDimension = 768;
 
-    private ChunkingStrategy chunkingStrategy = ChunkingStrategy.PARAGRAPH_FIRST;
+    private ChunkingStrategy chunkingStrategy = ChunkingStrategy.AUTO;
     private int chunkSize = 500;
     private int chunkOverlap = 120;
     /** 父子块：heading-level 长文档按标题父段 + 子块索引 */

@@ -7,6 +7,7 @@ import com.knowbase.library.config.VectorLibraryConfig;
 import com.knowbase.library.service.LibraryConfigResolver;
 import com.knowbase.ingest.parse.ParserEngineRegistry;
 import com.knowbase.pipeline.content.ContentFamilyPipelineDefaults;
+import com.knowbase.pipeline.content.ContentSignalsChunkingAdjuster;
 import com.knowbase.pipeline.content.DefaultContentSignalsDetector;
 import com.knowbase.vector.chunk.ChunkingStrategy;
 import com.knowbase.vector.config.ChunkingProperties;
@@ -45,14 +46,16 @@ class EffectiveConfigResolverContentSignalsTest {
                 ocrProperties,
                 new TextNormalizationProperties(),
                 new DefaultContentSignalsDetector(),
+                new ContentSignalsChunkingAdjuster(),
                 new ParserEngineRegistry());
     }
 
     @Test
-    void contentSignalsDoNotChangeLibraryChunkingStrategy() {
+    void shortDocumentDowngradesExplicitHeadingStrategy() {
         UUID libraryId = UUID.randomUUID();
         VectorLibraryConfig library = new VectorLibraryConfig();
         library.setConfigVersion(2);
+        library.setChunkingStrategy(ChunkingStrategy.HEADING_LEVEL);
         ChunkingProperties chunking = new ChunkingProperties();
         chunking.setStrategy(ChunkingStrategy.HEADING_LEVEL);
         when(libraryConfigResolver.config(libraryId)).thenReturn(library);
@@ -65,7 +68,7 @@ class EffectiveConfigResolverContentSignalsTest {
                 null,
                 shortDoc);
 
-        assertEquals(ChunkingStrategy.HEADING_LEVEL, effective.chunking().getStrategy());
+        assertEquals(ChunkingStrategy.PARAGRAPH_FIRST, effective.chunking().getStrategy());
         assertNotNull(effective.contentSignals());
     }
 }

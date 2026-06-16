@@ -32,4 +32,8 @@ public record LibraryIndexPipelineDto(
         @Schema(
                 description = "自定义分隔符；支持字面量 \\n。非空时优先按分隔符切段",
                 example = "")
-        String chunkDelimiter) {}
+        String chunkDelimiter,
+        @Schema(
+                description = "分块策略：auto=按文件类型默认；或 paragraph-first / heading-level / semantic / fixed-char",
+                example = "auto")
+        String chunkingStrategy) {}

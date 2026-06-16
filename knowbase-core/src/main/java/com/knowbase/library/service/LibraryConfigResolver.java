@@ -110,9 +110,9 @@ public class LibraryConfigResolver {
     public ChunkingProperties chunkingFor(UUID libraryId) {
         VectorLibraryConfig cfg = config(libraryId);
         ChunkingProperties p = new ChunkingProperties();
-        ChunkingStrategy strategy = globalChunkingDefaults.getStrategy() != null
-                ? globalChunkingDefaults.getStrategy()
-                : ChunkingStrategy.PARAGRAPH_FIRST;
+        ChunkingStrategy strategy = cfg.getChunkingStrategy() != null
+                ? cfg.getChunkingStrategy()
+                : ChunkingStrategy.AUTO;
         p.setStrategy(strategy);
         p.setChunkSize(cfg.getChunkSize() > 0 ? cfg.getChunkSize() : globalChunkingDefaults.getChunkSize());
         p.setOverlap(cfg.getChunkOverlap() >= 0 ? cfg.getChunkOverlap() : globalChunkingDefaults.getOverlap());

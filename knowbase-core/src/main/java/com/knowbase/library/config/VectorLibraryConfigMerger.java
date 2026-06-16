@@ -2,6 +2,7 @@ package com.knowbase.library.config;
 
 import com.knowbase.library.dto.config.LibraryIndexPipelineDto;
 import com.knowbase.library.dto.config.LibraryParsingDto;
+import com.knowbase.vector.chunk.ChunkingStrategy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +34,9 @@ public final class VectorLibraryConfigMerger {
         target.setChunkOverlap(dto.chunkOverlap());
         target.setHierarchicalChunkingEnabled(dto.hierarchicalChunkingEnabled());
         target.setChunkDelimiter(dto.chunkDelimiter() != null ? dto.chunkDelimiter().strip() : "");
+        if (dto.chunkingStrategy() != null && !dto.chunkingStrategy().isBlank()) {
+            target.setChunkingStrategy(ChunkingStrategy.fromWire(dto.chunkingStrategy()));
+        }
     }
 
     public static void mergeRetrieval(VectorLibraryConfig target, RetrievalRulesSettings retrieval) {
@@ -86,7 +90,8 @@ public final class VectorLibraryConfigMerger {
                     cfg.getEmbeddingModel(),
                     cfg.getEmbeddingDimension(),
                     cfg.isHierarchicalChunkingEnabled(),
-                    cfg.getChunkDelimiter());
+                    cfg.getChunkDelimiter(),
+                    (cfg.getChunkingStrategy() != null ? cfg.getChunkingStrategy() : ChunkingStrategy.AUTO).toWire());
         }
     }
 }

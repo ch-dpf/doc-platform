@@ -161,7 +161,7 @@
                         </ul>
 
                         <div v-else-if="invalidFiles.length" class="pick-list-empty pick-list-empty--warn">
-                          所选文件均不符合库类型
+                          所选文件均不符合支持的文件类型
                         </div>
                         <div v-else class="pick-list-empty">
                           在上方选择文件或文件夹
@@ -1051,7 +1051,7 @@ function onFolderSelected(event) {
     pickNotice.value = {
       type: 'warning',
       title: '未找到可接入的文件',
-      description: `文件夹内没有符合当前库类型（${supportedTypesLabel.value}）的文件，请检查目录或调整知识库支持的文件类型。`
+      description: `文件夹内没有符合当前库支持的文件类型（${supportedTypesLabel.value}）的文件，请检查目录或联系管理员调整系统 MIME 白名单。`
     }
     return
   }

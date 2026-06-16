@@ -20,6 +20,7 @@ import com.knowbase.library.service.LibraryConfigResolver;
 import com.knowbase.pipeline.content.ContentFamily;
 import com.knowbase.pipeline.content.ContentFamilyResolver;
 import com.knowbase.pipeline.content.ContentSignals;
+import com.knowbase.pipeline.content.ContentSignalsChunkingAdjuster;
 import com.knowbase.pipeline.content.ContentSignalsDetector;
 import com.knowbase.vector.config.ChunkingProperties;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ public class EffectiveConfigResolver {
     private final OcrProperties ocrProperties;
     private final TextNormalizationProperties globalNormalization;
     private final ContentSignalsDetector contentSignalsDetector;
+    private final ContentSignalsChunkingAdjuster contentSignalsChunkingAdjuster;
     private final ParserEngineRegistry parserEngineRegistry;
 
     public EffectiveConfigResolver(
@@ -44,6 +46,7 @@ public class EffectiveConfigResolver {
             OcrProperties ocrProperties,
             TextNormalizationProperties globalNormalization,
             ContentSignalsDetector contentSignalsDetector,
+            ContentSignalsChunkingAdjuster contentSignalsChunkingAdjuster,
             ParserEngineRegistry parserEngineRegistry) {
         this.libraryConfigResolver = libraryConfigResolver;
         this.docMetadataStore = docMetadataStore;
@@ -51,6 +54,7 @@ public class EffectiveConfigResolver {
         this.ocrProperties = ocrProperties;
         this.globalNormalization = globalNormalization;
         this.contentSignalsDetector = contentSignalsDetector;
+        this.contentSignalsChunkingAdjuster = contentSignalsChunkingAdjuster;
         this.parserEngineRegistry = parserEngineRegistry;
     }
 
@@ -144,9 +148,12 @@ public class EffectiveConfigResolver {
         mimeDefaults.apply(mimeType, parsing, cleaning);
         applyLibraryParsing(library, mimeType, parsing);
 
+        chunking.setStrategy(ChunkingStrategyResolver.resolve(library.getChunkingStrategy(), mimeType));
+
         ContentSignals signals = null;
         if (parsedText != null && !parsedText.isBlank()) {
             signals = contentSignalsDetector.detect(family, mimeType, parsedText);
+            contentSignalsChunkingAdjuster.apply(family, signals, chunking);
         }
 
         if (profile != null) {

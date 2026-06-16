@@ -18,7 +18,7 @@ export function getVectorLibrary(libraryId) {
   return client.get(`/api/v1/vector-libraries/${libraryId}`)
 }
 
-/** GET 按文件类型的生效分块策略摘要（只读） */
+/** GET 按文件类型的入库分块策略（只读） */
 export function getChunkStrategySummary(libraryId) {
   return client.get(`/api/v1/vector-libraries/${libraryId}/chunk-strategy-summary`)
 }

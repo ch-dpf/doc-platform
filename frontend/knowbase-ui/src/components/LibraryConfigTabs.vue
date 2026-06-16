@@ -26,13 +26,8 @@
             <span class="cfg-section__title">分块</span>
           </header>
           <p class="cfg-section__intro">
-            入库前将文档切分为可检索片段。策略按文件类型自动路由；合并规则由系统统一配置。
+            选择全库分块策略，或设为「自动」按文件类型应用默认策略；块大小与重叠作用于所有类型。
           </p>
-          <div v-if="form.config.primaryChunkProfileId" class="chunk-profile-meta">
-            <span class="chunk-profile-meta__label">主分块档</span>
-            <code class="chunk-profile-meta__id">{{ form.config.primaryChunkProfileId }}</code>
-            <span class="chunk-profile-meta__hint">默认问答仅检索此档；采集可产生其他分块档但问答默认不跨档</span>
-          </div>
 
           <el-collapse v-model="chunkCollapseExpanded" class="strategy-collapse">
             <el-collapse-item name="types">
@@ -42,12 +37,30 @@
                   <span class="strategy-collapse__summary">{{ strategySummaryText }}</span>
                 </div>
               </template>
-              <p class="chunk-part__desc">展示各类型文档入库时将采用的策略；库级分隔符优先生效。</p>
-              <div v-if="chunkStrategyRows.length" class="strategy-card-grid">
+              <div class="chunk-strategy-select">
+                <el-select
+                  v-model="form.config.chunkingStrategy"
+                  class="chunk-strategy-select__control"
+                  placeholder="选择分块策略"
+                >
+                  <el-option
+                    v-for="opt in CHUNKING_STRATEGY_OPTIONS"
+                    :key="opt.value"
+                    :label="opt.label"
+                    :value="opt.value"
+                  >
+                    <div class="chunk-strategy-option">
+                      <span class="chunk-strategy-option__label">{{ opt.label }}</span>
+                      <span class="chunk-strategy-option__desc">{{ opt.description }}</span>
+                    </div>
+                  </el-option>
+                </el-select>
+              </div>
+              <div v-if="displayChunkStrategyRows.length" class="strategy-card-grid">
                 <div
-                  v-for="row in chunkStrategyRows"
+                  v-for="row in displayChunkStrategyRows"
                   :key="row.fileType"
-                  class="strategy-card"
+                  class="strategy-card strategy-card--compact"
                 >
                   <div class="strategy-card__head">
                     <span class="strategy-card__type">{{ row.fileTypeLabel }}</span>
@@ -60,11 +73,6 @@
                       {{ row.chunkingStrategyLabel }}
                     </el-tag>
                   </div>
-                  <p class="strategy-card__note">{{ row.parsingNote }}</p>
-                  <span
-                    v-if="row.hierarchicalWhenApplicable"
-                    class="strategy-card__badge"
-                  >可启用父子块</span>
                 </div>
               </div>
               <p v-else class="chunk-part__empty">{{ strategyEmptyText }}</p>
@@ -138,252 +146,275 @@
                 </div>
               </div>
             </el-collapse-item>
+          </el-collapse>
 
-            <el-collapse-item name="profiles">
+          <el-collapse v-model="chunkAdvancedExpanded" class="chunk-advanced-options-collapse">
+            <el-collapse-item name="advanced">
               <template #title>
-                <div class="strategy-collapse__head">
-                  <span class="chunk-part__label">分块档管理</span>
-                  <span class="strategy-collapse__summary">
-                    {{ chunkProfiles.length ? `${chunkProfiles.length} 个活跃档` : '暂无活跃档' }}
-                  </span>
+                <div class="chunk-advanced-options-collapse__head">
+                  <span class="chunk-advanced-options-collapse__title">高级选项</span>
+                  <span class="chunk-advanced-options-collapse__summary">{{ chunkAdvancedSummary }}</span>
                 </div>
               </template>
-              <p class="chunk-part__desc">
-                每次采集/解析按有效分块配置生成 <code>cp_*</code> 指纹。默认问答仅检索主档。
-              </p>
-              <el-alert
-                v-if="migrationCandidates?.candidateCount > 0"
-                class="migration-alert"
-                type="warning"
-                :closable="false"
-                show-icon
-              >
-                <template #title>
-                  尚有 {{ migrationCandidates.candidateCount }} 篇文档不在主档
-                  <code class="migration-alert__primary">{{ migrationCandidates.primaryChunkProfileId }}</code>
-                </template>
-                <div class="migration-alert__body">
-                  <span>默认问答将无法检索这些文档，建议迁移到当前主档。</span>
+
+              <div v-if="form.config.primaryChunkProfileId" class="chunk-profile-meta chunk-profile-meta--in-advanced">
+                <span class="chunk-profile-meta__label">主分块档</span>
+                <code class="chunk-profile-meta__id">{{ form.config.primaryChunkProfileId }}</code>
+                <span class="chunk-profile-meta__hint">默认问答仅检索此档；采集可产生其他分块档但问答默认不跨档</span>
+              </div>
+
+              <section class="chunk-advanced-section">
+                <header class="chunk-advanced-section__head">
+                  <span class="chunk-advanced-section__title">分块档治理</span>
+                  <span class="chunk-advanced-section__summary">{{ profileGovernanceSummary }}</span>
+                </header>
+                <p class="chunk-part__desc chunk-part__desc--tight">
+                  控制采集时是否允许产生与库默认不同的分块档，以及库内可同时保留的活跃档数量。
+                </p>
+                <div class="chunk-governance-row chunk-governance-row--in-advanced">
+                  <div class="chunk-toggle-row">
+                    <div class="chunk-toggle-row__text">
+                      <span class="chunk-toggle-row__title">允许采集覆盖分块</span>
+                      <span class="chunk-toggle-row__desc">关闭后仅允许库默认分块档入库</span>
+                    </div>
+                    <el-switch v-model="form.config.allowCustomChunkProfiles" />
+                  </div>
+                  <el-form-item label="最大活跃档" label-width="96px" class="chunk-governance-row__limit">
+                    <el-input-number
+                      v-model="form.config.maxActiveChunkProfiles"
+                      :min="1"
+                      :max="20"
+                      controls-position="right"
+                    />
+                  </el-form-item>
+                </div>
+              </section>
+
+              <section class="chunk-advanced-section">
+                <header class="chunk-advanced-section__head">
+                  <span class="chunk-advanced-section__title">分块档管理</span>
+                  <span class="chunk-advanced-section__summary">
+                    {{ chunkProfiles.length ? `${chunkProfiles.length} 个活跃档` : '暂无活跃档' }}
+                  </span>
+                </header>
+                <p class="chunk-part__desc chunk-part__desc--tight">
+                  每次采集/解析按有效分块配置生成 <code>cp_*</code> 指纹。默认问答仅检索主档。
+                </p>
+                <el-alert
+                  v-if="migrationCandidates?.candidateCount > 0"
+                  class="migration-alert"
+                  type="warning"
+                  :closable="false"
+                  show-icon
+                >
+                  <template #title>
+                    尚有 {{ migrationCandidates.candidateCount }} 篇文档不在主档
+                    <code class="migration-alert__primary">{{ migrationCandidates.primaryChunkProfileId }}</code>
+                  </template>
+                  <div class="migration-alert__body">
+                    <span>默认问答将无法检索这些文档，建议迁移到当前主档。</span>
+                    <el-button
+                      size="small"
+                      round
+                      type="warning"
+                      :loading="migrating"
+                      @click.stop="openMigrationWizard"
+                    >
+                      一键迁移到主档
+                    </el-button>
+                  </div>
+                </el-alert>
+                <div class="chunk-profiles-toolbar">
+                  <el-button
+                    size="small"
+                    round
+                    :loading="profilesLoading"
+                    :disabled="!libraryId"
+                    @click.stop="loadChunkProfiles"
+                  >
+                    刷新
+                  </el-button>
                   <el-button
                     size="small"
                     round
                     type="warning"
-                    :loading="migrating"
-                    @click.stop="openMigrationWizard"
+                    plain
+                    :loading="backfillLoading"
+                    :disabled="!libraryId"
+                    @click.stop="runBackfill"
                   >
-                    一键迁移到主档
+                    回填历史档 ID
                   </el-button>
                 </div>
-              </el-alert>
-              <div class="chunk-governance-row">
-                <div class="chunk-toggle-row">
-                  <div class="chunk-toggle-row__text">
-                    <span class="chunk-toggle-row__title">允许采集覆盖分块</span>
-                    <span class="chunk-toggle-row__desc">关闭后仅允许库默认分块档入库</span>
+                <div v-if="activeBatchJob" class="batch-job-panel">
+                  <div class="batch-job-panel__head">
+                    <span class="batch-job-panel__title">
+                      {{ batchJobTypeLabel(activeBatchJob.jobType) }}
+                      · {{ batchJobStatusLabel(activeBatchJob.status) }}
+                    </span>
+                    <code v-if="activeBatchJob.chunkProfileId" class="batch-job-panel__profile">
+                      {{ activeBatchJob.chunkProfileId }}
+                    </code>
                   </div>
-                  <el-switch v-model="form.config.allowCustomChunkProfiles" />
-                </div>
-                <el-form-item label="最大活跃档" label-width="96px" class="chunk-governance-row__limit">
-                  <el-input-number
-                    v-model="form.config.maxActiveChunkProfiles"
-                    :min="1"
-                    :max="20"
-                    controls-position="right"
+                  <el-progress
+                    :percentage="activeBatchJob.progressPercent"
+                    :status="batchJobProgressStatus(activeBatchJob.status)"
                   />
-                </el-form-item>
-              </div>
-              <div class="chunk-profiles-toolbar">
-                <el-button
-                  size="small"
-                  round
-                  :loading="profilesLoading"
-                  :disabled="!libraryId"
-                  @click.stop="loadChunkProfiles"
-                >
-                  刷新
-                </el-button>
-                <el-button
-                  size="small"
-                  round
-                  type="warning"
-                  plain
-                  :loading="backfillLoading"
-                  :disabled="!libraryId"
-                  @click.stop="runBackfill"
-                >
-                  回填历史档 ID
-                </el-button>
-              </div>
-              <div v-if="activeBatchJob" class="batch-job-panel">
-                <div class="batch-job-panel__head">
-                  <span class="batch-job-panel__title">
-                    {{ batchJobTypeLabel(activeBatchJob.jobType) }}
-                    · {{ batchJobStatusLabel(activeBatchJob.status) }}
-                  </span>
-                  <code v-if="activeBatchJob.chunkProfileId" class="batch-job-panel__profile">
-                    {{ activeBatchJob.chunkProfileId }}
-                  </code>
+                  <p class="batch-job-panel__meta">
+                    {{ activeBatchJob.completedCount }} / {{ activeBatchJob.totalCount }} 完成
+                    <span v-if="activeBatchJob.failedCount">，{{ activeBatchJob.failedCount }} 失败</span>
+                  </p>
                 </div>
-                <el-progress
-                  :percentage="activeBatchJob.progressPercent"
-                  :status="batchJobProgressStatus(activeBatchJob.status)"
-                />
-                <p class="batch-job-panel__meta">
-                  {{ activeBatchJob.completedCount }} / {{ activeBatchJob.totalCount }} 完成
-                  <span v-if="activeBatchJob.failedCount">，{{ activeBatchJob.failedCount }} 失败</span>
-                </p>
-              </div>
-              <el-table
-                v-loading="profilesLoading"
-                :data="chunkProfiles"
-                size="small"
-                stripe
-                empty-text="暂无活跃分块档（入库后将自动出现）"
-                class="chunk-profiles-table"
-              >
-                <el-table-column label="分块档" min-width="140">
-                  <template #default="{ row }">
-                    <code class="chunk-profile-meta__id">{{ row.chunkProfileId }}</code>
-                  </template>
-                </el-table-column>
-                <el-table-column prop="docCount" label="文档" width="72" align="center" />
-                <el-table-column prop="chunkCount" label="分块" width="72" align="center" />
-                <el-table-column label="状态" width="88" align="center">
-                  <template #default="{ row }">
-                    <el-tag v-if="row.primary" size="small" type="success" effect="plain">主档</el-tag>
-                    <el-tag v-else size="small" type="info" effect="plain">非主档</el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="220" align="center">
-                  <template #default="{ row }">
-                    <el-button
-                      v-if="!row.primary"
-                      link
-                      type="primary"
-                      :loading="settingPrimaryId === row.chunkProfileId"
-                      @click.stop="onSetPrimary(row)"
-                    >
-                      设为主档
-                    </el-button>
-                    <el-button
-                      link
-                      type="warning"
-                      :loading="reindexingProfileId === row.chunkProfileId"
-                      :disabled="!row.docCount"
-                      @click.stop="onReindexProfile(row)"
-                    >
-                      重索引
-                    </el-button>
-                    <el-button
-                      v-if="!row.primary"
-                      link
-                      type="danger"
-                      :loading="archivingProfileId === row.chunkProfileId"
-                      :disabled="!row.docCount"
-                      @click.stop="onArchiveProfile(row)"
-                    >
-                      归档
-                    </el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
-            </el-collapse-item>
+                <el-table
+                  v-loading="profilesLoading"
+                  :data="chunkProfiles"
+                  size="small"
+                  stripe
+                  empty-text="暂无活跃分块档（入库后将自动出现）"
+                  class="chunk-profiles-table"
+                >
+                  <el-table-column label="分块档" min-width="140">
+                    <template #default="{ row }">
+                      <code class="chunk-profile-meta__id">{{ row.chunkProfileId }}</code>
+                    </template>
+                  </el-table-column>
+                  <el-table-column prop="docCount" label="文档" width="72" align="center" />
+                  <el-table-column prop="chunkCount" label="分块" width="72" align="center" />
+                  <el-table-column label="状态" width="88" align="center">
+                    <template #default="{ row }">
+                      <el-tag v-if="row.primary" size="small" type="success" effect="plain">主档</el-tag>
+                      <el-tag v-else size="small" type="info" effect="plain">非主档</el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="220" align="center">
+                    <template #default="{ row }">
+                      <el-button
+                        v-if="!row.primary"
+                        link
+                        type="primary"
+                        :loading="settingPrimaryId === row.chunkProfileId"
+                        @click.stop="onSetPrimary(row)"
+                      >
+                        设为主档
+                      </el-button>
+                      <el-button
+                        link
+                        type="warning"
+                        :loading="reindexingProfileId === row.chunkProfileId"
+                        :disabled="!row.docCount"
+                        @click.stop="onReindexProfile(row)"
+                      >
+                        重索引
+                      </el-button>
+                      <el-button
+                        v-if="!row.primary"
+                        link
+                        type="danger"
+                        :loading="archivingProfileId === row.chunkProfileId"
+                        :disabled="!row.docCount"
+                        @click.stop="onArchiveProfile(row)"
+                      >
+                        归档
+                      </el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </section>
 
-            <el-collapse-item name="batchJobs">
-              <template #title>
-                <div class="strategy-collapse__head">
-                  <span class="chunk-part__label">批量任务历史</span>
-                  <span class="strategy-collapse__summary">
+              <section class="chunk-advanced-section chunk-advanced-section--last">
+                <header class="chunk-advanced-section__head">
+                  <span class="chunk-advanced-section__title">批量任务历史</span>
+                  <span class="chunk-advanced-section__summary">
                     {{ batchJobHistory.length ? `最近 ${batchJobHistory.length} 条` : '暂无记录' }}
                   </span>
+                </header>
+                <div class="chunk-profiles-toolbar">
+                  <el-button
+                    size="small"
+                    round
+                    :loading="batchJobHistoryLoading"
+                    :disabled="!libraryId"
+                    @click.stop="loadBatchJobHistory"
+                  >
+                    刷新
+                  </el-button>
                 </div>
-              </template>
-              <div class="chunk-profiles-toolbar">
-                <el-button
+                <el-table
+                  v-loading="batchJobHistoryLoading"
+                  :data="batchJobHistory"
                   size="small"
-                  round
-                  :loading="batchJobHistoryLoading"
-                  :disabled="!libraryId"
-                  @click.stop="loadBatchJobHistory"
+                  stripe
+                  empty-text="暂无批量任务记录"
+                  class="chunk-profiles-table"
                 >
-                  刷新
-                </el-button>
-              </div>
-              <el-table
-                v-loading="batchJobHistoryLoading"
-                :data="batchJobHistory"
-                size="small"
-                stripe
-                empty-text="暂无批量任务记录"
-                class="chunk-profiles-table"
-              >
-                <el-table-column label="时间" width="148">
-                  <template #default="{ row }">
-                    {{ formatListTime(row.createdAt) }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="类型" width="88">
-                  <template #default="{ row }">
-                    {{ batchJobTypeLabel(row.jobType) }}
-                  </template>
-                </el-table-column>
-                <el-table-column label="分块档" min-width="120">
-                  <template #default="{ row }">
-                    <code v-if="row.chunkProfileId" class="chunk-profile-meta__id">
-                      {{ row.chunkProfileId }}
-                    </code>
-                    <span v-else class="chunk-profiles-table__muted">全库</span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="状态" width="88" align="center">
-                  <template #default="{ row }">
-                    <el-tag
-                      size="small"
-                      :type="batchJobTagType(row.status)"
-                      effect="plain"
-                    >
-                      {{ batchJobStatusLabel(row.status) }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="进度" width="120" align="center">
-                  <template #default="{ row }">
-                    {{ row.completedCount }}/{{ row.totalCount }}
-                    <span v-if="row.failedCount" class="batch-job-history__fail">
-                      ({{ row.failedCount }} 败)
-                    </span>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="156" align="center">
-                  <template #default="{ row }">
-                    <el-button
-                      v-if="row.failedCount > 0"
-                      link
-                      type="info"
-                      @click.stop="openJobDetail(row)"
-                    >
-                      详情
-                    </el-button>
-                    <el-button
-                      v-if="row.retryable"
-                      link
-                      type="warning"
-                      :loading="retryingJobId === row.jobId"
-                      @click.stop="onRetryBatchJob(row)"
-                    >
-                      重试
-                    </el-button>
-                    <el-button
-                      v-else-if="!isBatchJobTerminal(row.status)"
-                      link
-                      type="primary"
-                      @click.stop="trackBatchJob(row.jobId, loadBatchJobHistory)"
-                    >
-                      跟踪
-                    </el-button>
-                  </template>
-                </el-table-column>
-              </el-table>
+                  <el-table-column label="时间" width="148">
+                    <template #default="{ row }">
+                      {{ formatListTime(row.createdAt) }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="类型" width="88">
+                    <template #default="{ row }">
+                      {{ batchJobTypeLabel(row.jobType) }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="分块档" min-width="120">
+                    <template #default="{ row }">
+                      <code v-if="row.chunkProfileId" class="chunk-profile-meta__id">
+                        {{ row.chunkProfileId }}
+                      </code>
+                      <span v-else class="chunk-profiles-table__muted">全库</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="状态" width="88" align="center">
+                    <template #default="{ row }">
+                      <el-tag
+                        size="small"
+                        :type="batchJobTagType(row.status)"
+                        effect="plain"
+                      >
+                        {{ batchJobStatusLabel(row.status) }}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="进度" width="120" align="center">
+                    <template #default="{ row }">
+                      {{ row.completedCount }}/{{ row.totalCount }}
+                      <span v-if="row.failedCount" class="batch-job-history__fail">
+                        ({{ row.failedCount }} 败)
+                      </span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="操作" width="156" align="center">
+                    <template #default="{ row }">
+                      <el-button
+                        v-if="row.failedCount > 0"
+                        link
+                        type="info"
+                        @click.stop="openJobDetail(row)"
+                      >
+                        详情
+                      </el-button>
+                      <el-button
+                        v-if="row.retryable"
+                        link
+                        type="warning"
+                        :loading="retryingJobId === row.jobId"
+                        @click.stop="onRetryBatchJob(row)"
+                      >
+                        重试
+                      </el-button>
+                      <el-button
+                        v-else-if="!isBatchJobTerminal(row.status)"
+                        link
+                        type="primary"
+                        @click.stop="trackBatchJob(row.jobId, loadBatchJobHistory)"
+                      >
+                        跟踪
+                      </el-button>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </section>
             </el-collapse-item>
           </el-collapse>
         </section>
@@ -391,7 +422,7 @@
     </el-tab-pane>
 
     <el-tab-pane label="索引配置" name="index">
-      <div class="tab-pane-body">
+      <div class="tab-pane-body index-config-tab">
         <el-alert
           v-if="showReindexHint"
           class="index-hint-alert"
@@ -399,39 +430,71 @@
           :closable="false"
           show-icon
           title="变更后建议重索引"
-        >
-        </el-alert>
+        />
 
-      
-        <section class="cfg-section">
+        <section class="cfg-section cfg-section--index">
           <header class="cfg-section__head">
-            <span class="cfg-section__title">向量化</span>
+            <span class="cfg-section__title">索引</span>
           </header>
-          <el-form-item label="Embedding">
-            <el-select
-              v-model="form.config.embeddingModel"
-              filterable
-              allow-create
-              class="select-md full-width"
-              @change="onEmbeddingModelChange"
-            >
-              <el-option
-                v-for="opt in embeddingModelOptions"
-                :key="opt.value"
-                :label="`${opt.label}（${opt.dimension} 维）`"
-                :value="opt.value"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="向量维度">
-            <el-input-number
-              v-model="form.config.embeddingDimension"
-              :min="1"
-              :max="4096"
-              :disabled="embeddingDimensionLocked"
-              controls-position="right"
-            />
-          </el-form-item>
+          <p class="cfg-section__intro">
+            当前版本Embedding提供方仅支持 Ollama；向量存储固定为 PostgreSQL pgvector。模型列表来自本地已拉取且实测支持 Embedding 的 Ollama 模型。
+          </p>
+
+          <div class="index-config-meta">
+            <div class="index-config-meta__item">
+              <span class="index-config-meta__label">提供方</span>
+              <span class="index-config-meta__value">{{ embeddingCatalog.providerLabel() }}</span>
+            </div>
+            <div class="index-config-meta__item">
+              <span class="index-config-meta__label">向量库</span>
+              <span class="index-config-meta__value">{{ embeddingCatalog.vectorStoreLabel() }}</span>
+            </div>
+          </div>
+
+          <div class="index-config-fields">
+            <div class="index-config-row">
+              <label class="index-config-row__label">Embedding 模型</label>
+              <div class="index-config-row__control">
+                <el-select
+                  v-model="form.config.embeddingModel"
+                  filterable
+                  :loading="embeddingModelsLoading"
+                  placeholder="选择本地已拉取的 Embedding 模型"
+                  class="full-width"
+                  @change="onEmbeddingModelChange"
+                >
+                  <el-option
+                    v-for="opt in embeddingModelOptions"
+                    :key="opt.value"
+                    :label="`${opt.label}（${opt.dimension} 维）`"
+                    :value="opt.value"
+                  />
+                </el-select>
+                <p v-if="embeddingModelsError" class="field-hint field-hint--warn">
+                  {{ embeddingModelsError }}；已回退为内置常用模型列表，请确认 Ollama 已启动且已 pull 模型。
+                </p>
+                <p
+                  v-else-if="!embeddingModelsLoading && !embeddingModelOptions.length"
+                  class="field-hint field-hint--warn"
+                >
+                  未检测到可用 Embedding 模型，请执行 <code>ollama pull nomic-embed-text</code> 后刷新页面。
+                </p>
+              </div>
+            </div>
+
+            <div class="index-config-row">
+              <label class="index-config-row__label">向量维度</label>
+              <div class="index-config-row__control index-config-row__control--compact">
+                <el-input-number
+                  v-model="form.config.embeddingDimension"
+                  :min="1"
+                  :max="4096"
+                  :disabled="embeddingDimensionLocked"
+                  controls-position="right"
+                />
+              </div>
+            </div>
+          </div>
         </section>
       </div>
     </el-tab-pane>
@@ -454,8 +517,8 @@
             <el-select
               v-model="form.config.retrieval.rerankModel"
               filterable
-              allow-create
               clearable
+              :loading="embeddingModelsLoading"
               placeholder="使用库 Embedding 模型"
               class="select-md full-width"
             >
@@ -652,7 +715,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   archiveChunkProfile,
@@ -671,6 +734,7 @@ import {
   retryBatchJob
 } from '../api/vector'
 import { useBatchJobPoll, isBatchJobTerminal } from '../composables/useBatchJobPoll'
+import { useEmbeddingCatalog } from '../composables/useEmbeddingCatalog'
 import { useLibraryContext } from '../composables/useLibraryContext'
 import LibraryParsingConfigTab from './LibraryParsingConfigTab.vue'
 import LibraryBasicFields from './LibraryBasicFields.vue'
@@ -682,8 +746,7 @@ import {
   batchJobTypeLabel
 } from '../utils/batchJobDisplay'
 import {
-  EMBEDDING_MODEL_OPTIONS,
-  RERANK_MODEL_OPTIONS,
+  buildRerankModelOptions,
   dimensionForEmbeddingModel,
   isKnownEmbeddingModel
 } from '../utils/embeddingModels'
@@ -691,8 +754,13 @@ import {
   LIBRARY_CHUNK_OVERLAP_RANGE,
   LIBRARY_CHUNK_SIZE_RANGE
 } from '../utils/libraryDefaults'
+import {
+  buildChunkStrategyPreviewRows,
+  CHUNKING_STRATEGY_OPTIONS
+} from '../utils/chunkStrategyDefaults'
 
 const STRATEGY_TAG_TYPES = {
+  auto: 'info',
   'paragraph-first': 'info',
   'heading-level': 'primary',
   'fixed-char': 'warning',
@@ -737,10 +805,14 @@ const activeTab = defineModel('activeTab', { type: String, default: 'basic' })
 
 const chunkSizeRange = LIBRARY_CHUNK_SIZE_RANGE
 const chunkOverlapRange = LIBRARY_CHUNK_OVERLAP_RANGE
-const embeddingModelOptions = EMBEDDING_MODEL_OPTIONS
-const rerankModelOptions = RERANK_MODEL_OPTIONS
+const embeddingCatalog = useEmbeddingCatalog()
+const embeddingModelsLoading = embeddingCatalog.loading
+const embeddingModelsError = embeddingCatalog.error
+const embeddingModelOptions = computed(() => embeddingCatalog.models.value)
+const rerankModelOptions = computed(() => buildRerankModelOptions(embeddingCatalog.models.value))
 /** 默认收缩；展开项 name 为 types / params */
 const chunkCollapseExpanded = ref([])
+const chunkAdvancedExpanded = ref([])
 
 async function loadChunkProfiles() {
   if (!props.libraryId) return
@@ -1063,6 +1135,9 @@ watch(
 )
 
 watch(activeTab, (tab) => {
+  if (tab === 'index' || tab === 'retrieval') {
+    embeddingCatalog.load()
+  }
   if (tab === 'pipeline' && props.libraryId) {
     loadChunkProfiles()
     loadMigrationCandidates()
@@ -1072,10 +1147,17 @@ watch(activeTab, (tab) => {
 })
 
 const strategySummaryText = computed(() => {
-  const rows = props.chunkStrategyRows
+  const rows = displayChunkStrategyRows.value
   if (!rows.length) return props.strategyEmptyText
   const brief = rows.map((r) => `${r.fileTypeLabel}·${r.chunkingStrategyLabel}`).join(' / ')
   return rows.length > 2 ? `${rows.length} 种类型：${brief}` : brief
+})
+
+const displayChunkStrategyRows = computed(() => {
+  const strategy = props.form.config.chunkingStrategy || 'auto'
+  const preview = buildChunkStrategyPreviewRows(strategy)
+  if (preview.length) return preview
+  return props.chunkStrategyRows
 })
 
 const overlapPercent = computed(() => {
@@ -1095,8 +1177,32 @@ const chunkParamsSummaryText = computed(() => {
   return parts.join(' · ')
 })
 
+const profileGovernanceSummary = computed(() => {
+  const { allowCustomChunkProfiles, maxActiveChunkProfiles } = props.form.config
+  const allow = allowCustomChunkProfiles !== false ? '允许采集覆盖' : '仅默认档'
+  const max = maxActiveChunkProfiles > 0 ? maxActiveChunkProfiles : 5
+  return `${allow} · 最多 ${max} 档`
+})
+
+const chunkAdvancedSummary = computed(() => {
+  const parts = []
+  if (props.form.config.primaryChunkProfileId) {
+    parts.push('主档已设')
+  }
+  parts.push(profileGovernanceSummary.value)
+  if (chunkProfiles.value.length) {
+    parts.push(`${chunkProfiles.value.length} 个活跃档`)
+  } else {
+    parts.push('暂无活跃档')
+  }
+  if (migrationCandidates.value?.candidateCount > 0) {
+    parts.push(`${migrationCandidates.value.candidateCount} 篇待迁移`)
+  }
+  return parts.join(' · ')
+})
+
 const embeddingDimensionLocked = computed(() =>
-  isKnownEmbeddingModel(props.form.config.embeddingModel)
+  isKnownEmbeddingModel(props.form.config.embeddingModel, embeddingCatalog.models.value)
 )
 
 const showReindexHint = computed(() => props.indexedChunkCount > 0)
@@ -1106,17 +1212,27 @@ function strategyTagType(strategy) {
 }
 
 function onEmbeddingModelChange(model) {
-  if (isKnownEmbeddingModel(model)) {
-    props.form.config.embeddingDimension = dimensionForEmbeddingModel(model)
+  if (isKnownEmbeddingModel(model, embeddingCatalog.models.value)) {
+    props.form.config.embeddingDimension = dimensionForEmbeddingModel(
+      model,
+      embeddingCatalog.models.value
+    )
   }
 }
 
 function resetUi() {
   chunkCollapseExpanded.value = []
+  chunkAdvancedExpanded.value = []
   activeTab.value = 'basic'
 }
 
 defineExpose({ resetUi, loadMigrationCandidates, openMigrationWizard })
+
+onMounted(() => {
+  if (activeTab.value === 'index' || activeTab.value === 'retrieval') {
+    embeddingCatalog.load()
+  }
+})
 </script>
 
 <style scoped>
@@ -1236,6 +1352,74 @@ defineExpose({ resetUi, loadMigrationCandidates, openMigrationWizard })
 
 .index-hint-alert {
   margin-bottom: 12px;
+}
+
+.index-config-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.index-config-meta__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.index-config-meta__label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.index-config-meta__value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  word-break: break-word;
+}
+
+.index-config-fields {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 4px;
+}
+
+.index-config-row {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 0;
+}
+
+.index-config-row + .index-config-row {
+  border-top: 1px solid #f1f5f9;
+}
+
+.index-config-row__label {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 32px;
+}
+
+.index-config-row__control {
+  min-width: 0;
+}
+
+.index-config-row__control--compact :deep(.el-input-number) {
+  width: 160px;
+}
+
+.index-config-row__control code {
+  font-size: 11px;
+  padding: 1px 4px;
+  background: #f1f5f9;
+  border-radius: 4px;
 }
 
 .index-hint-alert :deep(.el-alert__description) {
@@ -1375,6 +1559,42 @@ defineExpose({ resetUi, loadMigrationCandidates, openMigrationWizard })
   line-height: 1.45;
 }
 
+.chunk-strategy-select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  max-width: 420px;
+}
+
+.chunk-strategy-select__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+}
+
+.chunk-strategy-select__control {
+  width: 100%;
+}
+
+.chunk-strategy-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 0;
+  line-height: 1.35;
+}
+
+.chunk-strategy-option__label {
+  font-size: 13px;
+  color: #334155;
+}
+
+.chunk-strategy-option__desc {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
 .chunk-part__empty {
   margin: 0;
   font-size: 12px;
@@ -1400,6 +1620,10 @@ defineExpose({ resetUi, loadMigrationCandidates, openMigrationWizard })
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
+}
+
+.strategy-card--compact .strategy-card__head {
+  margin-bottom: 0;
 }
 
 .strategy-card__type {
@@ -1528,6 +1752,10 @@ defineExpose({ resetUi, loadMigrationCandidates, openMigrationWizard })
   line-height: 1.45;
 }
 
+.field-hint--warn {
+  color: #b45309;
+}
+
 .chunk-profile-meta {
   display: flex;
   flex-wrap: wrap;
@@ -1561,6 +1789,95 @@ defineExpose({ resetUi, loadMigrationCandidates, openMigrationWizard })
   flex: 1 1 100%;
   font-size: 11px;
   color: #94a3b8;
+}
+
+.chunk-part__desc--tight {
+  margin-top: 0;
+}
+
+.chunk-advanced-options-collapse {
+  margin-top: 12px;
+  border: 1px solid #eef2f7;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.chunk-advanced-options-collapse :deep(.el-collapse-item__header) {
+  height: auto;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: none;
+  background: #fafbfc;
+  line-height: 1.35;
+}
+
+.chunk-advanced-options-collapse :deep(.el-collapse-item__wrap) {
+  border: none;
+  background: transparent;
+}
+
+.chunk-advanced-options-collapse :deep(.el-collapse-item__content) {
+  padding: 0 12px 12px;
+}
+
+.chunk-advanced-options-collapse__head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+}
+
+.chunk-advanced-options-collapse__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.chunk-advanced-options-collapse__summary {
+  font-size: 11px;
+  font-weight: 400;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.chunk-profile-meta--in-advanced {
+  margin: 0 0 12px;
+}
+
+.chunk-advanced-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.chunk-advanced-section--last {
+  margin-bottom: 4px;
+}
+
+.chunk-advanced-section__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 6px;
+}
+
+.chunk-advanced-section__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.chunk-advanced-section__summary {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.chunk-governance-row--in-advanced {
+  margin-bottom: 0;
 }
 
 .chunk-governance-row {

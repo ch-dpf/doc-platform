@@ -5,6 +5,7 @@
       :config-saved="configSaved"
       :has-documents="hasDocuments"
       @dismiss="dismissOnboarding"
+      @verify-retrieval="goRetrievalTest"
     />
 
     <el-form
@@ -28,8 +29,11 @@
       <el-button type="primary" round :loading="saving" @click="submit">
         {{ showOnboarding && !configSaved ? '保存配置' : '保存库配置' }}
       </el-button>
-      <el-button v-if="showOnboarding && configSaved" round @click="goIngest">
+      <el-button v-if="showOnboarding && configSaved && !hasDocuments" round @click="goIngest">
         上传文档
+      </el-button>
+      <el-button v-if="showOnboarding && hasDocuments" round @click="goRetrievalTest">
+        验证检索
       </el-button>
     </div>
   </div>
@@ -44,9 +48,9 @@ import { useLibraryContext } from '../../composables/useLibraryContext'
 import { useLibrarySettingsEditor } from '../../composables/useLibrarySettingsEditor'
 import {
   dismissLibraryOnboarding,
-  isOnboardingActive,
   isOnboardingConfigSaved,
   isOnboardingDismissed,
+  isOnboardingInProgress,
   markOnboardingConfigSaved
 } from '../../utils/libraryOnboarding'
 
@@ -78,9 +82,8 @@ const configSaved = computed(
 )
 
 const showOnboarding = computed(() => {
-  if (!isOnboardingActive(route)) return false
+  if (!isOnboardingInProgress(route, libraryIdParam.value)) return false
   if (onboardingDismissed.value || isOnboardingDismissed(libraryIdParam.value)) return false
-  if (hasDocuments.value && configSaved.value) return false
   return true
 })
 
@@ -106,6 +109,17 @@ function goIngest() {
   router.push({ path: '/ingest', query: { libraryId: libraryIdParam.value } })
 }
 
+function goRetrievalTest() {
+  if (!hasDocuments.value) return
+  libraryId.value = libraryIdParam.value
+  persist()
+  clearOnboardingQuery()
+  router.push({
+    name: 'libraryRetrieval',
+    params: { libraryId: libraryIdParam.value }
+  })
+}
+
 async function submit() {
   await saveSettings()
   if (!showOnboarding.value) return
@@ -129,7 +143,9 @@ watch(libraryIdParam, () => {
 })
 
 watch(hasDocuments, (v) => {
-  if (v && configSaved.value) clearOnboardingQuery()
+  if (v && configSaved.value && !isOnboardingInProgress(route, libraryIdParam.value)) {
+    clearOnboardingQuery()
+  }
 })
 
 onMounted(() => {

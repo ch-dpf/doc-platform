@@ -429,6 +429,26 @@ body.el-popup-parent--hidden .library-page-fill .library-table--fixed .el-table_
   opacity: 0.45;
 }
 
+.library-onboarding-strip__step--clickable {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.library-onboarding-strip__step--clickable:hover,
+.library-onboarding-strip__step--clickable:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.library-onboarding-strip__step--clickable:focus-visible {
+  outline: 2px solid rgba(14, 165, 233, 0.45);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .library-onboarding-strip__arrow {
   color: #cbd5e1;
   font-size: 12px;

@@ -42,3 +42,10 @@ export function librarySettingsRoute(libraryId, { onboarding = false, tab = '' }
 export function isOnboardingActive(route) {
   return route?.query?.onboarding === '1'
 }
+
+/** 新建库引导进行中（保存配置后即使离开设置页也保持，直至跳过） */
+export function isOnboardingInProgress(route, libraryId) {
+  if (!libraryId || isOnboardingDismissed(libraryId)) return false
+  if (isOnboardingActive(route)) return true
+  return isOnboardingConfigSaved(libraryId)
+}

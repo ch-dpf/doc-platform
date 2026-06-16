@@ -1,6 +1,7 @@
 import { parserLabel } from './parserEngines'
 
 const CHUNKING_LABELS = {
+  auto: '自动（按文件类型）',
   'paragraph-first': '按段落',
   'fixed-char': '固定长度',
   semantic: '语义分块',
@@ -27,6 +28,7 @@ export const FIXED_INGEST_ACCESS_LABEL = '文件上传 + 文件夹批量'
 const REINDEX_FIELDS = new Set([
   'chunkSize',
   'chunkOverlap',
+  'chunkingStrategy',
   'hierarchicalChunkingEnabled',
   'chunkDelimiter',
   'semanticSimilarityThreshold',
@@ -85,6 +87,11 @@ function arraysEqual(a, b) {
 const CONFIG_FIELD_SPECS = [
   { key: 'chunkSize', label: '分块大小' },
   { key: 'chunkOverlap', label: '分块重叠' },
+  {
+    key: 'chunkingStrategy',
+    label: '分块策略',
+    format: (v) => chunkingStrategyLabel(v)
+  },
   {
     key: 'hierarchicalChunkingEnabled',
     label: '父子块',

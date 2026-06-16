@@ -54,6 +54,9 @@ public final class VectorLibraryConfigFactory {
         if (cfg.getChunkOverlap() <= 0) {
             cfg.setChunkOverlap(120);
         }
+        if (cfg.getChunkingStrategy() == null) {
+            cfg.setChunkingStrategy(com.knowbase.vector.chunk.ChunkingStrategy.AUTO);
+        }
         if (cfg.getEmbeddingProvider() == null || cfg.getEmbeddingProvider().isBlank()) {
             cfg.setEmbeddingProvider("ollama");
         }

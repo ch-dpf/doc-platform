@@ -5,6 +5,7 @@ import com.knowbase.ingest.config.TextNormalizationProperties;
 import com.knowbase.ingest.support.DocMetadataStore;
 import com.knowbase.ingest.parse.ParserEngineRegistry;
 import com.knowbase.pipeline.content.ContentFamilyPipelineDefaults;
+import com.knowbase.pipeline.content.ContentSignalsChunkingAdjuster;
 import com.knowbase.pipeline.content.DefaultContentSignalsDetector;
 import com.knowbase.library.config.VectorLibraryConfig;
 import com.knowbase.library.service.LibraryConfigResolver;
@@ -47,14 +48,36 @@ class EffectiveConfigResolverMimeTest {
                 ocrProperties,
                 new TextNormalizationProperties(),
                 new DefaultContentSignalsDetector(),
+                new ContentSignalsChunkingAdjuster(),
                 new ParserEngineRegistry());
     }
 
     @Test
-    void keepsLibraryChunkingForWordRegardlessOfMime() {
+    void autoWordUsesHeadingLevelDefault() {
         UUID libraryId = UUID.randomUUID();
         VectorLibraryConfig library = new VectorLibraryConfig();
         library.setConfigVersion(1);
+        library.setChunkingStrategy(ChunkingStrategy.AUTO);
+
+        ChunkingProperties chunking = new ChunkingProperties();
+        chunking.setStrategy(ChunkingStrategy.AUTO);
+
+        when(libraryConfigResolver.config(libraryId)).thenReturn(library);
+        when(libraryConfigResolver.chunkingFor(libraryId)).thenReturn(chunking);
+
+        EffectivePipelineConfig effective = resolver.forIngest(
+                libraryId, "application/vnd.openxmlformats-officedocument.wordprocessingml.document", null);
+
+        assertEquals(ChunkingStrategy.HEADING_LEVEL, effective.chunking().getStrategy());
+    }
+
+    @Test
+    void keepsExplicitLibraryChunkingForWord() {
+        UUID libraryId = UUID.randomUUID();
+        VectorLibraryConfig library = new VectorLibraryConfig();
+        library.setConfigVersion(1);
+
+        library.setChunkingStrategy(ChunkingStrategy.SEMANTIC);
 
         ChunkingProperties chunking = new ChunkingProperties();
         chunking.setStrategy(ChunkingStrategy.SEMANTIC);

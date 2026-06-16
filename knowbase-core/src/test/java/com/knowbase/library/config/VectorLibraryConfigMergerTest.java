@@ -51,7 +51,7 @@ class VectorLibraryConfigMergerTest {
         }
 
         static com.knowbase.library.dto.config.LibraryIndexPipelineDto pipelineWithChunkSize(int size) {
-            return new com.knowbase.library.dto.config.LibraryIndexPipelineDto(size, 0, null, 0, true, "");
+            return new com.knowbase.library.dto.config.LibraryIndexPipelineDto(size, 0, null, 0, true, "", "auto");
         }
     }
 }

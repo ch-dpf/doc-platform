@@ -8,6 +8,7 @@ import com.knowbase.library.config.VectorLibraryConfigFactory;
 import com.knowbase.library.dto.config.LibraryConfigView;
 import com.knowbase.library.dto.config.LibraryIndexPipelineDto;
 import com.knowbase.library.dto.config.LibraryParsingDto;
+import com.knowbase.vector.chunk.ChunkingStrategy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -82,7 +83,8 @@ public final class LibraryConfigViewMapper {
                 cfg.getEmbeddingModel(),
                 cfg.getEmbeddingDimension(),
                 cfg.isHierarchicalChunkingEnabled(),
-                cfg.getChunkDelimiter());
+                cfg.getChunkDelimiter(),
+                (cfg.getChunkingStrategy() != null ? cfg.getChunkingStrategy() : ChunkingStrategy.AUTO).toWire());
     }
 
     private static RetrievalRulesSettings copyRetrieval(RetrievalRulesSettings src) {

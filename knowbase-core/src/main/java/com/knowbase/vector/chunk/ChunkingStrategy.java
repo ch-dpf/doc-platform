@@ -6,13 +6,15 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "分块策略", enumAsRef = true)
 public enum ChunkingStrategy {
-    /** 优先按段落（空行）切分，过长段落再按字符窗口切 */
+    /** 按文件类型应用代码默认策略（Word/Markdown→按标题，PDF/TXT/Excel→按段落） */
+    AUTO("auto"),
+    /** 优先按段落（空行）切分，过长段落再按带重叠的字符窗口切（类 recursive character） */
     PARAGRAPH_FIRST("paragraph-first"),
     /** 语义分块 */
     SEMANTIC("semantic"),
     /** 按标题层级切分 */
     HEADING_LEVEL("heading-level"),
-    /** 固定字符长度滑动窗口（兼容旧行为） */
+    /** 固定字符长度滑动窗口 */
     FIXED_CHAR("fixed-char");
 
     private final String wireValue;

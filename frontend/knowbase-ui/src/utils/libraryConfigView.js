@@ -17,6 +17,7 @@ export function flattenLibraryConfig(lib) {
     tags: lc.tags || [],
     chunkSize: pipe.chunkSize,
     chunkOverlap: pipe.chunkOverlap,
+    chunkingStrategy: pipe.chunkingStrategy || 'auto',
     hierarchicalChunkingEnabled: pipe.hierarchicalChunkingEnabled ?? true,
     chunkDelimiter: pipe.chunkDelimiter ?? '',
     embeddingProvider: 'ollama',
@@ -39,6 +40,7 @@ export function buildIndexPipelinePayload(cfg) {
     indexPipeline: {
       chunkSize: cfg.chunkSize,
       chunkOverlap: cfg.chunkOverlap,
+      chunkingStrategy: cfg.chunkingStrategy || 'auto',
       embeddingModel: cfg.embeddingModel,
       embeddingDimension: cfg.embeddingDimension,
       hierarchicalChunkingEnabled: cfg.hierarchicalChunkingEnabled !== false,
@@ -68,6 +70,7 @@ export function buildParsingPayload(cfg) {
 const PIPELINE_FIELDS = [
   'chunkSize',
   'chunkOverlap',
+  'chunkingStrategy',
   'hierarchicalChunkingEnabled',
   'chunkDelimiter',
   'embeddingProvider',

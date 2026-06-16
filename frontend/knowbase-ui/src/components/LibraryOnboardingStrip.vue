@@ -23,9 +23,17 @@
         上传文档
       </span>
       <span class="library-onboarding-strip__arrow" aria-hidden="true">→</span>
+      <button
+        v-if="hasDocuments"
+        type="button"
+        class="library-onboarding-strip__step library-onboarding-strip__step--clickable library-onboarding-strip__step--active"
+        @click="emit('verify-retrieval')"
+      >
+        验证检索
+      </button>
       <span
-        class="library-onboarding-strip__step"
-        :class="{ 'library-onboarding-strip__step--disabled': !hasDocuments }"
+        v-else
+        class="library-onboarding-strip__step library-onboarding-strip__step--disabled"
       >
         验证检索
       </span>
@@ -35,6 +43,9 @@
     </p>
     <p v-else-if="!hasDocuments" class="library-onboarding-strip__hint">
       配置已保存，可上传文档
+    </p>
+    <p v-else class="library-onboarding-strip__hint">
+      文档已入库，点击「验证检索」前往检索测试
     </p>
     <el-button link type="info" class="library-onboarding-strip__skip" @click="emit('dismiss')">
       跳过
@@ -48,5 +59,5 @@ defineProps({
   hasDocuments: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['dismiss'])
+const emit = defineEmits(['dismiss', 'verify-retrieval'])
 </script>

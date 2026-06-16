@@ -36,7 +36,7 @@ class CreateVectorLibraryRequestTest {
 
     @Test
     void acceptsOptionalPipelineSections() {
-        var indexPipeline = new LibraryIndexPipelineDto(500, 120, "nomic-embed-text", 768, true, "");
+        var indexPipeline = new LibraryIndexPipelineDto(500, 120, "nomic-embed-text", 768, true, "", "auto");
         var parsing = new LibraryParsingDto(List.of(), "zh-CN", true);
         var retrieval = new RetrievalRulesSettings();
         var request = new CreateVectorLibraryRequest(
@@ -46,7 +46,7 @@ class CreateVectorLibraryRequestTest {
 
     @Test
     void rejectsInvalidIndexPipeline() {
-        var indexPipeline = new LibraryIndexPipelineDto(50, 120, "nomic-embed-text", 768, true, "");
+        var indexPipeline = new LibraryIndexPipelineDto(50, 120, "nomic-embed-text", 768, true, "", "auto");
         var request = new CreateVectorLibraryRequest(
                 "demo", "研发文档库", null, null, indexPipeline, null, null);
         assertFalse(validator.validate(request).isEmpty());

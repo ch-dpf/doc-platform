@@ -47,7 +47,7 @@
             <div
               v-for="row in chunkStrategyRows"
               :key="row.fileType"
-              class="strategy-card"
+              class="strategy-card strategy-card--compact"
             >
               <div class="strategy-card__head">
                 <span class="strategy-card__type">{{ row.fileTypeLabel }}</span>
@@ -60,11 +60,6 @@
                   {{ row.chunkingStrategyLabel }}
                 </el-tag>
               </div>
-              <p class="strategy-card__note">{{ row.parsingNote }}</p>
-              <span
-                v-if="row.hierarchicalWhenApplicable"
-                class="strategy-card__badge"
-              >可启用父子块</span>
             </div>
           </div>
           <p v-else class="chunk-part__empty">{{ strategyEmptyText }}</p>
@@ -104,8 +99,16 @@
         <span class="cfg-section__title">索引配置</span>
       </header>
       <div class="settings-rules-grid">
+        <div class="settings-kv">
+          <span class="settings-kv__label">提供方</span>
+          <span class="settings-kv__value">{{ INDEX_PROVIDER_LABEL }}</span>
+        </div>
+        <div class="settings-kv">
+          <span class="settings-kv__label">向量库</span>
+          <span class="settings-kv__value">{{ INDEX_VECTOR_STORE_LABEL }}</span>
+        </div>
         <div class="settings-kv settings-kv--wide">
-          <span class="settings-kv__label">Embedding</span>
+          <span class="settings-kv__label">Embedding 模型</span>
           <span class="settings-kv__value">
             {{ labelForEmbeddingModel(summary.embeddingModel) }}
             （{{ summary.embeddingDimension }} 维）
@@ -156,7 +159,11 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { formatBool } from '../utils/libraryConfig'
-import { labelForEmbeddingModel } from '../utils/embeddingModels'
+import {
+  INDEX_PROVIDER_LABEL,
+  INDEX_VECTOR_STORE_LABEL,
+  labelForEmbeddingModel
+} from '../utils/embeddingModels'
 import {
   chunkParamsSummaryLine,
   formatChunkDelimiter,
@@ -328,6 +335,10 @@ function strategyTagType(strategy) {
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
+}
+
+.strategy-card--compact .strategy-card__head {
+  margin-bottom: 0;
 }
 
 .strategy-card__type {

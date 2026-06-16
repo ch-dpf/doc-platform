@@ -269,6 +269,7 @@ export function useLibrarySettingsEditor(getLibraryId, { tenantId, onSaved } = {
       if (onSaved) {
         await onSaved(libraryWithFlatConfig(savedLib))
       }
+      await loadChunkStrategySummary(libraryId)
       if (diffNeedsReindex(changes) && loadedChunkCount.value > 0) {
         await offerMigrationOrReindex(libraryId)
       }

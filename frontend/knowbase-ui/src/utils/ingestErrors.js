@@ -35,8 +35,8 @@ export const INGEST_ERROR_CATALOG = {
     hint: '请稍后重试；若持续失败，请查看服务端日志。'
   },
   INGEST_PROFILE_NOT_ALLOWED: {
-    title: '不可使用分块数值覆盖',
-    hint: '库内已有文档时须与库配置一致；请在「库配置 → 分块向量化」调整，或清空库后重试。'
+    title: '分块配置与库默认不一致',
+    hint: '请关闭采集页「分块覆盖」，或在库设置中保存最新分块配置后再上传；若库已禁止自定义分块档，勿启用覆盖。'
   },
   DUPLICATE_DIFFERENT_CHUNK_PROFILE: {
     title: '相同内容已存在且分块参数不同',

@@ -117,7 +117,7 @@ public class VectorLibraryController {
 
     @Operation(
             summary = "分块策略摘要（只读）",
-            description = "按系统支持的文件类型展示 MIME 解析要点与库级统一分块策略，含库级父子块/分隔符影响说明。")
+            description = "按系统支持的文件类型展示入库分块策略；大小、重叠、分隔符与父子块见库级 index-pipeline 配置。")
     @ApiResponse(responseCode = "200", description = "策略摘要列表")
     @GetMapping("/{libraryId}/chunk-strategy-summary")
     public List<ChunkStrategySummaryRow> chunkStrategySummary(
@@ -127,7 +127,7 @@ public class VectorLibraryController {
     }
 
     @Operation(
-            summary = "新增知识库",
+            summary = "创建知识库",
             description = """
                     原子创建：提交基本信息，并可一次附带 indexPipeline / parsing / retrieval 分节。
                     省略分节时由服务端写入产品默认 config_json；编辑已有库仍使用各分节 PUT。

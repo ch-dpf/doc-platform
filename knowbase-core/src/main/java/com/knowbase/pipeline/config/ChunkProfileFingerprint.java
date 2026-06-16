@@ -27,7 +27,8 @@ public final class ChunkProfileFingerprint {
 
     public static String computeLibraryPrimary(UUID libraryId, VectorLibraryConfig library) {
         ChunkingProperties chunking = new ChunkingProperties();
-        chunking.setStrategy(library.getChunkingStrategy());
+        chunking.setStrategy(ChunkingStrategyResolver.resolve(
+                library.getChunkingStrategy(), "application/pdf"));
         chunking.setChunkSize(library.getChunkSize());
         chunking.setOverlap(library.getChunkOverlap());
         chunking.setMinParagraphLength(library.getMinParagraphLength());

@@ -13,31 +13,31 @@ class LibraryIndexPipelineDtoTest {
 
     @Test
     void acceptsChunkBoundsInRange() {
-        var dto = new LibraryIndexPipelineDto(500, 120, "nomic-embed-text", 768, true, "");
+        var dto = new LibraryIndexPipelineDto(500, 120, "nomic-embed-text", 768, true, "", "auto");
         assertTrue(validator.validate(dto).isEmpty());
     }
 
     @Test
     void rejectsChunkSizeBelowMinimum() {
-        var dto = new LibraryIndexPipelineDto(99, 120, "nomic-embed-text", 768, true, "");
+        var dto = new LibraryIndexPipelineDto(99, 120, "nomic-embed-text", 768, true, "", "auto");
         assertFalse(validator.validate(dto).isEmpty());
     }
 
     @Test
     void rejectsChunkSizeAboveMaximum() {
-        var dto = new LibraryIndexPipelineDto(8001, 120, "nomic-embed-text", 768, true, "");
+        var dto = new LibraryIndexPipelineDto(8001, 120, "nomic-embed-text", 768, true, "", "auto");
         assertFalse(validator.validate(dto).isEmpty());
     }
 
     @Test
     void rejectsChunkOverlapAboveMaximum() {
-        var dto = new LibraryIndexPipelineDto(500, 2001, "nomic-embed-text", 768, true, "");
+        var dto = new LibraryIndexPipelineDto(500, 2001, "nomic-embed-text", 768, true, "", "auto");
         assertFalse(validator.validate(dto).isEmpty());
     }
 
     @Test
     void acceptsZeroChunkOverlap() {
-        var dto = new LibraryIndexPipelineDto(500, 0, "nomic-embed-text", 768, true, "");
+        var dto = new LibraryIndexPipelineDto(500, 0, "nomic-embed-text", 768, true, "", "auto");
         assertTrue(validator.validate(dto).isEmpty());
     }
 }

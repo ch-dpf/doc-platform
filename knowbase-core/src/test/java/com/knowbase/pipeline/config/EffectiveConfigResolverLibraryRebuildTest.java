@@ -8,6 +8,7 @@ import com.knowbase.library.config.VectorLibraryConfig;
 import com.knowbase.library.service.LibraryConfigResolver;
 import com.knowbase.ingest.parse.ParserEngineRegistry;
 import com.knowbase.pipeline.content.ContentFamilyPipelineDefaults;
+import com.knowbase.pipeline.content.ContentSignalsChunkingAdjuster;
 import com.knowbase.pipeline.content.DefaultContentSignalsDetector;
 import com.knowbase.platform.JsonSupport;
 import com.knowbase.vector.config.ChunkingProperties;
@@ -48,6 +49,7 @@ class EffectiveConfigResolverLibraryRebuildTest {
                 ocrProperties,
                 new TextNormalizationProperties(),
                 new DefaultContentSignalsDetector(),
+                new ContentSignalsChunkingAdjuster(),
                 new ParserEngineRegistry());
     }
 

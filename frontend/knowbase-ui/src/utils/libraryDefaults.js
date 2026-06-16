@@ -38,6 +38,7 @@ export function defaultLibraryConfig() {
     embeddingDimension: 768,
     chunkSize: 500,
     chunkOverlap: 120,
+    chunkingStrategy: 'auto',
     hierarchicalChunkingEnabled: true,
     chunkDelimiter: '',
     tags: [],

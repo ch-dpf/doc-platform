@@ -52,10 +52,10 @@ public class ChunkingService {
         }
 
         return switch (effective.getStrategy()) {
+            case AUTO, PARAGRAPH_FIRST -> chunkParagraphFirst(normalized, effective);
             case FIXED_CHAR -> FixedLengthChunker.chunk(normalized, effective);
             case HEADING_LEVEL -> chunkHeadingLevel(normalized, effective);
             case SEMANTIC -> semanticChunker.chunk(libraryId, normalized, effective);
-            case PARAGRAPH_FIRST -> chunkParagraphFirst(normalized, effective);
         };
     }
 

@@ -69,16 +69,16 @@ public class ChunkProfileService {
     public void validateNewProfileAllowed(UUID libraryId, String mimeType, String ingestProfileJson) {
         VectorLibraryConfig cfg = libraryConfigResolver.config(libraryId);
         String prospective = computeForIngest(libraryId, mimeType, ingestProfileJson);
-        String primary = cfg.getPrimaryChunkProfileId();
-        if (primary != null && !primary.isBlank() && primary.equals(prospective)) {
-            return;
-        }
 
         boolean explicitOverride = IngestProfileSupport.hasChunkingOverride(ingestProfileJson);
         if (!explicitOverride) {
+            String libraryDefault = computeForIngest(libraryId, mimeType, null);
+            if (libraryDefault.equals(prospective)) {
+                return;
+            }
             throw InvalidDocumentException.of(
                     InvalidDocumentException.CODE_INGEST_PROFILE_NOT_ALLOWED,
-                    "文档分块档与库主档不一致，请刷新库主档配置后重试");
+                    "文档分块档与库默认配置不一致，请使用库默认分块参数后重试");
         }
         if (!cfg.isAllowCustomChunkProfiles()) {
             throw InvalidDocumentException.of(
