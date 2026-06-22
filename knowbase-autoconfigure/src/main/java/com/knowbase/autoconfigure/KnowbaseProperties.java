@@ -21,6 +21,8 @@ public class KnowbaseProperties {
 
     private Storage storage = new Storage();
 
+    private Upload upload = new Upload();
+
     private Security security = new Security();
 
     public boolean isEnabled() {
@@ -85,6 +87,14 @@ public class KnowbaseProperties {
 
     public void setStorage(Storage storage) {
         this.storage = storage;
+    }
+
+    public Upload getUpload() {
+        return upload;
+    }
+
+    public void setUpload(Upload upload) {
+        this.upload = upload;
     }
 
     public Security getSecurity() {
@@ -266,6 +276,27 @@ public class KnowbaseProperties {
 
         public void setMinio(Minio minio) {
             this.minio = minio;
+        }
+    }
+
+    public static class Upload {
+        private int maxFilesPerBatch = 50;
+        private long maxFileSizeBytes = 100L * 1024 * 1024;
+
+        public int getMaxFilesPerBatch() {
+            return maxFilesPerBatch;
+        }
+
+        public void setMaxFilesPerBatch(int maxFilesPerBatch) {
+            this.maxFilesPerBatch = maxFilesPerBatch;
+        }
+
+        public long getMaxFileSizeBytes() {
+            return maxFileSizeBytes;
+        }
+
+        public void setMaxFileSizeBytes(long maxFileSizeBytes) {
+            this.maxFileSizeBytes = maxFileSizeBytes;
         }
     }
 

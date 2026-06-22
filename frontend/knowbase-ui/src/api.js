@@ -90,6 +90,50 @@ export async function uploadFile(file, bucket) {
   }));
 }
 
+export async function uploadFiles(files, bucket) {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('files', file);
+  }
+  if (bucket) {
+    formData.append('bucket', bucket);
+  }
+  return unwrap(await http.post('/storage/upload-batch', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }));
+}
+
+export async function previewIngestion(libraryId, payload) {
+  return unwrap(await http.post(`/libraries/${libraryId}/ingestion/preview`, payload));
+}
+
+export async function prepareIngestion(libraryId, payload, stage = 'all') {
+  const suffix = stage === 'all' ? 'prepare' : `prepare/${stage}`;
+  return unwrap(await http.post(`/libraries/${libraryId}/ingestion/${suffix}`, payload));
+}
+
+export async function uploadAndIngest(libraryId, files, options = {}) {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('files', file);
+  }
+  if (options.bucket) {
+    formData.append('bucket', options.bucket);
+  }
+  if (options.documentProfileCode) {
+    formData.append('documentProfileCode', options.documentProfileCode);
+  }
+  formData.append('publishIndexOnSuccess', String(options.publishIndexOnSuccess !== false));
+  formData.append('autoStart', String(options.autoStart !== false));
+  if (options.maxFiles) {
+    formData.append('maxFiles', String(options.maxFiles));
+  }
+  return unwrap(await http.post(`/libraries/${libraryId}/ingestion-runs/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 300000
+  }));
+}
+
 export async function listAgents(params = {}) {
   return unwrap(await http.get('/agents', { params }));
 }

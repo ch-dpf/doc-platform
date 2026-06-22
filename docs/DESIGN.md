@@ -1046,7 +1046,7 @@ Profile 必须版本化。索引版本引用创建该版本时使用的 Profile�
 - Token 窗口分块边界测试。
 - 使用确定性 Mock Model 的多知识库问答集成测试。
 - API 契约测试。
-- Flyway schema 校验。
+- Flyway schema 校验。A
 - 前端主流程组件测试。
 - 状态机转换测试。
 - 权限过滤测试。

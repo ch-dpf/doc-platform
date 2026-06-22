@@ -1,6 +1,8 @@
 package com.knowbase.application.service;
 
 import com.knowbase.agent.LibraryRouter;
+import com.knowbase.agent.QuestionAnalysis;
+import com.knowbase.agent.QuestionAnalyzer;
 import com.knowbase.agent.RouteRequest;
 import com.knowbase.api.command.CreateRetrievalTestCommand;
 import com.knowbase.api.result.RetrievalTestResult;
@@ -18,6 +20,9 @@ import com.knowbase.retrieval.ContextPacker;
 import com.knowbase.retrieval.EvidenceBuilder;
 import com.knowbase.retrieval.PackedContext;
 import com.knowbase.retrieval.RetrievalCandidate;
+import com.knowbase.retrieval.RetrievalPlan;
+import com.knowbase.retrieval.RetrievalPlanner;
+import com.knowbase.retrieval.RetrievalPostProcessor;
 import com.knowbase.retrieval.RetrievalRequest;
 import com.knowbase.retrieval.Retriever;
 import com.knowbase.tokenizer.ModelTokenizer;
@@ -35,7 +40,10 @@ public class DefaultRetrievalTestService implements RunRetrievalTestUseCase {
 
     private final KnowbaseRepository repository;
     private final LibraryRouter libraryRouter;
+    private final QuestionAnalyzer questionAnalyzer;
+    private final RetrievalPlanner retrievalPlanner;
     private final Retriever retriever;
+    private final RetrievalPostProcessor retrievalPostProcessor;
     private final EvidenceBuilder evidenceBuilder;
     private final ContextPacker contextPacker;
     private final ChatModelClient chatModelClient;
@@ -45,19 +53,25 @@ public class DefaultRetrievalTestService implements RunRetrievalTestUseCase {
     public DefaultRetrievalTestService(
             KnowbaseRepository repository,
             LibraryRouter libraryRouter,
+            QuestionAnalyzer questionAnalyzer,
+            RetrievalPlanner retrievalPlanner,
             Retriever retriever,
+            RetrievalPostProcessor retrievalPostProcessor,
             EvidenceBuilder evidenceBuilder,
             ContextPacker contextPacker,
             ChatModelClient chatModelClient,
             TokenizerRegistry tokenizerRegistry
     ) {
-        this(repository, libraryRouter, retriever, evidenceBuilder, contextPacker, chatModelClient, tokenizerRegistry, null);
+        this(repository, libraryRouter, questionAnalyzer, retrievalPlanner, retriever, retrievalPostProcessor, evidenceBuilder, contextPacker, chatModelClient, tokenizerRegistry, null);
     }
 
     public DefaultRetrievalTestService(
             KnowbaseRepository repository,
             LibraryRouter libraryRouter,
+            QuestionAnalyzer questionAnalyzer,
+            RetrievalPlanner retrievalPlanner,
             Retriever retriever,
+            RetrievalPostProcessor retrievalPostProcessor,
             EvidenceBuilder evidenceBuilder,
             ContextPacker contextPacker,
             ChatModelClient chatModelClient,
@@ -66,7 +80,10 @@ public class DefaultRetrievalTestService implements RunRetrievalTestUseCase {
     ) {
         this.repository = repository;
         this.libraryRouter = libraryRouter;
+        this.questionAnalyzer = questionAnalyzer;
+        this.retrievalPlanner = retrievalPlanner;
         this.retriever = retriever;
+        this.retrievalPostProcessor = retrievalPostProcessor;
         this.evidenceBuilder = evidenceBuilder;
         this.contextPacker = contextPacker;
         this.chatModelClient = chatModelClient;
@@ -80,21 +97,43 @@ public class DefaultRetrievalTestService implements RunRetrievalTestUseCase {
         AgentVersion agentVersion = resolveAgentVersion(agentId, command.agentVersionId());
         Map<String, Object> retrievalPolicy = mergePolicy(agentVersion.retrievalPolicy(), command.retrievalPolicyOverride());
         Map<String, Object> answerPolicy = mergePolicy(agentVersion.answerPolicy(), command.answerPolicyOverride());
+        QuestionAnalysis analysis = questionAnalyzer.analyze(command.question(), agentVersion.routingPolicy());
         List<UUID> routedLibraryIds = command.debugLibraryIds() == null || command.debugLibraryIds().isEmpty()
                 ? libraryRouter.route(new RouteRequest(
                         agentVersion.agentVersionId(),
-                        command.question(),
+                        analysis.normalizedQuestion(),
                         agentVersion.libraryIds(),
                         agentVersion.routingPolicy()
                 ))
                 : validateDebugLibraryScope(agentVersion, command.debugLibraryIds());
+        RetrievalPlan retrievalPlan = retrievalPlanner.plan(
+                new AgentVersion(
+                        agentVersion.agentVersionId(),
+                        agentVersion.agentId(),
+                        agentVersion.version(),
+                        agentVersion.status(),
+                        agentVersion.scenePresetCode(),
+                        agentVersion.libraryIds(),
+                        agentVersion.routingPolicy(),
+                        retrievalPolicy,
+                        agentVersion.answerPolicy(),
+                        agentVersion.systemPrompt(),
+                        agentVersion.chatTokenizerProfileId(),
+                        agentVersion.published(),
+                        agentVersion.createdAt()
+                ),
+                analysis,
+                routedLibraryIds
+        );
 
-        List<RetrievalCandidate> candidates = retriever.retrieve(new RetrievalRequest(
+        List<RetrievalCandidate> rawCandidates = retriever.retrieve(new RetrievalRequest(
                 testId,
-                command.question(),
-                routedLibraryIds,
-                retrievalPolicy
+                analysis.normalizedQuestion(),
+                retrievalPlan.libraryIds(),
+                retrievalPlan.retrievalPolicy()
         ));
+        List<RetrievalCandidate> fusedCandidates = retrievalPostProcessor.fuse(rawCandidates, retrievalPlan.retrievalPolicy());
+        List<RetrievalCandidate> candidates = retrievalPostProcessor.rerank(fusedCandidates, retrievalPlan.retrievalPolicy());
         EvidencePack evidencePack = evidenceBuilder.build(candidates);
         ModelTokenizer chatTokenizer = resolveChatTokenizer(agentVersion);
         PackedContext packedContext = contextPacker.pack(
@@ -133,6 +172,8 @@ public class DefaultRetrievalTestService implements RunRetrievalTestUseCase {
                         Map.entry("maxCandidates", readInt(retrievalPolicy, "maxCandidates", 24)),
                         Map.entry("maxEvidence", readInt(retrievalPolicy, "maxEvidence", 12)),
                         Map.entry("maxContextTokens", readInt(answerPolicy, "maxContextTokens", DEFAULT_MAX_CONTEXT_TOKENS)),
+                        Map.entry("rawCandidateCount", rawCandidates.size()),
+                        Map.entry("fusedCandidateCount", fusedCandidates.size()),
                         Map.entry("candidateCount", candidates.size()),
                         Map.entry("evidenceCount", finalEvidencePack.segments().size()),
                         Map.entry("citationCount", finalEvidencePack.citations().size())

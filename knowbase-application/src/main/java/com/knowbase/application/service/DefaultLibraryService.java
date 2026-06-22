@@ -137,7 +137,7 @@ public class DefaultLibraryService implements CreateLibraryUseCase, KnowbaseLibr
         return List.of(defaultDocumentProfile(libraryId, Map.of(
                 "code", "default_markdown",
                 "contentFamily", "RICH_TEXT",
-                "parserCode", "text",
+                "parserCode", "markdown-structure",
                 "chunkingStrategy", "structure_token_window"
         )));
     }

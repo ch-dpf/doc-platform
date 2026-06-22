@@ -20,7 +20,7 @@ public final class DefaultRetrievalPostProcessor implements RetrievalPostProcess
     private static final double DEFAULT_MMR_LAMBDA = 0.72d;
 
     @Override
-    public List<RetrievalCandidate> process(List<RetrievalCandidate> candidates, Map<String, Object> retrievalPolicy) {
+    public List<RetrievalCandidate> fuse(List<RetrievalCandidate> candidates, Map<String, Object> retrievalPolicy) {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
@@ -32,13 +32,31 @@ public final class DefaultRetrievalPostProcessor implements RetrievalPostProcess
                 : scoreSort(ranked);
         ranked = deduplicate(ranked, policy);
         ranked = applyLibraryBalance(ranked, policy);
-        ranked = "mmr".equals(policy.rerank())
-                ? maximalMarginalRelevance(ranked, policy)
-                : ranked;
         return ranked.stream()
                 .limit(policy.maxCandidates())
                 .map(RankedCandidate::candidate)
                 .toList();
+    }
+
+    @Override
+    public List<RetrievalCandidate> rerank(List<RetrievalCandidate> candidates, Map<String, Object> retrievalPolicy) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        RetrievalPolicyView policy = RetrievalPolicyView.from(retrievalPolicy);
+        List<RankedCandidate> ranked = withBaseRank(candidates);
+        ranked = "mmr".equals(policy.rerank())
+                ? maximalMarginalRelevance(ranked, policy)
+                : scoreSort(ranked);
+        return ranked.stream()
+                .limit(policy.maxCandidates())
+                .map(RankedCandidate::candidate)
+                .toList();
+    }
+
+    @Override
+    public List<RetrievalCandidate> process(List<RetrievalCandidate> candidates, Map<String, Object> retrievalPolicy) {
+        return rerank(fuse(candidates, retrievalPolicy), retrievalPolicy);
     }
 
     private static List<RankedCandidate> withBaseRank(List<RetrievalCandidate> candidates) {

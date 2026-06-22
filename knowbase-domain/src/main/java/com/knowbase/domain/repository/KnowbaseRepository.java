@@ -1,5 +1,7 @@
 package com.knowbase.domain.repository;
 
+import com.knowbase.domain.model.ChatMessage;
+import com.knowbase.domain.model.ChatSession;
 import com.knowbase.domain.model.AgentVersion;
 import com.knowbase.domain.model.DocumentChunk;
 import com.knowbase.domain.model.DocumentProfile;
@@ -87,4 +89,16 @@ public interface KnowbaseRepository {
     QueryRun saveQueryRun(QueryRun queryRun);
 
     Optional<QueryRun> findQueryRun(UUID queryRunId);
+
+    ChatSession saveChatSession(ChatSession session);
+
+    Optional<ChatSession> findChatSession(UUID sessionId);
+
+    List<ChatSession> listChatSessions(String tenantId, UUID agentId);
+
+    ChatMessage saveChatMessage(ChatMessage message);
+
+    List<ChatMessage> listChatMessages(UUID sessionId);
+
+    Optional<IndexVersion> publishIndexVersion(UUID indexVersionId);
 }

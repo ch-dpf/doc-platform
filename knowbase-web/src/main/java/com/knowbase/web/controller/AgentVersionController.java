@@ -52,6 +52,15 @@ public class AgentVersionController {
         return ApiResponse.ok(agentVersionService.create(agentId, command));
     }
 
+    @Operation(summary = "标记智能体版本为测试中")
+    @PostMapping("/{agentVersionId}/mark-testing")
+    public ApiResponse<AgentVersionResult> markTesting(
+            @PathVariable UUID agentId,
+            @PathVariable UUID agentVersionId
+    ) {
+        return ApiResponse.ok(agentVersionService.markTesting(agentId, agentVersionId));
+    }
+
     @Operation(summary = "发布智能体版本")
     @PostMapping("/{agentVersionId}/publish")
     public ApiResponse<AgentVersionResult> publish(

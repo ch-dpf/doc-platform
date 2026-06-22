@@ -8,6 +8,8 @@ import com.knowbase.application.pipeline.DefaultQueryPipeline;
 import com.knowbase.application.observability.DefaultPipelineObserver;
 import com.knowbase.application.security.AccessControlService;
 import com.knowbase.application.service.DefaultAclService;
+import com.knowbase.application.service.DefaultChatService;
+import com.knowbase.application.service.DefaultIndexVersionService;
 import com.knowbase.application.service.DefaultAgentVersionService;
 import com.knowbase.application.service.DefaultEvalService;
 import com.knowbase.application.service.DefaultLibraryCatalogService;
@@ -16,46 +18,67 @@ import com.knowbase.application.service.DefaultObservabilityService;
 import com.knowbase.application.service.InMemoryAccessControlRepository;
 import com.knowbase.application.service.InMemoryObservabilityRepository;
 import com.knowbase.application.service.AsyncIngestionRunExecutor;
-import com.knowbase.application.service.DefaultIngestionService;
+import com.knowbase.application.service.DefaultIngestionPrepareService;
+import com.knowbase.application.service.DefaultIngestionPreviewService;
 import com.knowbase.application.service.DefaultKnowledgeAgentService;
 import com.knowbase.application.service.DefaultLibraryService;
-import com.knowbase.application.usecase.ListPresetUseCase;
+import com.knowbase.application.usecase.PrepareIngestionUseCase;
+import com.knowbase.application.usecase.PreviewIngestionUseCase;
 import com.knowbase.application.usecase.ManageTokenizerProfileUseCase;
 import com.knowbase.application.service.DefaultPresetService;
 import com.knowbase.application.service.DefaultQuestionService;
 import com.knowbase.application.service.DefaultRetrievalTestService;
 import com.knowbase.application.service.DefaultTokenizerProfileService;
+import com.knowbase.application.service.InMemoryPresetRepository;
 import com.knowbase.application.service.InMemoryKnowbaseRepository;
 import com.knowbase.application.service.IngestionRunExecutor;
 import com.knowbase.application.service.SynchronousIngestionRunExecutor;
 import com.knowbase.domain.audit.AuditSink;
 import com.knowbase.domain.audit.NoopAuditSink;
 import com.knowbase.domain.repository.KnowbaseRepository;
+import com.knowbase.ingestion.DocxStructureParser;
+import com.knowbase.ingestion.DocumentPreparationPipeline;
+import com.knowbase.ingestion.DocumentTextNormalizer;
+import com.knowbase.ingestion.HtmlStructureParser;
+import com.knowbase.ingestion.MarkdownStructureParser;
+import com.knowbase.ingestion.OcrLayoutDocumentParser;
+import com.knowbase.ingestion.OcrDocumentParser;
+import com.knowbase.ingestion.PdfLayoutParser;
+import com.knowbase.ingestion.PdfStructureParser;
 import com.knowbase.ingestion.DefaultIngestionPipeline;
 import com.knowbase.ingestion.DocumentSourceLoader;
 import com.knowbase.ingestion.IngestionPipeline;
 import com.knowbase.domain.observability.PipelineObserver;
 import com.knowbase.domain.repository.AccessControlRepository;
 import com.knowbase.domain.repository.ObservabilityRepository;
-import com.knowbase.ingestion.OcrDocumentParser;
+import com.knowbase.application.service.DefaultIngestionService;
+import com.knowbase.application.usecase.ListPresetUseCase;
+import com.knowbase.ingestion.QaDocumentParser;
+import com.knowbase.ingestion.ZipDocumentParser;
 import com.knowbase.ingestion.StructuredTableDocumentParser;
 import com.knowbase.storage.MinioObjectStorage;
 import com.knowbase.storage.ObjectStorage;
 import io.minio.MinioClient;
 import com.knowbase.ingestion.TextDocumentParser;
+import com.knowbase.ingestion.TextStructureParser;
 import com.knowbase.ingestion.TokenBasedDocumentChunker;
 import com.knowbase.model.ChatModelClient;
 import com.knowbase.model.DeterministicChatModelClient;
 import com.knowbase.model.DeterministicEmbeddingModelClient;
 import com.knowbase.model.EmbeddingModelClient;
+import com.knowbase.domain.repository.PresetRepository;
 import com.knowbase.preset.BuiltinPresetCatalog;
+import com.knowbase.preset.CompositePresetCatalog;
 import com.knowbase.preset.PresetCatalog;
 import com.knowbase.retrieval.ContextPacker;
 import com.knowbase.retrieval.DefaultContextPacker;
 import com.knowbase.retrieval.DefaultEvidenceBuilder;
+import com.knowbase.retrieval.DefaultRetrievalPlanner;
 import com.knowbase.retrieval.DefaultRetrievalPostProcessor;
 import com.knowbase.retrieval.EvidenceBuilder;
 import com.knowbase.retrieval.InMemoryVectorRetriever;
+import com.knowbase.agent.QuestionAnalyzer;
+import com.knowbase.retrieval.RetrievalPlanner;
 import com.knowbase.retrieval.RetrievalPostProcessor;
 import com.knowbase.retrieval.Retriever;
 import com.knowbase.storage.LocalFilesystemObjectStorage;
@@ -95,9 +118,16 @@ public class KnowbaseAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean
-    PresetCatalog presetCatalog() {
-        return new BuiltinPresetCatalog();
+    @ConditionalOnMissingBean(PresetRepository.class)
+    @ConditionalOnProperty(prefix = "knowbase.persistence", name = "enabled", havingValue = "false", matchIfMissing = true)
+    PresetRepository inMemoryPresetRepository() {
+        return new InMemoryPresetRepository();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(CompositePresetCatalog.class)
+    CompositePresetCatalog presetCatalog(PresetRepository presetRepository) {
+        return new CompositePresetCatalog(new BuiltinPresetCatalog(), presetRepository);
     }
 
     @Bean
@@ -189,7 +219,12 @@ public class KnowbaseAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     DefaultObjectUploadService defaultObjectUploadService(ObjectStorage objectStorage, KnowbaseProperties properties) {
-        return new DefaultObjectUploadService(objectStorage, properties.getStorage().getDefaultBucket());
+        return new DefaultObjectUploadService(
+                objectStorage,
+                properties.getStorage().getDefaultBucket(),
+                properties.getUpload().getMaxFilesPerBatch(),
+                properties.getUpload().getMaxFileSizeBytes()
+        );
     }
 
     @Bean
@@ -246,14 +281,76 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    MarkdownStructureParser markdownStructureParser() {
+        return new MarkdownStructureParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    HtmlStructureParser htmlStructureParser() {
+        return new HtmlStructureParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    DocxStructureParser docxStructureParser() {
+        return new DocxStructureParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    PdfLayoutParser pdfLayoutParser() {
+        return new PdfLayoutParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    PdfStructureParser pdfStructureParser() {
+        return new PdfStructureParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    DocumentTextNormalizer documentTextNormalizer() {
+        return new DocumentTextNormalizer();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    DocumentPreparationPipeline documentPreparationPipeline(
+            DocumentSourceLoader documentSourceLoader,
+            DocumentTextNormalizer documentTextNormalizer,
+            TokenBasedDocumentChunker tokenBasedDocumentChunker
+    ) {
+        return new DocumentPreparationPipeline(
+                documentSourceLoader,
+                documentTextNormalizer,
+                tokenBasedDocumentChunker
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     StructuredTableDocumentParser structuredTableDocumentParser() {
         return new StructuredTableDocumentParser();
     }
 
     @Bean
     @ConditionalOnMissingBean
+    OcrLayoutDocumentParser ocrLayoutDocumentParser() {
+        return new OcrLayoutDocumentParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     OcrDocumentParser ocrDocumentParser() {
         return new OcrDocumentParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    TextStructureParser textStructureParser() {
+        return new TextStructureParser();
     }
 
     @Bean
@@ -270,16 +367,51 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    QaDocumentParser qaDocumentParser() {
+        return new QaDocumentParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    ZipDocumentParser zipDocumentParser() {
+        return new ZipDocumentParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     DocumentSourceLoader documentSourceLoader(
             ObjectStorage objectStorage,
+            MarkdownStructureParser markdownStructureParser,
+            HtmlStructureParser htmlStructureParser,
+            DocxStructureParser docxStructureParser,
+            PdfLayoutParser pdfLayoutParser,
+            PdfStructureParser pdfStructureParser,
+            TextStructureParser textStructureParser,
             TextDocumentParser textDocumentParser,
+            QaDocumentParser qaDocumentParser,
+            ZipDocumentParser zipDocumentParser,
             StructuredTableDocumentParser structuredTableDocumentParser,
+            OcrLayoutDocumentParser ocrLayoutDocumentParser,
             OcrDocumentParser ocrDocumentParser,
             TikaDocumentParser tikaDocumentParser
     ) {
         return new DocumentSourceLoader(
                 objectStorage,
-                java.util.List.of(textDocumentParser, structuredTableDocumentParser, ocrDocumentParser, tikaDocumentParser)
+                java.util.List.of(
+                        markdownStructureParser,
+                        htmlStructureParser,
+                        docxStructureParser,
+                        pdfLayoutParser,
+                        pdfStructureParser,
+                        textStructureParser,
+                        qaDocumentParser,
+                        zipDocumentParser,
+                        textDocumentParser,
+                        structuredTableDocumentParser,
+                        ocrLayoutDocumentParser,
+                        ocrDocumentParser,
+                        tikaDocumentParser
+                )
         );
     }
 
@@ -297,16 +429,14 @@ public class KnowbaseAutoConfiguration {
     @ConditionalOnMissingBean
     IngestionPipeline ingestionPipeline(
             KnowbaseRepository repository,
-            DocumentSourceLoader documentSourceLoader,
-            TokenBasedDocumentChunker documentChunker,
+            DocumentPreparationPipeline documentPreparationPipeline,
             EmbeddingModelClient embeddingModelClient,
             TokenizerRegistry tokenizerRegistry,
             PipelineObserver pipelineObserver
     ) {
         return new DefaultIngestionPipeline(
                 repository,
-                documentSourceLoader,
-                documentChunker,
+                documentPreparationPipeline,
                 embeddingModelClient,
                 tokenizerRegistry,
                 pipelineObserver
@@ -359,13 +489,24 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    QuestionAnalyzer questionAnalyzer() {
+        return new com.knowbase.agent.DefaultQuestionAnalyzer();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    RetrievalPlanner retrievalPlanner() {
+        return new DefaultRetrievalPlanner();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     @ConditionalOnProperty(prefix = "knowbase.persistence", name = "enabled", havingValue = "false", matchIfMissing = true)
     Retriever inMemoryVectorRetriever(
             KnowbaseRepository repository,
-            EmbeddingModelClient embeddingModelClient,
-            RetrievalPostProcessor retrievalPostProcessor
+            EmbeddingModelClient embeddingModelClient
     ) {
-        return new InMemoryVectorRetriever(repository, embeddingModelClient, retrievalPostProcessor);
+        return new InMemoryVectorRetriever(repository, embeddingModelClient);
     }
 
     @Bean
@@ -385,7 +526,10 @@ public class KnowbaseAutoConfiguration {
     DefaultQueryPipeline defaultQueryPipeline(
             KnowbaseRepository repository,
             LibraryRouter libraryRouter,
+            QuestionAnalyzer questionAnalyzer,
+            RetrievalPlanner retrievalPlanner,
             Retriever retriever,
+            RetrievalPostProcessor retrievalPostProcessor,
             EvidenceBuilder evidenceBuilder,
             ContextPacker contextPacker,
             ChatModelClient chatModelClient,
@@ -396,7 +540,10 @@ public class KnowbaseAutoConfiguration {
         return new DefaultQueryPipeline(
                 repository,
                 libraryRouter,
+                questionAnalyzer,
+                retrievalPlanner,
                 retriever,
+                retrievalPostProcessor,
                 evidenceBuilder,
                 contextPacker,
                 chatModelClient,
@@ -414,6 +561,46 @@ public class KnowbaseAutoConfiguration {
             AccessControlService accessControlService
     ) {
         return new DefaultLibraryService(repository, presetCatalog, accessControlService);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultIngestionPreviewService.class)
+    DefaultIngestionPreviewService defaultIngestionPreviewService(
+            KnowbaseRepository repository,
+            DocumentPreparationPipeline documentPreparationPipeline,
+            TokenizerRegistry tokenizerRegistry
+    ) {
+        return new DefaultIngestionPreviewService(
+                repository,
+                documentPreparationPipeline,
+                tokenizerRegistry
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultIngestionPrepareService.class)
+    DefaultIngestionPrepareService defaultIngestionPrepareService(
+            KnowbaseRepository repository,
+            DocumentPreparationPipeline documentPreparationPipeline,
+            TokenizerRegistry tokenizerRegistry
+    ) {
+        return new DefaultIngestionPrepareService(
+                repository,
+                documentPreparationPipeline,
+                tokenizerRegistry
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(PrepareIngestionUseCase.class)
+    PrepareIngestionUseCase prepareIngestionUseCase(DefaultIngestionPrepareService defaultIngestionPrepareService) {
+        return defaultIngestionPrepareService;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(PreviewIngestionUseCase.class)
+    PreviewIngestionUseCase previewIngestionUseCase(DefaultIngestionPreviewService defaultIngestionPreviewService) {
+        return defaultIngestionPreviewService;
     }
 
     @Bean
@@ -437,9 +624,30 @@ public class KnowbaseAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(DefaultChatService.class)
+    DefaultChatService defaultChatService(KnowbaseRepository repository, DefaultQueryPipeline queryPipeline) {
+        return new DefaultChatService(repository, queryPipeline);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultIndexVersionService.class)
+    DefaultIndexVersionService defaultIndexVersionService(
+            KnowbaseRepository repository,
+            AccessControlService accessControlService
+    ) {
+        return new DefaultIndexVersionService(repository, accessControlService);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultPresetService.class)
+    DefaultPresetService defaultPresetService(CompositePresetCatalog presetCatalog, PresetRepository presetRepository) {
+        return new DefaultPresetService(presetCatalog, presetRepository);
+    }
+
+    @Bean
     @ConditionalOnMissingBean(ListPresetUseCase.class)
-    ListPresetUseCase listPresetUseCase(PresetCatalog presetCatalog) {
-        return new DefaultPresetService(presetCatalog);
+    ListPresetUseCase listPresetUseCase(DefaultPresetService defaultPresetService) {
+        return defaultPresetService;
     }
 
     @Bean
@@ -463,7 +671,10 @@ public class KnowbaseAutoConfiguration {
     DefaultRetrievalTestService defaultRetrievalTestService(
             KnowbaseRepository repository,
             LibraryRouter libraryRouter,
+            QuestionAnalyzer questionAnalyzer,
+            RetrievalPlanner retrievalPlanner,
             Retriever retriever,
+            RetrievalPostProcessor retrievalPostProcessor,
             EvidenceBuilder evidenceBuilder,
             ContextPacker contextPacker,
             ChatModelClient chatModelClient,
@@ -473,7 +684,10 @@ public class KnowbaseAutoConfiguration {
         return new DefaultRetrievalTestService(
                 repository,
                 libraryRouter,
+                questionAnalyzer,
+                retrievalPlanner,
                 retriever,
+                retrievalPostProcessor,
                 evidenceBuilder,
                 contextPacker,
                 chatModelClient,

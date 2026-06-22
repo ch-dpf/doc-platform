@@ -77,6 +77,27 @@ public final class DefaultAgentVersionService {
         return toResult(repository.saveAgentVersion(version));
     }
 
+    public AgentVersionResult markTesting(UUID agentId, UUID agentVersionId) {
+        accessControlService.requireAgentAccess(agentId, AclPermission.WRITE);
+        AgentVersion version = findVersion(agentId, agentVersionId);
+        AgentVersion testing = new AgentVersion(
+                version.agentVersionId(),
+                version.agentId(),
+                version.version(),
+                AgentVersionStatus.TESTING,
+                version.scenePresetCode(),
+                version.libraryIds(),
+                version.routingPolicy(),
+                version.retrievalPolicy(),
+                version.answerPolicy(),
+                version.systemPrompt(),
+                version.chatTokenizerProfileId(),
+                false,
+                version.createdAt()
+        );
+        return toResult(repository.saveAgentVersion(testing));
+    }
+
     public AgentVersionResult publish(UUID agentId, UUID agentVersionId) {
         accessControlService.requireAgentAccess(agentId, AclPermission.WRITE);
         AgentVersion version = findVersion(agentId, agentVersionId);

@@ -4,14 +4,11 @@ import com.knowbase.domain.repository.KnowbaseRepository;
 import com.knowbase.model.EmbeddingModelClient;
 import com.knowbase.persistence.store.EmbeddingStore;
 import com.knowbase.persistence.support.ChunkSearchRow;
-import com.knowbase.retrieval.DefaultRetrievalPostProcessor;
-import com.knowbase.retrieval.RetrievalPostProcessor;
 import com.knowbase.retrieval.RetrievalCandidate;
 import com.knowbase.retrieval.RetrievalRequest;
 import com.knowbase.retrieval.Retriever;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,31 +19,21 @@ public final class PgVectorRetriever implements Retriever {
     private final KnowbaseRepository repository;
     private final EmbeddingModelClient embeddingModelClient;
     private final EmbeddingStore embeddingStore;
-    private final RetrievalPostProcessor postProcessor;
 
     public PgVectorRetriever(
             KnowbaseRepository repository,
             EmbeddingModelClient embeddingModelClient,
             EmbeddingStore embeddingStore
     ) {
-        this(repository, embeddingModelClient, embeddingStore, new DefaultRetrievalPostProcessor());
-    }
-
-    public PgVectorRetriever(
-            KnowbaseRepository repository,
-            EmbeddingModelClient embeddingModelClient,
-            EmbeddingStore embeddingStore,
-            RetrievalPostProcessor postProcessor
-    ) {
         this.repository = repository;
         this.embeddingModelClient = embeddingModelClient;
         this.embeddingStore = embeddingStore;
-        this.postProcessor = postProcessor;
     }
 
     @Override
     public List<RetrievalCandidate> retrieve(RetrievalRequest request) {
-        float[] queryVector = embeddingModelClient.embed(List.of(request.question())).getFirst();
+        String queryText = resolveQueryText(request);
+        float[] queryVector = embeddingModelClient.embed(List.of(queryText)).getFirst();
         int topKPerLibrary = readInt(request.retrievalPolicy(), "topKPerLibrary", 8);
         List<RetrievalCandidate> candidates = new ArrayList<>();
 
@@ -58,7 +45,7 @@ public final class PgVectorRetriever implements Retriever {
                 List<ChunkSearchRow> rows = embeddingStore.searchSimilar(indexVersion.indexVersionId(), queryVector, topK);
                 for (ChunkSearchRow row : rows) {
                     double vectorScore = row.score();
-                    double keywordScore = keywordOverlap(request.question(), row.content());
+                    double keywordScore = keywordOverlap(queryText, row.content(), request.retrievalPolicy());
                     double score = vectorScore + keywordScore * 0.2d;
                     candidates.add(new RetrievalCandidate(
                             row.libraryId(),
@@ -73,8 +60,18 @@ public final class PgVectorRetriever implements Retriever {
             });
         }
 
-        candidates.sort(Comparator.comparingDouble(RetrievalCandidate::score).reversed());
-        return postProcessor.process(candidates, request.retrievalPolicy());
+        return candidates;
+    }
+
+    private static String resolveQueryText(RetrievalRequest request) {
+        if (request.question() != null && !request.question().isBlank()) {
+            return request.question();
+        }
+        Object expanded = request.retrievalPolicy() == null ? null : request.retrievalPolicy().get("expandedQueries");
+        if (expanded instanceof List<?> queries && !queries.isEmpty()) {
+            return String.valueOf(queries.getFirst());
+        }
+        return "";
     }
 
     private static int readInt(Map<String, Object> policy, String key, int defaultValue) {
@@ -103,18 +100,36 @@ public final class PgVectorRetriever implements Retriever {
         return Map.copyOf(enriched);
     }
 
-    private static double keywordOverlap(String question, String content) {
+    private static double keywordOverlap(String question, String content, Map<String, Object> policy) {
         if (question == null || content == null) {
             return 0.0d;
         }
-        String[] tokens = question.toLowerCase().split("\\s+");
         String lowerContent = content.toLowerCase();
+        List<String> tokens = new ArrayList<>();
+        String[] questionTokens = question.toLowerCase().split("\\s+");
+        for (String token : questionTokens) {
+            if (token.length() > 1) {
+                tokens.add(token);
+            }
+        }
+        Object keywords = policy == null ? null : policy.get("queryKeywords");
+        if (keywords instanceof List<?> keywordList) {
+            for (Object keyword : keywordList) {
+                String value = String.valueOf(keyword);
+                if (value.length() > 1) {
+                    tokens.add(value.toLowerCase());
+                }
+            }
+        }
+        if (tokens.isEmpty()) {
+            return 0.0d;
+        }
         int hits = 0;
         for (String token : tokens) {
-            if (token.length() > 1 && lowerContent.contains(token)) {
+            if (lowerContent.contains(token)) {
                 hits++;
             }
         }
-        return tokens.length == 0 ? 0.0d : (double) hits / tokens.length;
+        return (double) hits / tokens.size();
     }
 }

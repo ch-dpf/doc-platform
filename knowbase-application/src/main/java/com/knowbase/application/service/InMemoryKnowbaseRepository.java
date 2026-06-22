@@ -1,6 +1,8 @@
 package com.knowbase.application.service;
 
 import com.knowbase.domain.model.AgentVersion;
+import com.knowbase.domain.model.ChatMessage;
+import com.knowbase.domain.model.ChatSession;
 import com.knowbase.domain.model.DocumentChunk;
 import com.knowbase.domain.model.DocumentProfile;
 import com.knowbase.domain.model.IndexVersion;
@@ -38,6 +40,8 @@ public final class InMemoryKnowbaseRepository implements KnowbaseRepository {
     private final ConcurrentMap<UUID, KnowledgeAgent> agents = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, AgentVersion> agentVersions = new ConcurrentHashMap<>();
     private final ConcurrentMap<UUID, QueryRun> queryRuns = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, ChatSession> chatSessions = new ConcurrentHashMap<>();
+    private final ConcurrentMap<UUID, List<ChatMessage>> chatMessages = new ConcurrentHashMap<>();
 
     @Override
     public KnowledgeLibrary saveLibrary(KnowledgeLibrary library) {
@@ -276,5 +280,56 @@ public final class InMemoryKnowbaseRepository implements KnowbaseRepository {
     @Override
     public Optional<QueryRun> findQueryRun(UUID queryRunId) {
         return Optional.ofNullable(queryRuns.get(queryRunId));
+    }
+
+    @Override
+    public ChatSession saveChatSession(ChatSession session) {
+        chatSessions.put(session.sessionId(), session);
+        return session;
+    }
+
+    @Override
+    public Optional<ChatSession> findChatSession(UUID sessionId) {
+        return Optional.ofNullable(chatSessions.get(sessionId));
+    }
+
+    @Override
+    public List<ChatSession> listChatSessions(String tenantId, UUID agentId) {
+        return chatSessions.values().stream()
+                .filter(session -> tenantId == null || tenantId.equals(session.tenantId()))
+                .filter(session -> agentId == null || agentId.equals(session.agentId()))
+                .toList();
+    }
+
+    @Override
+    public ChatMessage saveChatMessage(ChatMessage message) {
+        chatMessages.computeIfAbsent(message.sessionId(), ignored -> new ArrayList<>()).add(message);
+        return message;
+    }
+
+    @Override
+    public List<ChatMessage> listChatMessages(UUID sessionId) {
+        return List.copyOf(chatMessages.getOrDefault(sessionId, List.of()));
+    }
+
+    @Override
+    public Optional<IndexVersion> publishIndexVersion(UUID indexVersionId) {
+        IndexVersion indexVersion = indexVersions.get(indexVersionId);
+        if (indexVersion == null) {
+            return Optional.empty();
+        }
+        IndexVersion published = new IndexVersion(
+                indexVersion.indexVersionId(),
+                indexVersion.libraryId(),
+                indexVersion.profileId(),
+                indexVersion.version(),
+                com.knowbase.domain.status.IndexVersionStatus.PUBLISHED,
+                indexVersion.documentCount(),
+                indexVersion.chunkCount(),
+                java.time.Instant.now(),
+                indexVersion.createdAt()
+        );
+        indexVersions.put(indexVersionId, published);
+        return Optional.of(published);
     }
 }

@@ -1,6 +1,8 @@
 package com.knowbase.application.pipeline;
 
 import com.knowbase.agent.LibraryRouter;
+import com.knowbase.agent.QuestionAnalysis;
+import com.knowbase.agent.QuestionAnalyzer;
 import com.knowbase.agent.RouteRequest;
 import com.knowbase.application.security.AccessControlService;
 import com.knowbase.application.security.AccessDeniedException;
@@ -18,6 +20,10 @@ import com.knowbase.model.ChatRequest;
 import com.knowbase.retrieval.ContextPacker;
 import com.knowbase.retrieval.EvidenceBuilder;
 import com.knowbase.retrieval.PackedContext;
+import com.knowbase.retrieval.RetrievalCandidate;
+import com.knowbase.retrieval.RetrievalPlan;
+import com.knowbase.retrieval.RetrievalPlanner;
+import com.knowbase.retrieval.RetrievalPostProcessor;
 import com.knowbase.retrieval.RetrievalRequest;
 import com.knowbase.retrieval.Retriever;
 import com.knowbase.tokenizer.ModelTokenizer;
@@ -37,7 +43,10 @@ public final class DefaultQueryPipeline {
 
     private final KnowbaseRepository repository;
     private final LibraryRouter libraryRouter;
+    private final QuestionAnalyzer questionAnalyzer;
+    private final RetrievalPlanner retrievalPlanner;
     private final Retriever retriever;
+    private final RetrievalPostProcessor retrievalPostProcessor;
     private final EvidenceBuilder evidenceBuilder;
     private final ContextPacker contextPacker;
     private final ChatModelClient chatModelClient;
@@ -48,7 +57,10 @@ public final class DefaultQueryPipeline {
     public DefaultQueryPipeline(
             KnowbaseRepository repository,
             LibraryRouter libraryRouter,
+            QuestionAnalyzer questionAnalyzer,
+            RetrievalPlanner retrievalPlanner,
             Retriever retriever,
+            RetrievalPostProcessor retrievalPostProcessor,
             EvidenceBuilder evidenceBuilder,
             ContextPacker contextPacker,
             ChatModelClient chatModelClient,
@@ -58,7 +70,10 @@ public final class DefaultQueryPipeline {
         this(
                 repository,
                 libraryRouter,
+                questionAnalyzer,
+                retrievalPlanner,
                 retriever,
+                retrievalPostProcessor,
                 evidenceBuilder,
                 contextPacker,
                 chatModelClient,
@@ -71,7 +86,10 @@ public final class DefaultQueryPipeline {
     public DefaultQueryPipeline(
             KnowbaseRepository repository,
             LibraryRouter libraryRouter,
+            QuestionAnalyzer questionAnalyzer,
+            RetrievalPlanner retrievalPlanner,
             Retriever retriever,
+            RetrievalPostProcessor retrievalPostProcessor,
             EvidenceBuilder evidenceBuilder,
             ContextPacker contextPacker,
             ChatModelClient chatModelClient,
@@ -81,7 +99,10 @@ public final class DefaultQueryPipeline {
     ) {
         this.repository = repository;
         this.libraryRouter = libraryRouter;
+        this.questionAnalyzer = questionAnalyzer;
+        this.retrievalPlanner = retrievalPlanner;
         this.retriever = retriever;
+        this.retrievalPostProcessor = retrievalPostProcessor;
         this.evidenceBuilder = evidenceBuilder;
         this.contextPacker = contextPacker;
         this.chatModelClient = chatModelClient;
@@ -92,50 +113,106 @@ public final class DefaultQueryPipeline {
 
     public QueryRun run(UUID queryRunId, UUID agentId, UUID agentVersionId, String question, List<UUID> debugLibraryIds) {
         AgentVersion agentVersion = resolveAgentVersion(agentId, agentVersionId);
-        if (!agentVersion.published()) {
+        if (agentVersion.status() == com.knowbase.domain.status.AgentVersionStatus.DISABLED) {
+            throw new IllegalStateException("智能体版本已禁用");
+        }
+        if (agentVersionId == null && !agentVersion.published()) {
             throw new IllegalStateException("正式问答仅允许使用已发布的智能体版本");
         }
 
         QueryRun created = saveStatus(queryRunId, agentId, agentVersion.agentVersionId(), question, QueryRunStatus.CREATED, null, null, 0, 0);
         String traceId = created.traceId();
         UUID querySpan = null;
+        UUID analyzeSpan = null;
         UUID routingSpan = null;
+        UUID planSpan = null;
         UUID retrievalSpan = null;
+        UUID fuseSpan = null;
+        UUID rerankSpan = null;
+        UUID evidenceSpan = null;
         UUID generationSpan = null;
         try {
             querySpan = pipelineObserver.startSpan("query", queryRunId, "pipeline", Map.of(
                     "agentId", agentId.toString(),
                     "traceId", traceId
             ));
+
+            UUID loadSpan = pipelineObserver.startSpan("query", queryRunId, "load_agent_config", Map.of("traceId", traceId));
+            pipelineObserver.finishSpan(loadSpan, "SUCCEEDED", Map.of(
+                    "agentVersionId", agentVersion.agentVersionId().toString(),
+                    "traceId", traceId
+            ));
+
+            analyzeSpan = pipelineObserver.startSpan("query", queryRunId, "analyze_question", Map.of("traceId", traceId));
+            QuestionAnalysis analysis = questionAnalyzer.analyze(question, agentVersion.routingPolicy());
+            pipelineObserver.finishSpan(analyzeSpan, "SUCCEEDED", Map.of(
+                    "keywordCount", analysis.keywords().size(),
+                    "expandedQueryCount", analysis.expandedQueries().size(),
+                    "traceId", traceId
+            ));
+            analyzeSpan = null;
+
+            saveStatus(queryRunId, agentId, agentVersion.agentVersionId(), question, QueryRunStatus.ROUTING, null, null, 0, 0);
+            routingSpan = pipelineObserver.startSpan("query", queryRunId, "select_libraries", Map.of("traceId", traceId));
             List<UUID> libraryIds = debugLibraryIds == null || debugLibraryIds.isEmpty()
                     ? libraryRouter.route(new RouteRequest(
                             agentVersion.agentVersionId(),
-                            question,
+                            analysis.normalizedQuestion(),
                             agentVersion.libraryIds(),
                             agentVersion.routingPolicy()
                     ))
                     : validateDebugLibraryScope(agentVersion, debugLibraryIds);
-            saveStatus(queryRunId, agentId, agentVersion.agentVersionId(), question, QueryRunStatus.ROUTING, null, null, 0, 0);
-            routingSpan = pipelineObserver.startSpan("query", queryRunId, "routing", Map.of("traceId", traceId));
-
-            List<com.knowbase.retrieval.RetrievalCandidate> candidates = retriever.retrieve(new RetrievalRequest(
-                    queryRunId,
-                    question,
-                    libraryIds,
-                    agentVersion.retrievalPolicy()
-            ));
             pipelineObserver.finishSpan(routingSpan, "SUCCEEDED", Map.of("libraryCount", libraryIds.size(), "traceId", traceId));
             routingSpan = null;
-            saveStatus(queryRunId, agentId, agentVersion.agentVersionId(), question, QueryRunStatus.RETRIEVING, null, null, 0, 0);
-            retrievalSpan = pipelineObserver.startSpan("query", queryRunId, "retrieval", Map.of("traceId", traceId));
 
-            EvidencePack evidencePack = limitEvidence(evidenceBuilder.build(candidates), agentVersion.retrievalPolicy());
+            planSpan = pipelineObserver.startSpan("query", queryRunId, "plan_retrieval", Map.of("traceId", traceId));
+            RetrievalPlan retrievalPlan = retrievalPlanner.plan(agentVersion, analysis, libraryIds);
+            pipelineObserver.finishSpan(planSpan, "SUCCEEDED", Map.of(
+                    "topKPerLibrary", retrievalPlan.topKPerLibrary(),
+                    "fusion", retrievalPlan.fusion(),
+                    "rerank", retrievalPlan.rerank(),
+                    "traceId", traceId
+            ));
+            planSpan = null;
+
+            saveStatus(queryRunId, agentId, agentVersion.agentVersionId(), question, QueryRunStatus.RETRIEVING, null, null, 0, 0);
+            retrievalSpan = pipelineObserver.startSpan("query", queryRunId, "retrieve_from_library", Map.of("traceId", traceId));
+            List<RetrievalCandidate> rawCandidates = retriever.retrieve(new RetrievalRequest(
+                    queryRunId,
+                    analysis.normalizedQuestion(),
+                    retrievalPlan.libraryIds(),
+                    retrievalPlan.retrievalPolicy()
+            ));
             pipelineObserver.finishSpan(retrievalSpan, "SUCCEEDED", Map.of(
-                    "candidateCount", candidates.size(),
-                    "evidenceCount", evidencePack.segments().size(),
+                    "rawCandidateCount", rawCandidates.size(),
                     "traceId", traceId
             ));
             retrievalSpan = null;
+
+            fuseSpan = pipelineObserver.startSpan("query", queryRunId, "fuse_results", Map.of("traceId", traceId));
+            List<RetrievalCandidate> fusedCandidates = retrievalPostProcessor.fuse(rawCandidates, retrievalPlan.retrievalPolicy());
+            pipelineObserver.finishSpan(fuseSpan, "SUCCEEDED", Map.of(
+                    "fusedCandidateCount", fusedCandidates.size(),
+                    "traceId", traceId
+            ));
+            fuseSpan = null;
+
+            rerankSpan = pipelineObserver.startSpan("query", queryRunId, "rerank_evidence", Map.of("traceId", traceId));
+            List<RetrievalCandidate> rankedCandidates = retrievalPostProcessor.rerank(fusedCandidates, retrievalPlan.retrievalPolicy());
+            pipelineObserver.finishSpan(rerankSpan, "SUCCEEDED", Map.of(
+                    "rankedCandidateCount", rankedCandidates.size(),
+                    "traceId", traceId
+            ));
+            rerankSpan = null;
+
+            evidenceSpan = pipelineObserver.startSpan("query", queryRunId, "build_evidence_pack", Map.of("traceId", traceId));
+            EvidencePack evidencePack = limitEvidence(evidenceBuilder.build(rankedCandidates), retrievalPlan.retrievalPolicy());
+            pipelineObserver.finishSpan(evidenceSpan, "SUCCEEDED", Map.of(
+                    "evidenceCount", evidencePack.segments().size(),
+                    "traceId", traceId
+            ));
+            evidenceSpan = null;
+
             ModelTokenizer chatTokenizer = resolveChatTokenizer(agentVersion);
             PackedContext packedContext = contextPacker.pack(
                     evidencePack,
@@ -143,7 +220,7 @@ public final class DefaultQueryPipeline {
                     readInt(agentVersion.answerPolicy(), "maxContextTokens", DEFAULT_MAX_CONTEXT_TOKENS)
             );
             saveStatus(queryRunId, agentId, agentVersion.agentVersionId(), question, QueryRunStatus.GENERATING, null, evidencePack, 0, 0);
-            generationSpan = pipelineObserver.startSpan("query", queryRunId, "generation", Map.of("traceId", traceId));
+            generationSpan = pipelineObserver.startSpan("query", queryRunId, "generate_answer", Map.of("traceId", traceId));
 
             boolean refuse = shouldRefuse(agentVersion.answerPolicy(), evidencePack);
             ChatCompletion completion;
@@ -193,8 +270,13 @@ public final class DefaultQueryPipeline {
                     "error", exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage()
             );
             finishSpanIfOpen(generationSpan, errorAttributes);
+            finishSpanIfOpen(evidenceSpan, errorAttributes);
+            finishSpanIfOpen(rerankSpan, errorAttributes);
+            finishSpanIfOpen(fuseSpan, errorAttributes);
             finishSpanIfOpen(retrievalSpan, errorAttributes);
+            finishSpanIfOpen(planSpan, errorAttributes);
             finishSpanIfOpen(routingSpan, errorAttributes);
+            finishSpanIfOpen(analyzeSpan, errorAttributes);
             finishSpanIfOpen(querySpan, errorAttributes);
             saveStatus(queryRunId, agentId, agentVersion.agentVersionId(), question, QueryRunStatus.FAILED, null, null, 0, 0);
             throw exception;

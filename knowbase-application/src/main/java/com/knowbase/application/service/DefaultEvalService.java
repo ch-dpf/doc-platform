@@ -66,6 +66,8 @@ public final class DefaultEvalService {
         Map<String, Object> metrics = new HashMap<>();
         metrics.put("sampleCount", sampleResults.size());
         metrics.put("averageScore", scored == 0 ? 0.0 : totalScore / scored);
+        metrics.put("citation_accuracy", averageCitationAccuracy(sampleResults));
+        metrics.put("faithfulness", averageFaithfulness(sampleResults));
         EvalRun finished = new EvalRun(
                 evalRunId,
                 command.tenantId(),
@@ -131,7 +133,9 @@ public final class DefaultEvalService {
             actualAnswer = queryRun.answer();
             score = scoreAnswer(input.expectedAnswer(), actualAnswer);
             metrics.put("queryRunId", queryRun.queryRunId().toString());
-            metrics.put("traceId", queryRun.traceId() == null ? null : queryRun.traceId().toString());
+            metrics.put("traceId", queryRun.traceId() == null ? null : queryRun.traceId());
+            metrics.put("evidenceCount", queryRun.evidencePack() == null ? 0 : queryRun.evidencePack().segments().size());
+            metrics.put("citationCount", queryRun.evidencePack() == null ? 0 : queryRun.evidencePack().citations().size());
         }
         EvalSample sample = new EvalSample(
                 sampleId,
@@ -145,6 +149,29 @@ public final class DefaultEvalService {
         );
         observabilityRepository.saveEvalSample(sample);
         return toSampleResult(sample);
+    }
+
+    private static double averageCitationAccuracy(List<EvalSampleResult> samples) {
+        long cited = samples.stream()
+                .filter(sample -> sample.metrics() != null && sample.metrics().get("evidenceCount") instanceof Number number && number.intValue() > 0)
+                .count();
+        return samples.isEmpty() ? 0.0 : (double) cited / samples.size();
+    }
+
+    private static double averageFaithfulness(List<EvalSampleResult> samples) {
+        double total = 0.0;
+        int counted = 0;
+        for (EvalSampleResult sample : samples) {
+            if (sample.actualAnswer() == null || sample.actualAnswer().isBlank()) {
+                continue;
+            }
+            Object evidenceCount = sample.metrics() == null ? null : sample.metrics().get("evidenceCount");
+            if (evidenceCount instanceof Number number && number.intValue() > 0) {
+                total += 1.0;
+                counted++;
+            }
+        }
+        return counted == 0 ? 0.0 : total / counted;
     }
 
     private static Double scoreAnswer(String expected, String actual) {

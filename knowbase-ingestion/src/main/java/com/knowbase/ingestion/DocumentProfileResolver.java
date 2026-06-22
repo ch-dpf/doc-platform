@@ -65,6 +65,12 @@ public final class DocumentProfileResolver {
 
     private static ContentFamily detectContentFamily(String sourceUri) {
         String lower = normalize(sourceUri);
+        if (lower.endsWith(".zip")) {
+            return ContentFamily.RICH_TEXT;
+        }
+        if (isQaSource(lower)) {
+            return ContentFamily.PLAIN_TEXT;
+        }
         if (lower.endsWith(".xls") || lower.endsWith(".xlsx") || lower.endsWith(".csv")) {
             return ContentFamily.STRUCTURED_TABLE;
         }
@@ -104,8 +110,32 @@ public final class DocumentProfileResolver {
 
     private static String preferredProfileCode(String sourceUri, ContentFamily family) {
         String lower = normalize(sourceUri);
+        if (lower.endsWith(".zip")) {
+            return "default_zip_bundle";
+        }
+        if (isQaSource(lower)) {
+            return "default_faq";
+        }
         if (lower.endsWith(".md") || lower.endsWith(".markdown")) {
             return "default_markdown";
+        }
+        if (lower.endsWith(".docx")) {
+            return "default_docx";
+        }
+        if (lower.endsWith(".pdf")) {
+            return "default_pdf";
+        }
+        if (lower.endsWith(".png")
+                || lower.endsWith(".jpg")
+                || lower.endsWith(".jpeg")
+                || lower.endsWith(".bmp")
+                || lower.endsWith(".webp")
+                || lower.endsWith(".tif")
+                || lower.endsWith(".tiff")) {
+            return "default_image";
+        }
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) {
+            return "default_web_page";
         }
         return switch (family) {
             case PLAIN_TEXT -> "default_text";
@@ -121,6 +151,9 @@ public final class DocumentProfileResolver {
     private static int fallbackPriority(DocumentProfile profile) {
         if ("default_markdown".equals(profile.code())) {
             return 10;
+        }
+        if ("default_docx".equals(profile.code()) || "default_pdf".equals(profile.code())) {
+            return 12;
         }
         if ("default_rich_text".equals(profile.code())) {
             return 20;
@@ -146,6 +179,16 @@ public final class DocumentProfileResolver {
             return "";
         }
         return lower.substring(dot + 1);
+    }
+
+    private static boolean isQaSource(String lower) {
+        if (!(lower.endsWith(".csv") || lower.endsWith(".xls") || lower.endsWith(".xlsx"))) {
+            return false;
+        }
+        return lower.contains("faq")
+                || lower.contains("qa")
+                || lower.contains("问答")
+                || lower.contains("question");
     }
 
     private static String normalize(String sourceUri) {

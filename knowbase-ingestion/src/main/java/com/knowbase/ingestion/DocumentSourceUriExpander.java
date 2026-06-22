@@ -17,7 +17,7 @@ public final class DocumentSourceUriExpander {
     private static final int DEFAULT_MAX_FILES = 200;
     private static final Set<String> DEFAULT_EXTENSIONS = Set.of(
             "md", "markdown", "txt", "log", "csv",
-            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip",
             "html", "htm", "json", "xml", "yml", "yaml", "properties",
             "java", "kt", "js", "ts", "vue", "py"
     );

@@ -25,29 +25,91 @@ public final class DocumentSourceLoader {
 
     public ParsedDocument load(String sourceUri, Map<String, Object> options) {
         LoadedContent loaded = resolveContent(sourceUri, options);
-        String preferredParser = options == null ? null : stringOption(options.get("parserCode"));
-        DocumentParser parser = selectParser(sourceUri, loaded.mimeType(), preferredParser)
+        Map<String, Object> effectiveOptions = options == null ? Map.of() : options;
+        Map<String, Object> routedOptions = ParseOptionsSupport.applyParseMode(effectiveOptions, sourceUri);
+        String preferredParser = stringOption(routedOptions.get("parserCode"));
+        DocumentParser parser = selectParser(sourceUri, loaded.mimeType(), preferredParser, routedOptions)
                 .orElseThrow(() -> new IllegalArgumentException("不支持的文档来源: " + sourceUri));
+        HashMap<String, Object> metadata = new HashMap<>(loaded.metadata());
+        metadata.putAll(routedOptions);
         return parser.parse(new DocumentSource(
                 sourceUri,
                 loaded.filename(),
                 loaded.mimeType(),
                 new java.io.ByteArrayInputStream(loaded.content()),
-                loaded.metadata()
+                Map.copyOf(metadata)
         ));
     }
 
-    private Optional<DocumentParser> selectParser(String sourceUri, String mimeType, String preferredParser) {
+    private Optional<DocumentParser> selectParser(
+            String sourceUri,
+            String mimeType,
+            String preferredParser,
+            Map<String, Object> options
+    ) {
         if (preferredParser != null) {
-            return parsers.stream()
+            Optional<DocumentParser> preferred = parsers.stream()
                     .filter(candidate -> parserMatches(candidate, preferredParser))
                     .filter(candidate -> candidate.supports(sourceUri, mimeType))
-                    .findFirst()
-                    .or(() -> "tika".equals(preferredParser.trim().toLowerCase())
-                            ? parsers.stream().filter(TikaDocumentParser.class::isInstance).findFirst()
-                            : Optional.empty());
+                    .findFirst();
+            if (preferred.isPresent()) {
+                return preferred;
+            }
+            if ("tika".equals(preferredParser.trim().toLowerCase())) {
+                return parsers.stream().filter(TikaDocumentParser.class::isInstance).findFirst();
+            }
+        }
+        Optional<DocumentParser> qaParser = parsers.stream()
+                .filter(QaDocumentParser.class::isInstance)
+                .map(QaDocumentParser.class::cast)
+                .filter(candidate -> candidate.supportsExplicit(sourceUri, mimeType, null))
+                .map(DocumentParser.class::cast)
+                .findFirst();
+        if (qaParser.isPresent()) {
+            return qaParser;
+        }
+        if (ParseOptionsSupport.isOcrMode(options)) {
+            Optional<DocumentParser> ocrLayout = parsers.stream()
+                    .filter(OcrLayoutDocumentParser.class::isInstance)
+                    .filter(candidate -> candidate.supports(sourceUri, mimeType))
+                    .findFirst();
+            if (ocrLayout.isPresent()) {
+                return ocrLayout;
+            }
+        }
+        if (ParseOptionsSupport.isLayoutMode(options)) {
+            Optional<DocumentParser> layoutParser = parsers.stream()
+                    .filter(PdfLayoutParser.class::isInstance)
+                    .filter(candidate -> candidate.supports(sourceUri, mimeType))
+                    .findFirst();
+            if (layoutParser.isPresent()) {
+                return layoutParser;
+            }
+        }
+        Optional<DocumentParser> structureParser = structureParserFor(sourceUri, mimeType, options);
+        if (structureParser.isPresent()) {
+            return structureParser;
         }
         return parsers.stream()
+                .filter(candidate -> candidate.supports(sourceUri, mimeType))
+                .findFirst();
+    }
+
+    private Optional<DocumentParser> structureParserFor(
+            String sourceUri,
+            String mimeType,
+            Map<String, Object> options
+    ) {
+        return parsers.stream()
+                .filter(candidate -> candidate instanceof MarkdownStructureParser
+                        || candidate instanceof HtmlStructureParser
+                        || candidate instanceof DocxStructureParser
+                        || candidate instanceof PdfLayoutParser
+                        || candidate instanceof PdfStructureParser
+                        || candidate instanceof TextStructureParser
+                        || candidate instanceof OcrLayoutDocumentParser)
+                .filter(candidate -> !(candidate instanceof PdfStructureParser
+                        && ParseOptionsSupport.isLayoutMode(options)))
                 .filter(candidate -> candidate.supports(sourceUri, mimeType))
                 .findFirst();
     }
@@ -175,6 +237,9 @@ public final class DocumentSourceLoader {
         if (lower.endsWith(".webp")) {
             return "image/webp";
         }
+        if (lower.endsWith(".zip")) {
+            return "application/zip";
+        }
         return "text/plain";
     }
 
@@ -193,11 +258,35 @@ public final class DocumentSourceLoader {
         if ("tika".equals(normalized)) {
             return parser instanceof TikaDocumentParser;
         }
-        if ("ocr".equals(normalized)) {
-            return parser instanceof OcrDocumentParser;
+        if ("ocr".equals(normalized) || "ocr-layout".equals(normalized)) {
+            return parser instanceof OcrDocumentParser || parser instanceof OcrLayoutDocumentParser;
         }
         if ("table-deep".equals(normalized) || "table".equals(normalized)) {
             return parser instanceof StructuredTableDocumentParser;
+        }
+        if ("qa".equals(normalized)) {
+            return parser instanceof QaDocumentParser;
+        }
+        if ("zip".equals(normalized)) {
+            return parser instanceof ZipDocumentParser;
+        }
+        if ("markdown-structure".equals(normalized)) {
+            return parser instanceof MarkdownStructureParser;
+        }
+        if ("html-structure".equals(normalized)) {
+            return parser instanceof HtmlStructureParser;
+        }
+        if ("docx-structure".equals(normalized)) {
+            return parser instanceof DocxStructureParser;
+        }
+        if ("pdf-structure".equals(normalized)) {
+            return parser instanceof PdfStructureParser;
+        }
+        if ("pdf-layout".equals(normalized)) {
+            return parser instanceof PdfLayoutParser;
+        }
+        if ("text-structure".equals(normalized)) {
+            return parser instanceof TextStructureParser;
         }
         return false;
     }

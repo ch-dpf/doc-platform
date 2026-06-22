@@ -26,8 +26,7 @@ import java.util.UUID;
 public final class DefaultIngestionPipeline implements IngestionPipeline {
 
     private final KnowbaseRepository repository;
-    private final DocumentSourceLoader sourceLoader;
-    private final TokenBasedDocumentChunker documentChunker;
+    private final DocumentPreparationPipeline documentPreparationPipeline;
     private final EmbeddingModelClient embeddingModelClient;
     private final TokenizerRegistry tokenizerRegistry;
     private final PipelineObserver pipelineObserver;
@@ -36,15 +35,13 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
 
     public DefaultIngestionPipeline(
             KnowbaseRepository repository,
-            DocumentSourceLoader sourceLoader,
-            TokenBasedDocumentChunker documentChunker,
+            DocumentPreparationPipeline documentPreparationPipeline,
             EmbeddingModelClient embeddingModelClient,
             TokenizerRegistry tokenizerRegistry,
             PipelineObserver pipelineObserver
     ) {
         this.repository = repository;
-        this.sourceLoader = sourceLoader;
-        this.documentChunker = documentChunker;
+        this.documentPreparationPipeline = documentPreparationPipeline;
         this.embeddingModelClient = embeddingModelClient;
         this.tokenizerRegistry = tokenizerRegistry;
         this.pipelineObserver = pipelineObserver == null ? new com.knowbase.domain.observability.NoopPipelineObserver() : pipelineObserver;
@@ -54,13 +51,21 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
     public IngestionRun run(IngestionRequest request) {
         IngestionRun existing = repository.findIngestionRun(request.runId())
                 .orElseThrow(() -> new IllegalStateException("入库运行不存在: " + request.runId()));
-        LibraryProfile profile = repository.findLatestLibraryProfile(request.libraryId())
-                .orElseThrow(() -> new IllegalStateException("知识库 Profile 不存在: " + request.libraryId()));
+        LibraryProfile profile = SegmentationOptionsSupport.applyLibraryProfileOverrides(
+                repository.findLatestLibraryProfile(request.libraryId())
+                        .orElseThrow(() -> new IllegalStateException("知识库 Profile 不存在: " + request.libraryId())),
+                request.options() == null ? Map.of() : request.options()
+        );
         List<DocumentProfile> documentProfiles = repository.listDocumentProfiles(request.libraryId());
         if (documentProfiles.isEmpty()) {
             throw new IllegalStateException("知识库未配置文档 Profile: " + request.libraryId());
         }
-        List<String> sourceUris = sourceUriExpander.expand(request.sourceUris(), request.options());
+        Map<String, Object> requestOptions = request.options() == null ? Map.of() : request.options();
+        String resolvedProfileCode = SegmentationOptionsSupport.resolveDocumentProfileCode(
+                request.documentProfileCode(),
+                requestOptions
+        );
+        List<String> sourceUris = sourceUriExpander.expand(request.sourceUris(), requestOptions);
         if (sourceUris.isEmpty()) {
             throw new IllegalStateException("未发现可入库的文档来源: " + request.sourceUris());
         }
@@ -98,35 +103,50 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
         for (String sourceUri : sourceUris) {
             UUID documentSpan = pipelineObserver.startSpan("ingestion", request.runId(), "document", Map.of("sourceUri", sourceUri));
             try {
-                DocumentProfile documentProfile = documentProfileResolver.resolve(
+                DocumentProfile resolvedProfile = documentProfileResolver.resolve(
                         sourceUri,
-                        request.documentProfileCode(),
+                        resolvedProfileCode,
                         documentProfiles
                 );
                 Map<String, Object> sourceOptions = mergeDocumentProfileOptions(
-                        request.options(),
-                        documentProfile,
-                        documentProfileResolver.routingMetadata(sourceUri, documentProfile)
+                        requestOptions,
+                        resolvedProfile,
+                        documentProfileResolver.routingMetadata(sourceUri, resolvedProfile)
+                );
+                sourceOptions = ParseOptionsSupport.applyParseMode(sourceOptions, sourceUri);
+                DocumentProfile documentProfile = SegmentationOptionsSupport.applyDocumentProfileOverrides(
+                        resolvedProfile,
+                        requestOptions
                 );
                 TokenizerProfile tokenizerProfile = resolveTokenizerProfile(profile, documentProfile);
                 ModelTokenizer tokenizer = resolveTokenizer(profile, tokenizerProfile);
                 sourceOptions = withTokenizerMetadata(sourceOptions, tokenizerProfile, tokenizer);
-                ParsedDocument parsed = ensureExtractedText(enrichMetadata(sourceLoader.load(sourceUri, sourceOptions), sourceOptions));
                 UUID documentId = UUID.randomUUID();
-                List<DocumentChunk> chunks = documentChunker.chunk(
+                DocumentPreparationResult prepared = documentPreparationPipeline.prepare(
+                        sourceUri,
+                        sourceOptions,
                         request.libraryId(),
                         documentId,
                         draftIndexVersionId,
-                        parsed,
                         profile,
                         documentProfile,
-                        tokenizer
+                        tokenizer,
+                        com.knowbase.ingestion.PreparationStage.CHUNK
                 );
-                List<float[]> embeddings = embedChunks(embeddingModelClient, profile, chunks);
-                for (int index = 0; index < chunks.size(); index++) {
-                    indexedChunks.add(new IndexedChunk(chunks.get(index), embeddings.get(index)));
+                List<DocumentChunk> chunks = prepared.chunks();
+                List<DocumentChunk> indexableChunks = chunks.stream()
+                        .filter(DefaultIngestionPipeline::isIndexableChunk)
+                        .toList();
+                List<float[]> embeddings = embedChunks(embeddingModelClient, profile, indexableChunks);
+                for (int index = 0; index < indexableChunks.size(); index++) {
+                    indexedChunks.add(new IndexedChunk(indexableChunks.get(index), embeddings.get(index)));
                 }
-                chunkCount += chunks.size();
+                for (DocumentChunk chunk : chunks) {
+                    if (!isIndexableChunk(chunk)) {
+                        indexedChunks.add(new IndexedChunk(chunk, null));
+                    }
+                }
+                chunkCount += indexableChunks.size();
                 succeeded++;
                 pipelineObserver.finishSpan(documentSpan, "SUCCEEDED", Map.of("chunkCount", chunks.size()));
             } catch (RuntimeException exception) {
@@ -220,6 +240,20 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
         return repository.saveIngestionRun(completed);
     }
 
+    private static boolean isIndexableChunk(DocumentChunk chunk) {
+        if (chunk.parentChunkId() != null) {
+            return true;
+        }
+        if (chunk.metadata() == null) {
+            return true;
+        }
+        Object indexable = chunk.metadata().get("indexable");
+        if (indexable instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+        return chunk.parentChunkId() != null;
+    }
+
     private static List<float[]> embedChunks(
             EmbeddingModelClient embeddingModelClient,
             LibraryProfile profile,
@@ -236,9 +270,10 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
     }
 
     private int nextIndexVersion(UUID libraryId) {
-        return repository.findPublishedIndexVersion(libraryId)
-                .map(version -> version.version() + 1)
-                .orElse(1);
+        return repository.listIndexVersions(libraryId).stream()
+                .mapToInt(IndexVersion::version)
+                .max()
+                .orElse(0) + 1;
     }
 
     private static Map<String, Object> mergeDocumentProfileOptions(

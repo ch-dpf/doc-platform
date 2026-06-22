@@ -1,5 +1,6 @@
 package com.knowbase.web.controller;
 
+import com.knowbase.api.result.BatchObjectUploadResult;
 import com.knowbase.api.result.ObjectUploadResult;
 import com.knowbase.application.service.DefaultObjectUploadService;
 import com.knowbase.web.support.ApiResponse;
@@ -11,6 +12,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Tag(name = "对象存储", description = "文件上传至 MinIO/本地对象存储")
 @RestController
@@ -29,11 +33,31 @@ public class StorageController {
             @RequestParam("file") MultipartFile file,
             @RequestParam(required = false) String bucket
     ) throws Exception {
+        uploadService.validateUpload(file.getOriginalFilename(), file.getSize());
         return ApiResponse.ok(uploadService.upload(
                 bucket,
                 file.getOriginalFilename(),
                 file.getInputStream(),
-                file.getContentType()
+                file.getContentType(),
+                file.getSize()
         ));
+    }
+
+    @Operation(summary = "批量上传文件", description = "单次最多上传 50 个文件，单个文件不超过 100MB")
+    @PostMapping(value = "/upload-batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<BatchObjectUploadResult> uploadBatch(
+            @RequestParam("files") List<MultipartFile> files,
+            @RequestParam(required = false) String bucket
+    ) throws Exception {
+        List<DefaultObjectUploadService.UploadCandidate> candidates = new ArrayList<>();
+        for (MultipartFile file : files) {
+            candidates.add(new DefaultObjectUploadService.UploadCandidate(
+                    file.getOriginalFilename(),
+                    file.getInputStream(),
+                    file.getContentType(),
+                    file.getSize()
+            ));
+        }
+        return ApiResponse.ok(uploadService.uploadBatch(bucket, candidates));
     }
 }

@@ -1,6 +1,8 @@
 package com.knowbase.persistence.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.knowbase.domain.model.ChatMessage;
+import com.knowbase.domain.model.ChatSession;
 import com.knowbase.domain.model.AgentVersion;
 import com.knowbase.domain.model.DocumentChunk;
 import com.knowbase.domain.model.DocumentProfile;
@@ -45,6 +47,7 @@ import com.pgvector.PGvector;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -432,13 +435,15 @@ public final class PostgresKnowbaseRepository implements KnowbaseRepository {
             } else {
                 chunkMapper.updateById(chunkEntity);
             }
-            embeddingStore.insertEmbedding(
-                    UUID.randomUUID(),
-                    chunk.chunkId(),
-                    chunk.embeddingModel(),
-                    indexedChunk.embedding().length,
-                    indexedChunk.embedding()
-            );
+            if (indexedChunk.embedding() != null) {
+                embeddingStore.insertEmbedding(
+                        UUID.randomUUID(),
+                        chunk.chunkId(),
+                        chunk.embeddingModel(),
+                        indexedChunk.embedding().length,
+                        indexedChunk.embedding()
+                );
+            }
         }
     }
 
@@ -520,5 +525,134 @@ public final class PostgresKnowbaseRepository implements KnowbaseRepository {
     public Optional<QueryRun> findQueryRun(UUID queryRunId) {
         QueryRunEntity entity = queryRunMapper.selectById(queryRunId);
         return entity == null ? Optional.empty() : Optional.of(DomainMapper.toQueryRun(entity));
+    }
+
+    @Override
+    public ChatSession saveChatSession(ChatSession session) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO kb_chat_session (
+                    session_id, tenant_id, agent_id, agent_version_id, title, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (session_id) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    status = EXCLUDED.status,
+                    agent_version_id = EXCLUDED.agent_version_id,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                session.sessionId(),
+                session.tenantId(),
+                session.agentId(),
+                session.agentVersionId(),
+                session.title(),
+                session.status(),
+                Timestamp.from(session.createdAt()),
+                Timestamp.from(session.updatedAt())
+        );
+        return session;
+    }
+
+    @Override
+    public Optional<ChatSession> findChatSession(UUID sessionId) {
+        List<ChatSession> sessions = jdbcTemplate.query(
+                "SELECT session_id, tenant_id, agent_id, agent_version_id, title, status, created_at, updated_at FROM kb_chat_session WHERE session_id = ?",
+                (resultSet, rowNum) -> new ChatSession(
+                        resultSet.getObject("session_id", UUID.class),
+                        resultSet.getString("tenant_id"),
+                        resultSet.getObject("agent_id", UUID.class),
+                        resultSet.getObject("agent_version_id", UUID.class),
+                        resultSet.getString("title"),
+                        resultSet.getString("status"),
+                        toInstant(resultSet.getTimestamp("created_at")),
+                        toInstant(resultSet.getTimestamp("updated_at"))
+                ),
+                sessionId
+        );
+        return sessions.isEmpty() ? Optional.empty() : Optional.of(sessions.getFirst());
+    }
+
+    @Override
+    public List<ChatSession> listChatSessions(String tenantId, UUID agentId) {
+        String sql = "SELECT session_id, tenant_id, agent_id, agent_version_id, title, status, created_at, updated_at FROM kb_chat_session WHERE tenant_id = ?";
+        Object[] args;
+        if (agentId != null) {
+            sql += " AND agent_id = ?";
+            args = new Object[] {tenantId, agentId};
+        } else {
+            args = new Object[] {tenantId};
+        }
+        return jdbcTemplate.query(
+                sql,
+                (resultSet, rowNum) -> new ChatSession(
+                        resultSet.getObject("session_id", UUID.class),
+                        resultSet.getString("tenant_id"),
+                        resultSet.getObject("agent_id", UUID.class),
+                        resultSet.getObject("agent_version_id", UUID.class),
+                        resultSet.getString("title"),
+                        resultSet.getString("status"),
+                        toInstant(resultSet.getTimestamp("created_at")),
+                        toInstant(resultSet.getTimestamp("updated_at"))
+                ),
+                args
+        );
+    }
+
+    @Override
+    public ChatMessage saveChatMessage(ChatMessage message) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO kb_chat_message (message_id, session_id, role, content, query_run_id, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                message.messageId(),
+                message.sessionId(),
+                message.role(),
+                message.content(),
+                message.queryRunId(),
+                Timestamp.from(message.createdAt())
+        );
+        return message;
+    }
+
+    @Override
+    public List<ChatMessage> listChatMessages(UUID sessionId) {
+        return jdbcTemplate.query(
+                "SELECT message_id, session_id, role, content, query_run_id, created_at FROM kb_chat_message WHERE session_id = ? ORDER BY created_at",
+                (resultSet, rowNum) -> new ChatMessage(
+                        resultSet.getObject("message_id", UUID.class),
+                        resultSet.getObject("session_id", UUID.class),
+                        resultSet.getString("role"),
+                        resultSet.getString("content"),
+                        resultSet.getObject("query_run_id", UUID.class),
+                        toInstant(resultSet.getTimestamp("created_at"))
+                ),
+                sessionId
+        );
+    }
+
+    @Override
+    public Optional<IndexVersion> publishIndexVersion(UUID indexVersionId) {
+        IndexVersion indexVersion = findIndexVersion(indexVersionId).orElse(null);
+        if (indexVersion == null) {
+            return Optional.empty();
+        }
+        Instant publishedAt = Instant.now();
+        IndexVersion published = new IndexVersion(
+                indexVersion.indexVersionId(),
+                indexVersion.libraryId(),
+                indexVersion.profileId(),
+                indexVersion.version(),
+                IndexVersionStatus.PUBLISHED,
+                indexVersion.documentCount(),
+                indexVersion.chunkCount(),
+                publishedAt,
+                indexVersion.createdAt()
+        );
+        saveIndexVersion(published);
+        return Optional.of(published);
+    }
+
+    private static Instant toInstant(Timestamp timestamp) {
+        return timestamp == null ? null : timestamp.toInstant();
     }
 }

@@ -71,7 +71,10 @@ public final class TikaDocumentParser implements DocumentParser {
             parsedMetadata.put("parser", "tika");
             parsedMetadata.put("detectedContentType", metadata.get(Metadata.CONTENT_TYPE));
             parsedMetadata.put("resourceName", metadata.get(TikaCoreProperties.RESOURCE_NAME_KEY));
-            return new ParsedDocument(source.sourceUri(), title, text, detectFamily(source), parsedMetadata);
+            return ParsedDocumentStructureEnricher.enrich(
+                    new ParsedDocument(source.sourceUri(), title, text, detectFamily(source), parsedMetadata),
+                    source.sourceUri()
+            );
         } catch (IOException | TikaException exception) {
             throw new IllegalStateException("Tika 解析文档失败: " + source.sourceUri(), exception);
         }

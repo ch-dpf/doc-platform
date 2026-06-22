@@ -20,6 +20,8 @@ import com.knowbase.domain.repository.ObservabilityRepository;
 import com.knowbase.persistence.repository.PostgresAccessControlRepository;
 import com.knowbase.persistence.repository.PostgresObservabilityRepository;
 import com.knowbase.persistence.repository.PostgresKnowbaseRepository;
+import com.knowbase.persistence.repository.PostgresPresetRepository;
+import com.knowbase.domain.repository.PresetRepository;
 import com.knowbase.persistence.retrieval.PgVectorRetriever;
 import com.knowbase.persistence.store.EmbeddingStore;
 import com.knowbase.persistence.store.AuditEventStore;
@@ -65,6 +67,12 @@ public class KnowbasePersistenceAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(PresetRepository.class)
+    PresetRepository postgresPresetRepository(JdbcTemplate jdbcTemplate) {
+        return new PostgresPresetRepository(jdbcTemplate);
+    }
+
+    @Bean
     @ConditionalOnMissingBean(KnowbaseRepository.class)
     KnowbaseRepository postgresKnowbaseRepository(
             LibraryMapper libraryMapper,
@@ -103,9 +111,8 @@ public class KnowbasePersistenceAutoConfiguration {
     Retriever pgVectorRetriever(
             KnowbaseRepository repository,
             EmbeddingModelClient embeddingModelClient,
-            EmbeddingStore embeddingStore,
-            RetrievalPostProcessor retrievalPostProcessor
+            EmbeddingStore embeddingStore
     ) {
-        return new PgVectorRetriever(repository, embeddingModelClient, embeddingStore, retrievalPostProcessor);
+        return new PgVectorRetriever(repository, embeddingModelClient, embeddingStore);
     }
 }

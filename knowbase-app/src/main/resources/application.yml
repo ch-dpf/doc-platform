@@ -12,6 +12,10 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 500MB
 
 knowbase:
   enabled: true
@@ -28,6 +32,9 @@ knowbase:
     chat-model: llama3.2
     embedding-dimension: 1024
     timeout: 60s
+  upload:
+    max-file-size-bytes: 209715200   # 200MB
+    max-files-per-batch: 50
 
 springdoc:
   api-docs:

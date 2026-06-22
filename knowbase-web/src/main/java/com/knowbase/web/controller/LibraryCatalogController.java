@@ -3,11 +3,13 @@ package com.knowbase.web.controller;
 import com.knowbase.api.result.DocumentChunkResult;
 import com.knowbase.api.result.IndexVersionResult;
 import com.knowbase.api.result.KnowledgeDocumentResult;
+import com.knowbase.application.service.DefaultIndexVersionService;
 import com.knowbase.application.service.DefaultLibraryCatalogService;
 import com.knowbase.web.support.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -22,9 +24,14 @@ import java.util.UUID;
 public class LibraryCatalogController {
 
     private final DefaultLibraryCatalogService catalogService;
+    private final DefaultIndexVersionService indexVersionService;
 
-    public LibraryCatalogController(DefaultLibraryCatalogService catalogService) {
+    public LibraryCatalogController(
+            DefaultLibraryCatalogService catalogService,
+            DefaultIndexVersionService indexVersionService
+    ) {
         this.catalogService = catalogService;
+        this.indexVersionService = indexVersionService;
     }
 
     @Operation(summary = "查询索引版本列表")
@@ -40,6 +47,15 @@ public class LibraryCatalogController {
             @PathVariable UUID indexVersionId
     ) {
         return ApiResponse.ok(catalogService.getIndexVersion(libraryId, indexVersionId));
+    }
+
+    @Operation(summary = "发布索引版本")
+    @PostMapping("/index-versions/{indexVersionId}/publish")
+    public ApiResponse<IndexVersionResult> publishIndexVersion(
+            @PathVariable UUID libraryId,
+            @PathVariable UUID indexVersionId
+    ) {
+        return ApiResponse.ok(indexVersionService.publish(libraryId, indexVersionId));
     }
 
     @Operation(summary = "查询文档列表")
