@@ -25,16 +25,18 @@ import java.util.regex.Pattern;
  *
  * <p>Priority order: semantic structure boundaries, token budget, character fallback.</p>
  */
-public final class SmartDocumentChunker {
+public final class SmartDocumentChunker implements DocumentChunker {
 
     private static final Pattern CODE_DECLARATION = Pattern.compile(
             "^(public|private|protected|class|interface|enum|record|def|function|const|let|var|async|static|final|[A-Za-z0-9_<>,\\[\\] ?]+\\s+[A-Za-z_][A-Za-z0-9_]*\\s*\\().*"
     );
 
+    @Override
     public List<DocumentChunk> chunk(ParsedDocument document) {
         return chunk(document, ChunkingOptions.defaults());
     }
 
+    @Override
     public List<DocumentChunk> chunk(ParsedDocument document, ChunkingOptions options) {
         Objects.requireNonNull(document, "document");
         Objects.requireNonNull(options, "options");
