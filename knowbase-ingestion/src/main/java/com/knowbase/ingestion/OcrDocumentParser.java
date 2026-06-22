@@ -60,6 +60,8 @@ public final class OcrDocumentParser implements DocumentParser {
             parsedMetadata.put("parser", "ocr");
             parsedMetadata.put("detectedContentType", metadata.get(Metadata.CONTENT_TYPE));
             parsedMetadata.put("ocrApplied", true);
+            parsedMetadata.putIfAbsent("ocrConfidence", -1d);
+            parsedMetadata.putIfAbsent("ocrConfidenceSource", "unavailable");
             return new ParsedDocument(
                     source.sourceUri(),
                     firstNonBlank(metadata.get("title"), source.filename(), source.sourceUri()),

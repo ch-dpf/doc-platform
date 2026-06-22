@@ -27,7 +27,7 @@ public final class LayoutPdfTextExtractor {
             PositionCollectingStripper stripper = new PositionCollectingStripper();
             stripper.setSortByPosition(true);
             stripper.getText(document);
-            List<LayoutLine> lines = stripper.lines();
+            List<LayoutLine> lines = enrichReadingOrderAndColumns(stripper.lines());
             if (lines.isEmpty()) {
                 return List.of();
             }
@@ -82,11 +82,17 @@ public final class LayoutPdfTextExtractor {
         float topY = (float) lines.stream().mapToDouble(LayoutLine::y).max().orElse(first.y());
         float bottomY = (float) lines.stream().mapToDouble(line -> line.y() - line.height()).min().orElse(first.y());
         String layoutRole = classifyRole(content, lines, avgFont, bodyFontSize);
+        int readingOrder = lines.stream().mapToInt(LayoutLine::readingOrder).min().orElse(first.readingOrder());
+        int columnIndex = dominantColumn(lines);
+        int columnCount = lines.stream().mapToInt(LayoutLine::columnCount).max().orElse(first.columnCount());
         int headingLevel = "title".equals(layoutRole) || "heading".equals(layoutRole)
                 ? headingLevel(avgFont, bodyFontSize)
                 : 0;
         return new LayoutBlock(
                 first.pageNumber(),
+                readingOrder,
+                columnIndex,
+                columnCount,
                 layoutRole,
                 headingLevel,
                 content,
@@ -96,6 +102,54 @@ public final class LayoutPdfTextExtractor {
                 Math.max(1f, topY - bottomY),
                 avgFont
         );
+    }
+
+    private static List<LayoutLine> enrichReadingOrderAndColumns(List<LayoutLine> lines) {
+        if (lines.isEmpty()) {
+            return lines;
+        }
+        Map<Integer, PageColumnStats> pageStats = pageColumnStats(lines);
+        List<LayoutLine> enriched = new ArrayList<>();
+        int currentPage = -1;
+        int readingOrder = 0;
+        for (LayoutLine line : lines) {
+            if (line.pageNumber() != currentPage) {
+                currentPage = line.pageNumber();
+                readingOrder = 0;
+            }
+            PageColumnStats stats = pageStats.getOrDefault(line.pageNumber(), PageColumnStats.singleColumn());
+            int columnIndex = stats.columnCount() > 1 && line.minX() > stats.splitX() ? 1 : 0;
+            enriched.add(line.withReadingOrder(readingOrder++, columnIndex, stats.columnCount()));
+        }
+        return enriched;
+    }
+
+    private static Map<Integer, PageColumnStats> pageColumnStats(List<LayoutLine> lines) {
+        Map<Integer, List<LayoutLine>> byPage = new HashMap<>();
+        for (LayoutLine line : lines) {
+            byPage.computeIfAbsent(line.pageNumber(), ignored -> new ArrayList<>()).add(line);
+        }
+        Map<Integer, PageColumnStats> stats = new HashMap<>();
+        for (Map.Entry<Integer, List<LayoutLine>> entry : byPage.entrySet()) {
+            List<Float> starts = entry.getValue().stream().map(LayoutLine::minX).sorted().toList();
+            if (starts.size() < 4) {
+                stats.put(entry.getKey(), PageColumnStats.singleColumn());
+                continue;
+            }
+            float min = starts.getFirst();
+            float max = starts.getLast();
+            float split = starts.get(starts.size() / 2);
+            long left = starts.stream().filter(value -> value <= split).count();
+            long right = starts.size() - left;
+            boolean looksMultiColumn = max - min > 180f && left >= 2 && right >= 2;
+            stats.put(entry.getKey(), looksMultiColumn ? new PageColumnStats(2, split) : PageColumnStats.singleColumn());
+        }
+        return stats;
+    }
+
+    private static int dominantColumn(List<LayoutLine> lines) {
+        long right = lines.stream().filter(line -> line.columnIndex() > 0).count();
+        return right > lines.size() / 2 ? 1 : 0;
     }
 
     private static String classifyRole(String content, List<LayoutLine> lines, float avgFont, float bodyFontSize) {
@@ -140,6 +194,10 @@ public final class LayoutPdfTextExtractor {
             metadata.put("boundaryType", block.layoutRole());
             metadata.put("layoutRole", block.layoutRole());
             metadata.put("pageNumber", block.pageNumber());
+            metadata.put("readingOrder", block.readingOrder());
+            metadata.put("columnIndex", block.columnIndex());
+            metadata.put("columnCount", block.columnCount());
+            metadata.put("multiColumn", block.columnCount() > 1);
             metadata.put("bbox", List.of(
                     round(block.x()),
                     round(block.y()),
@@ -182,8 +240,15 @@ public final class LayoutPdfTextExtractor {
             float height,
             float fontSize,
             float minX,
-            float maxX
+            float maxX,
+            int readingOrder,
+            int columnIndex,
+            int columnCount
     ) {
+        LayoutLine withReadingOrder(int readingOrder, int columnIndex, int columnCount) {
+            return new LayoutLine(pageNumber, text, y, height, fontSize, minX, maxX, readingOrder, columnIndex, columnCount);
+        }
+
         boolean tableLike() {
             return text.contains("\t") || text.matches(".*\\S\\s{3,}\\S.*");
         }
@@ -191,6 +256,9 @@ public final class LayoutPdfTextExtractor {
 
     private record LayoutBlock(
             int pageNumber,
+            int readingOrder,
+            int columnIndex,
+            int columnCount,
             String layoutRole,
             int level,
             String content,
@@ -200,6 +268,12 @@ public final class LayoutPdfTextExtractor {
             float height,
             float fontSize
     ) {
+    }
+
+    private record PageColumnStats(int columnCount, float splitX) {
+        private static PageColumnStats singleColumn() {
+            return new PageColumnStats(1, Float.MAX_VALUE);
+        }
     }
 
     private static final class PositionCollectingStripper extends PDFTextStripper {
@@ -291,7 +365,10 @@ public final class LayoutPdfTextExtractor {
                     anchorPosition.getHeightDir(),
                     avgFont,
                     minX,
-                    maxX
+                    maxX,
+                    0,
+                    0,
+                    1
             );
         }
     }

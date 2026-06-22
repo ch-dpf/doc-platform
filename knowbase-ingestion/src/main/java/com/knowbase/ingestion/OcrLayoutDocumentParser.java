@@ -72,17 +72,19 @@ public final class OcrLayoutDocumentParser implements DocumentParser {
             if (text == null || text.isBlank()) {
                 text = tika.parseToString(new java.io.ByteArrayInputStream(content), metadata);
             }
-            List<StructuralBlock> blocks = StructureParsingSupport.parseOcrLayout(text);
             Map<String, Object> parsedMetadata = new HashMap<>();
             if (source.metadata() != null) {
                 parsedMetadata.putAll(source.metadata());
             }
+            List<StructuralBlock> blocks = StructureParsingSupport.parseOcrLayout(text, parsedMetadata);
             parsedMetadata.put("parserCode", PARSER_CODE);
             parsedMetadata.put("parser", PARSER_CODE);
             parsedMetadata.put("detectedContentType", metadata.get(Metadata.CONTENT_TYPE));
             parsedMetadata.put("ocrApplied", true);
             parsedMetadata.put("layoutParsing", true);
             parsedMetadata.put("ocrLanguage", language == null ? "auto" : language);
+            parsedMetadata.putIfAbsent("ocrConfidence", -1d);
+            parsedMetadata.putIfAbsent("ocrConfidenceSource", "unavailable");
             parsedMetadata.put("structureAware", !blocks.isEmpty());
             parsedMetadata.put("blockCount", blocks.size());
             String flatText = blocks.isEmpty() ? text : StructureParsingSupport.blocksToText(blocks);

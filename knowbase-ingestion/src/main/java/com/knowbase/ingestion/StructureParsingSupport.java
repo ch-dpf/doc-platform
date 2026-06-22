@@ -302,12 +302,18 @@ final class StructureParsingSupport {
     }
 
     static List<StructuralBlock> parseOcrLayout(String text) {
+        return parseOcrLayout(text, Map.of());
+    }
+
+    static List<StructuralBlock> parseOcrLayout(String text, Map<String, Object> ocrMetadata) {
         List<StructuralBlock> blocks = new ArrayList<>();
         if (text == null || text.isBlank()) {
             return blocks;
         }
+        Map<String, Object> sharedMetadata = ocrBlockMetadata(ocrMetadata);
         String[] lines = text.split("\n", -1);
         StringBuilder paragraph = new StringBuilder();
+        int paragraphStartLine = 1;
         int ordinal = 0;
         int lineIndex = 0;
         for (String rawLine : lines) {
@@ -315,81 +321,154 @@ final class StructureParsingSupport {
             String line = rawLine == null ? "" : rawLine.trim();
             if (line.isBlank()) {
                 if (paragraph.length() > 0) {
-                    blocks.add(layoutParagraph(paragraph.toString().trim(), ordinal++, lineIndex));
+                    blocks.add(layoutParagraph(paragraph.toString().trim(), ordinal++, paragraphStartLine, lineIndex - 1, sharedMetadata));
                     paragraph.setLength(0);
                 }
                 continue;
             }
             if (PDF_HEADING.matcher(line).matches()) {
                 if (paragraph.length() > 0) {
-                    blocks.add(layoutParagraph(paragraph.toString().trim(), ordinal++, lineIndex));
+                    blocks.add(layoutParagraph(paragraph.toString().trim(), ordinal++, paragraphStartLine, lineIndex - 1, sharedMetadata));
                     paragraph.setLength(0);
                 }
-                blocks.add(layoutHeading(line, ordinal++, lineIndex));
+                blocks.add(layoutHeading(line, ordinal++, lineIndex, sharedMetadata));
                 continue;
             }
             if (PDF_TABLE_ROW.matcher(line).matches()) {
                 if (paragraph.length() > 0) {
-                    blocks.add(layoutParagraph(paragraph.toString().trim(), ordinal++, lineIndex));
+                    blocks.add(layoutParagraph(paragraph.toString().trim(), ordinal++, paragraphStartLine, lineIndex - 1, sharedMetadata));
                     paragraph.setLength(0);
                 }
-                blocks.add(layoutTableRow(line, ordinal++, lineIndex));
+                blocks.add(layoutTableRow(line, ordinal++, lineIndex, sharedMetadata));
                 continue;
             }
-            if (paragraph.length() > 0) {
+            if (paragraph.length() == 0) {
+                paragraphStartLine = lineIndex;
+            } else {
                 paragraph.append('\n');
             }
             paragraph.append(line);
         }
         if (paragraph.length() > 0) {
-            blocks.add(layoutParagraph(paragraph.toString().trim(), ordinal, lineIndex));
+            blocks.add(layoutParagraph(paragraph.toString().trim(), ordinal, paragraphStartLine, lineIndex, sharedMetadata));
         }
         return enrichHeadingPaths(blocks);
     }
 
-    private static StructuralBlock layoutParagraph(String content, int ordinal, int lineIndex) {
+    private static StructuralBlock layoutParagraph(
+            String content,
+            int ordinal,
+            int startLine,
+            int endLine,
+            Map<String, Object> sharedMetadata
+    ) {
+        java.util.HashMap<String, Object> metadata = new java.util.HashMap<>(sharedMetadata);
+        metadata.put("boundaryType", "paragraph");
+        metadata.put("layoutRole", "body");
+        metadata.put("ocrLineStart", startLine);
+        metadata.put("ocrLineEnd", endLine);
+        metadata.put("readingOrder", ordinal);
+        metadata.put("bbox", estimatedOcrBbox(startLine, endLine));
+        metadata.put("bboxSource", "ocr-text-line-estimate");
         return new StructuralBlock(
                 "paragraph",
                 0,
                 content,
                 ordinal,
-                Map.of(
-                        "boundaryType", "paragraph",
-                        "layoutRole", "body",
-                        "ocrLineStart", lineIndex,
-                        "layoutParsing", true
-                )
+                metadata
         );
     }
 
-    private static StructuralBlock layoutHeading(String content, int ordinal, int lineIndex) {
+    private static StructuralBlock layoutHeading(String content, int ordinal, int lineIndex, Map<String, Object> sharedMetadata) {
+        java.util.HashMap<String, Object> metadata = new java.util.HashMap<>(sharedMetadata);
+        metadata.put("boundaryType", "section");
+        metadata.put("layoutRole", "heading");
+        metadata.put("ocrLineStart", lineIndex);
+        metadata.put("ocrLineEnd", lineIndex);
+        metadata.put("readingOrder", ordinal);
+        metadata.put("bbox", estimatedOcrBbox(lineIndex, lineIndex));
+        metadata.put("bboxSource", "ocr-text-line-estimate");
         return new StructuralBlock(
                 "heading",
                 2,
                 content,
                 ordinal,
-                Map.of(
-                        "boundaryType", "section",
-                        "layoutRole", "heading",
-                        "ocrLineStart", lineIndex,
-                        "layoutParsing", true
-                )
+                metadata
         );
     }
 
-    private static StructuralBlock layoutTableRow(String content, int ordinal, int lineIndex) {
+    private static StructuralBlock layoutTableRow(String content, int ordinal, int lineIndex, Map<String, Object> sharedMetadata) {
+        java.util.HashMap<String, Object> metadata = new java.util.HashMap<>(sharedMetadata);
+        metadata.put("boundaryType", "table_row");
+        metadata.put("layoutRole", "table");
+        metadata.put("ocrLineStart", lineIndex);
+        metadata.put("ocrLineEnd", lineIndex);
+        metadata.put("readingOrder", ordinal);
+        metadata.put("bbox", estimatedOcrBbox(lineIndex, lineIndex));
+        metadata.put("bboxSource", "ocr-text-line-estimate");
         return new StructuralBlock(
                 "table_row",
                 0,
                 content.replaceAll("\\s{2,}|\\t+", " | "),
                 ordinal,
-                Map.of(
-                        "boundaryType", "table_row",
-                        "layoutRole", "table",
-                        "ocrLineStart", lineIndex,
-                        "layoutParsing", true
-                )
+                metadata
         );
+    }
+
+    private static Map<String, Object> ocrBlockMetadata(Map<String, Object> ocrMetadata) {
+        java.util.HashMap<String, Object> metadata = new java.util.HashMap<>();
+        metadata.put("layoutParsing", true);
+        metadata.put("ocrApplied", true);
+        metadata.put("pageNumber", intMetadata(ocrMetadata, "pageNumber", 1));
+        metadata.put("columnIndex", intMetadata(ocrMetadata, "columnIndex", 0));
+        metadata.put("columnCount", intMetadata(ocrMetadata, "columnCount", 1));
+        metadata.put("multiColumn", intMetadata(ocrMetadata, "columnCount", 1) > 1);
+        Object confidence = ocrMetadata == null ? null : firstPresent(ocrMetadata, "ocrConfidence", "confidence");
+        if (confidence instanceof Number number) {
+            metadata.put("ocrConfidence", number.doubleValue());
+            metadata.put("ocrConfidenceSource", "metadata");
+        } else if (confidence != null) {
+            try {
+                metadata.put("ocrConfidence", Double.parseDouble(String.valueOf(confidence)));
+                metadata.put("ocrConfidenceSource", "metadata");
+            } catch (NumberFormatException ignored) {
+                metadata.put("ocrConfidence", -1d);
+                metadata.put("ocrConfidenceSource", "unavailable");
+            }
+        } else {
+            metadata.put("ocrConfidence", -1d);
+            metadata.put("ocrConfidenceSource", "unavailable");
+        }
+        return metadata;
+    }
+
+    private static Object firstPresent(Map<String, Object> metadata, String first, String second) {
+        Object value = metadata.get(first);
+        return value == null ? metadata.get(second) : value;
+    }
+
+    private static int intMetadata(Map<String, Object> metadata, String key, int fallback) {
+        if (metadata == null) {
+            return fallback;
+        }
+        Object value = metadata.get(key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value != null) {
+            try {
+                return Integer.parseInt(String.valueOf(value));
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
+    }
+
+    private static List<Double> estimatedOcrBbox(int startLine, int endLine) {
+        double top = Math.max(0, startLine - 1);
+        double height = Math.max(1, endLine - startLine + 1);
+        return List.of(0d, top, 1d, height);
     }
 
     static String blocksToText(List<StructuralBlock> blocks) {

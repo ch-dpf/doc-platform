@@ -7,6 +7,7 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.tika.Tika;
 import org.apache.tika.exception.TikaException;
 import org.apache.tika.metadata.Metadata;
@@ -84,6 +85,7 @@ public final class StructuredTableDocumentParser implements DocumentParser {
                 Sheet sheet = workbook.getSheetAt(sheetIndex);
                 builder.append("# Sheet: ").append(sheet.getSheetName()).append('\n');
                 List<String> headers = readRow(sheet.getRow(sheet.getFirstRowNum()));
+                List<CellRangeAddress> mergedRegions = sheet.getMergedRegions();
                 for (int rowIndex = sheet.getFirstRowNum() + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
                     Row row = sheet.getRow(rowIndex);
                     if (row == null) {
@@ -95,10 +97,13 @@ public final class StructuredTableDocumentParser implements DocumentParser {
                         continue;
                     }
                     builder.append(rowText).append('\n');
-                    blocks.add(tableRowBlock(rowText, ordinal++, rowIndex, Map.of(
+                    List<Map<String, Object>> mergedCells = mergedCellsForRow(mergedRegions, rowIndex);
+                    blocks.add(tableRowBlock(rowText, ordinal++, rowIndex, rowIndex, headers, values, Map.of(
                             "tableFormat", "spreadsheet",
                             "sheetName", sheet.getSheetName(),
-                            "sheetIndex", sheetIndex
+                            "sheetIndex", sheetIndex,
+                            "mergedCells", mergedCells,
+                            "hasMergedCells", !mergedCells.isEmpty()
                     )));
                 }
                 builder.append('\n');
@@ -133,7 +138,7 @@ public final class StructuredTableDocumentParser implements DocumentParser {
                 continue;
             }
             builder.append(rowText).append('\n');
-            blocks.add(tableRowBlock(rowText, ordinal++, lineIndex, Map.of("tableFormat", "csv")));
+            blocks.add(tableRowBlock(rowText, ordinal++, lineIndex, lineIndex, headers, values, Map.of("tableFormat", "csv")));
         }
         if (blocks.isEmpty()) {
             return new TableParseResult(csv, List.of(StructuralBlock.tableRow(csv.trim(), 0, 0)));
@@ -172,11 +177,121 @@ public final class StructuredTableDocumentParser implements DocumentParser {
         return builder.toString();
     }
 
-    private static StructuralBlock tableRowBlock(String content, int ordinal, int rowIndex, Map<String, Object> extraMetadata) {
+    private static StructuralBlock tableRowBlock(
+            String content,
+            int ordinal,
+            int rowStart,
+            int rowEnd,
+            List<String> headers,
+            List<String> values,
+            Map<String, Object> extraMetadata
+    ) {
         Map<String, Object> metadata = new HashMap<>(extraMetadata);
+        int columnEnd = Math.max(headers.size(), values.size()) - 1;
         metadata.put("boundaryType", "table_row");
-        metadata.put("rowIndex", rowIndex);
+        metadata.put("rowIndex", rowStart);
+        metadata.put("rowStart", rowStart);
+        metadata.put("rowEnd", rowEnd);
+        metadata.put("rowRange", rowStart == rowEnd ? String.valueOf(rowStart) : rowStart + ":" + rowEnd);
+        metadata.put("columnStart", columnEnd < 0 ? 0 : 0);
+        metadata.put("columnEnd", Math.max(0, columnEnd));
+        metadata.put("columnRange", columnEnd < 0 ? "0" : "0:" + columnEnd);
+        metadata.put("headerPath", headers.stream().filter(value -> value != null && !value.isBlank()).toList());
+        metadata.put("cellCoordinates", cellCoordinates(rowStart, headers, values, metadata.get("mergedCells")));
         return new StructuralBlock("table_row", 0, content, ordinal, Map.copyOf(metadata));
+    }
+
+    private static List<Map<String, Object>> cellCoordinates(
+            int rowIndex,
+            List<String> headers,
+            List<String> values,
+            Object mergedCells
+    ) {
+        List<Map<String, Object>> cells = new ArrayList<>();
+        int size = Math.max(headers.size(), values.size());
+        for (int columnIndex = 0; columnIndex < size; columnIndex++) {
+            String header = columnIndex < headers.size() && headers.get(columnIndex) != null && !headers.get(columnIndex).isBlank()
+                    ? headers.get(columnIndex)
+                    : "column_" + (columnIndex + 1);
+            String value = columnIndex < values.size() ? values.get(columnIndex) : "";
+            Map<String, Object> cell = new HashMap<>();
+            cell.put("rowIndex", rowIndex);
+            cell.put("columnIndex", columnIndex);
+            cell.put("coordinate", "R" + (rowIndex + 1) + "C" + (columnIndex + 1));
+            cell.put("headerPath", List.of(header));
+            cell.put("value", value == null ? "" : value);
+            Map<String, Object> merged = mergedMetadataForCell(mergedCells, rowIndex, columnIndex);
+            if (!merged.isEmpty()) {
+                cell.put("merged", true);
+                cell.put("mergedRange", merged.get("range"));
+                cell.put("rowSpan", merged.get("rowSpan"));
+                cell.put("columnSpan", merged.get("columnSpan"));
+            } else {
+                cell.put("merged", false);
+            }
+            cells.add(Map.copyOf(cell));
+        }
+        return cells;
+    }
+
+    private static Map<String, Object> mergedMetadataForCell(Object mergedCells, int rowIndex, int columnIndex) {
+        if (!(mergedCells instanceof List<?> ranges)) {
+            return Map.of();
+        }
+        for (Object item : ranges) {
+            if (!(item instanceof Map<?, ?> range)) {
+                continue;
+            }
+            int rowStart = intValue(range.get("rowStart"), -1);
+            int rowEnd = intValue(range.get("rowEnd"), -1);
+            int columnStart = intValue(range.get("columnStart"), -1);
+            int columnEnd = intValue(range.get("columnEnd"), -1);
+            if (rowStart <= rowIndex && rowIndex <= rowEnd && columnStart <= columnIndex && columnIndex <= columnEnd) {
+                Map<String, Object> metadata = new HashMap<>();
+                for (Map.Entry<?, ?> entry : range.entrySet()) {
+                    metadata.put(String.valueOf(entry.getKey()), entry.getValue());
+                }
+                return metadata;
+            }
+        }
+        return Map.of();
+    }
+
+    private static int intValue(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value != null) {
+            try {
+                return Integer.parseInt(String.valueOf(value));
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
+    }
+
+    private static List<Map<String, Object>> mergedCellsForRow(List<CellRangeAddress> mergedRegions, int rowIndex) {
+        if (mergedRegions == null || mergedRegions.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> ranges = new ArrayList<>();
+        for (CellRangeAddress range : mergedRegions) {
+            if (rowIndex < range.getFirstRow() || rowIndex > range.getLastRow()) {
+                continue;
+            }
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("rowStart", range.getFirstRow());
+            metadata.put("rowEnd", range.getLastRow());
+            metadata.put("columnStart", range.getFirstColumn());
+            metadata.put("columnEnd", range.getLastColumn());
+            metadata.put("rowSpan", range.getLastRow() - range.getFirstRow() + 1);
+            metadata.put("columnSpan", range.getLastColumn() - range.getFirstColumn() + 1);
+            metadata.put("range", "R" + (range.getFirstRow() + 1) + "C" + (range.getFirstColumn() + 1)
+                    + ":R" + (range.getLastRow() + 1) + "C" + (range.getLastColumn() + 1));
+            ranges.add(Map.copyOf(metadata));
+        }
+        return ranges;
     }
 
     private static char detectDelimiter(String[] lines) {
