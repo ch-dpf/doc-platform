@@ -2,7 +2,7 @@ function trimUrl(url) {
   return url ? url.replace(/\/$/, '') : '';
 }
 
-const DEFAULT_BACKEND_PORT = 8080;
+const DEFAULT_BACKEND_PORT = 8088;
 
 export function resolveBackendUrl() {
   const fromEnv = trimUrl(import.meta.env.VITE_BACKEND_URL);
