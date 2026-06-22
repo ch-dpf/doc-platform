@@ -118,16 +118,7 @@ public final class TokenBasedDocumentChunker implements DocumentChunker {
                         ));
                     }
                 } else {
-                    List<TokenChunk> tokenChunks = tokenWindowChunker.chunk(
-                            segmentTexts,
-                            tokenizer,
-                            new ChunkingOptions(
-                                    config.chunkMaxTokens(),
-                                    config.chunkOverlapTokens(),
-                                    1,
-                                    config.preserveStructureBoundary()
-                            )
-                    );
+                    List<TokenChunk> tokenChunks = tokenChunksWithCharacterFallback(segmentTexts, tokenizer, config);
                     for (TokenChunk tokenChunk : tokenChunks) {
                         chunks.add(flatChunk(
                                 libraryId,
@@ -158,16 +149,7 @@ public final class TokenBasedDocumentChunker implements DocumentChunker {
                     tokenizer,
                     profile.embeddingModel()
             ));
-            List<TokenChunk> tokenChunks = tokenWindowChunker.chunk(
-                    segmentTexts,
-                    tokenizer,
-                    new ChunkingOptions(
-                            config.chunkMaxTokens(),
-                            config.chunkOverlapTokens(),
-                            1,
-                            config.preserveStructureBoundary()
-                    )
-            );
+            List<TokenChunk> tokenChunks = tokenChunksWithCharacterFallback(segmentTexts, tokenizer, config);
             for (TokenChunk tokenChunk : tokenChunks) {
                 chunks.add(childChunk(
                         libraryId,
@@ -184,6 +166,56 @@ public final class TokenBasedDocumentChunker implements DocumentChunker {
             }
         }
         return chunks;
+    }
+
+    private List<TokenChunk> tokenChunksWithCharacterFallback(
+            List<String> segmentTexts,
+            ModelTokenizer tokenizer,
+            SegmentationConfig config
+    ) {
+        List<TokenChunk> tokenChunks = tokenWindowChunker.chunk(
+                segmentTexts,
+                tokenizer,
+                new ChunkingOptions(
+                        config.chunkMaxTokens(),
+                        config.chunkOverlapTokens(),
+                        1,
+                        config.preserveStructureBoundary()
+                )
+        );
+        List<TokenChunk> budgeted = new ArrayList<>();
+        int ordinal = 0;
+        for (TokenChunk tokenChunk : tokenChunks) {
+            if (tokenChunk.tokenCount() <= config.chunkMaxTokens()) {
+                budgeted.add(new TokenChunk(
+                        tokenChunk.content(),
+                        tokenChunk.tokenCount(),
+                        ordinal++,
+                        tokenChunk.boundaryType(),
+                        tokenChunk.metadata()
+                ));
+                continue;
+            }
+            List<String> fallbackParts = recursiveCharacterSplitter.split(
+                    tokenChunk.content(),
+                    config.separators(),
+                    Math.max(1, config.chunkMaxTokens())
+            );
+            for (String fallbackPart : fallbackParts) {
+                int tokenCount = tokenizer.count(fallbackPart).tokens();
+                Map<String, Object> metadata = new HashMap<>(tokenChunk.metadata());
+                metadata.put("fallback", "character");
+                metadata.put("oversizedTokenCount", tokenChunk.tokenCount());
+                budgeted.add(new TokenChunk(
+                        fallbackPart,
+                        tokenCount,
+                        ordinal++,
+                        "character_fallback",
+                        Map.copyOf(metadata)
+                ));
+            }
+        }
+        return budgeted;
     }
 
     private List<String> buildCandidateTexts(StructuralSegment structuralSegment, SegmentationConfig config) {
