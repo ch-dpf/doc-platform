@@ -48,6 +48,14 @@ public final class DocumentSourceLoader {
             Map<String, Object> options
     ) {
         if (preferredParser != null) {
+            if (isExternalParser(preferredParser) && stringOption(options.get("externalParserEndpoint")) != null) {
+                Optional<DocumentParser> external = parsers.stream()
+                        .filter(ExternalDocumentParser.class::isInstance)
+                        .findFirst();
+                if (external.isPresent()) {
+                    return external;
+                }
+            }
             Optional<DocumentParser> preferred = parsers.stream()
                     .filter(candidate -> parserMatches(candidate, preferredParser))
                     .filter(candidate -> candidate.supports(sourceUri, mimeType))
@@ -93,6 +101,11 @@ public final class DocumentSourceLoader {
         return parsers.stream()
                 .filter(candidate -> candidate.supports(sourceUri, mimeType))
                 .findFirst();
+    }
+
+    private static boolean isExternalParser(String parserCode) {
+        String normalized = parserCode.trim().toLowerCase();
+        return "docling".equals(normalized) || "unstructured".equals(normalized) || "external".equals(normalized);
     }
 
     private Optional<DocumentParser> structureParserFor(
@@ -287,6 +300,9 @@ public final class DocumentSourceLoader {
         }
         if ("text-structure".equals(normalized)) {
             return parser instanceof TextStructureParser;
+        }
+        if ("docling".equals(normalized) || "unstructured".equals(normalized) || "external".equals(normalized)) {
+            return parser instanceof ExternalDocumentParser;
         }
         return false;
     }

@@ -178,6 +178,7 @@ POST /api/v1/agents/{agentId}/retrieval-tests
 - [总体设计规划](docs/DESIGN.md)
 - [接口规范](docs/API.md)
 - [Ingestion 接口说明](docs/INGESTION_INTERFACES.md)
+- [二期复杂文档解析与分段方案](docs/PHASE2_INGESTION_PLAN.md)
 
 ## 核心接口自检
 

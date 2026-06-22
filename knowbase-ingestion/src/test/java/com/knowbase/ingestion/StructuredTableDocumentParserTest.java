@@ -85,15 +85,23 @@ class StructuredTableDocumentParserTest {
     void parsesSpreadsheetWithMergedCellMetadata() throws Exception {
         byte[] workbookBytes;
         try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet ref = workbook.createSheet("Ref");
+            ref.createRow(0).createCell(0).setCellValue(5);
             Sheet sheet = workbook.createSheet("Sales");
             Row header = sheet.createRow(0);
             header.createCell(0).setCellValue("Region");
-            header.createCell(1).setCellValue("Q1");
-            header.createCell(2).setCellValue("Q2");
-            Row data = sheet.createRow(1);
+            header.createCell(1).setCellValue("Quarter");
+            sheet.addMergedRegion(new CellRangeAddress(0, 0, 1, 2));
+            Row subHeader = sheet.createRow(1);
+            subHeader.createCell(0).setCellValue("Region");
+            subHeader.createCell(1).setCellValue("Q1");
+            subHeader.createCell(2).setCellValue("Q2");
+            Row data = sheet.createRow(2);
             data.createCell(0).setCellValue("APAC");
-            data.createCell(1).setCellValue("10");
-            sheet.addMergedRegion(new CellRangeAddress(1, 1, 1, 2));
+            data.createCell(1).setCellFormula("'Ref'!A1+5");
+            sheet.addMergedRegion(new CellRangeAddress(2, 2, 1, 2));
+            sheet.setColumnHidden(2, true);
+            data.setZeroHeight(true);
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             workbook.write(output);
             workbookBytes = output.toByteArray();
@@ -109,13 +117,18 @@ class StructuredTableDocumentParserTest {
 
         StructuralBlock row = parsed.blocks().getFirst();
         assertEquals("Sales", row.metadata().get("sheetName"));
-        assertEquals(1, row.metadata().get("rowStart"));
+        assertEquals(2, row.metadata().get("rowStart"));
         assertEquals(2, row.metadata().get("columnEnd"));
+        assertEquals(true, row.metadata().get("hiddenRow"));
+        assertEquals(List.of(2), row.metadata().get("hiddenColumns"));
+        assertEquals(List.of("Ref"), row.metadata().get("crossSheetReferences"));
+        assertTrue(row.content().contains("Quarter > Q1=10"));
         assertTrue((Boolean) row.metadata().get("hasMergedCells"));
         assertTrue(row.metadata().containsKey("mergedCells"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> cells = (List<Map<String, Object>>) row.metadata().get("cellCoordinates");
         assertTrue(cells.stream().anyMatch(cell -> Boolean.TRUE.equals(cell.get("merged"))
-                && "R2C2:R2C3".equals(cell.get("mergedRange"))));
+                && "R3C2:R3C3".equals(cell.get("mergedRange"))));
+        assertTrue(cells.stream().anyMatch(cell -> List.of("Quarter", "Q1").equals(cell.get("headerPath"))));
     }
 }

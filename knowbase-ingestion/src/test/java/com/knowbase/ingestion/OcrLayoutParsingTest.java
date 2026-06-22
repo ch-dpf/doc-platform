@@ -34,4 +34,21 @@ class OcrLayoutParsingTest {
         assertTrue(blocks.stream().allMatch(block -> Double.valueOf(0.82).equals(block.metadata().get("ocrConfidence"))));
         assertTrue(blocks.stream().allMatch(block -> Boolean.TRUE.equals(block.metadata().get("multiColumn"))));
     }
+
+    @Test
+    void parsesHocrConfidenceAndBbox() {
+        String hocr = """
+                <span class='ocr_line' title='bbox 10 20 110 40; x_wconf 93'>
+                  <span class='ocrx_word'>Invoice</span>
+                </span>
+                """;
+
+        List<StructuralBlock> blocks = OcrEngineOutputParser.parseHocr(hocr, Map.of("pageNumber", 2));
+
+        assertEquals(1, blocks.size());
+        assertEquals("Invoice", blocks.getFirst().content());
+        assertEquals(0.93, (Double) blocks.getFirst().metadata().get("ocrConfidence"), 0.001);
+        assertEquals(List.of(10d, 20d, 100d, 20d), blocks.getFirst().metadata().get("bbox"));
+        assertEquals(2, blocks.getFirst().metadata().get("pageNumber"));
+    }
 }
