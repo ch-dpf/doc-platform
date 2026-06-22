@@ -745,6 +745,20 @@ Profile 必须版本化。索引版本引用创建该版本时使用的 Profile�
 12. 实现宿主 starter 自动配置。
 13. 实现独立应用打包与 Docker Compose。
 
+### 12.1 二期：复杂文档解析与分段质量增强
+
+一期完成后，二期重点不替换现有 Java Pipeline，而是在 Parser、Normalizer、MetadataEnricher、Chunker SPI 上增强复杂文档质量。
+
+二期范围：
+
+1. PDF 深度解析：补强阅读顺序、多栏布局、表格区域、页内 bbox 与 citation 定位。
+2. OCR 深度解析：接入真实 OCR 引擎输出，保留 confidence、bbox、language、rotation 与页码。
+3. 表格语义增强：支持 sheet、row/column range、多级表头、cell coordinate、公式值、隐藏行列、合并单元格和跨 sheet 引用。
+4. 语义切分评测：建立 PDF、Excel、扫描件、Markdown 长文和代码配置文件的 chunk 边界回归集。
+5. 外部解析器适配：固化 Docling/Unstructured 风格 HTTP/JSON Schema，并允许按 Profile 启用。
+
+详细实施方案见 `docs/PHASE2_INGESTION_PLAN.md`。
+
 ## 13. 非目标
 
 平台暂不覆盖以下能力：
