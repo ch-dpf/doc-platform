@@ -57,7 +57,15 @@
           <el-button type="primary" round :loading="uploading" :disabled="!canProceedUpload" @click="goToSegmentationStep">
             下一步：分段设置
           </el-button>
-          <el-button type="success" plain round :loading="quickIngesting" :disabled="!canProceedUpload" @click="quickUploadAndIngest">
+          <el-button
+            type="success"
+            round
+            class="quick-ingest-button"
+            :loading="quickIngesting"
+            :disabled="!canProceedUpload"
+            :style="quickIngestButtonStyle"
+            @click="quickUploadAndIngest"
+          >
             上传并创建入库任务
           </el-button>
         </div>
@@ -515,6 +523,12 @@ const progressPercent = computed(() => {
   const total = Math.max(1, latestRun.value.inputDocuments || 0);
   return Math.min(100, Math.round(((latestRun.value.succeededDocuments || 0) / total) * 100));
 });
+const quickIngestButtonStyle = computed(() => !canProceedUpload.value ? {
+  color: '#047857',
+  backgroundColor: '#d1fae5',
+  borderColor: '#10b981',
+  boxShadow: '0 1px 2px rgba(16, 185, 129, 0.12)'
+} : {});
 
 watch(segmentationMode, resetPreview);
 watch(parseMode, resetPreview);
@@ -941,6 +955,16 @@ onMounted(loadLibraries);
 .publish-switch {
   align-self: center;
   margin-left: 4px;
+}
+
+:deep(.quick-ingest-button.el-button.is-disabled),
+:deep(.quick-ingest-button.el-button.is-disabled:hover),
+:deep(.quick-ingest-button.el-button.is-disabled:focus) {
+  color: #047857 !important;
+  background: #d1fae5 !important;
+  border: 1px solid #10b981 !important;
+  box-shadow: 0 1px 2px rgba(16, 185, 129, 0.12);
+  opacity: 0.72;
 }
 
 .pipeline-tabs {
