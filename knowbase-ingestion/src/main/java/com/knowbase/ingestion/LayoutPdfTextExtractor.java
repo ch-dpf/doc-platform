@@ -138,11 +138,16 @@ public final class LayoutPdfTextExtractor {
             }
             float min = starts.getFirst();
             float max = starts.getLast();
+            float pageMaxX = (float) entry.getValue().stream().mapToDouble(LayoutLine::maxX).max().orElse(max);
             float split = starts.get(starts.size() / 2);
             long left = starts.stream().filter(value -> value <= split).count();
             long right = starts.size() - left;
-            boolean looksMultiColumn = max - min > 180f && left >= 2 && right >= 2;
-            stats.put(entry.getKey(), looksMultiColumn ? new PageColumnStats(2, split) : PageColumnStats.singleColumn());
+            boolean separatedStarts = max - min > 140f && left >= 2 && right >= 2;
+            boolean wideTextSpread = pageMaxX - min > 260f && starts.size() >= 4;
+            float effectiveSplit = separatedStarts ? split : min + (pageMaxX - min) / 2f;
+            stats.put(entry.getKey(), (separatedStarts || wideTextSpread)
+                    ? new PageColumnStats(2, effectiveSplit)
+                    : PageColumnStats.singleColumn());
         }
         return stats;
     }
