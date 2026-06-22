@@ -42,6 +42,7 @@ import com.knowbase.ingestion.DocumentPreparationPipeline;
 import com.knowbase.ingestion.DocumentMetadataEnricher;
 import com.knowbase.ingestion.DocumentNormalizer;
 import com.knowbase.ingestion.DocumentTextNormalizer;
+import com.knowbase.ingestion.ExternalDocumentParser;
 import com.knowbase.ingestion.HtmlStructureParser;
 import com.knowbase.ingestion.MarkdownStructureParser;
 import com.knowbase.ingestion.OcrLayoutDocumentParser;
@@ -378,6 +379,12 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    ExternalDocumentParser externalDocumentParser() {
+        return new ExternalDocumentParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     QaDocumentParser qaDocumentParser() {
         return new QaDocumentParser();
     }
@@ -404,6 +411,7 @@ public class KnowbaseAutoConfiguration {
             StructuredTableDocumentParser structuredTableDocumentParser,
             OcrLayoutDocumentParser ocrLayoutDocumentParser,
             OcrDocumentParser ocrDocumentParser,
+            ExternalDocumentParser externalDocumentParser,
             TikaDocumentParser tikaDocumentParser
     ) {
         return new DocumentSourceLoader(
@@ -421,6 +429,7 @@ public class KnowbaseAutoConfiguration {
                         structuredTableDocumentParser,
                         ocrLayoutDocumentParser,
                         ocrDocumentParser,
+                        externalDocumentParser,
                         tikaDocumentParser
                 )
         );

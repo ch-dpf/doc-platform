@@ -3,6 +3,7 @@ package com.knowbase.ingestion;
 import com.knowbase.domain.status.ContentFamily;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.FormulaEvaluator;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
@@ -81,27 +82,37 @@ public final class StructuredTableDocumentParser implements DocumentParser {
         List<StructuralBlock> blocks = new ArrayList<>();
         int ordinal = 0;
         try (Workbook workbook = WorkbookFactory.create(source.inputStream())) {
+            FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
             for (int sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
                 Sheet sheet = workbook.getSheetAt(sheetIndex);
                 builder.append("# Sheet: ").append(sheet.getSheetName()).append('\n');
-                List<String> headers = readRow(sheet.getRow(sheet.getFirstRowNum()));
                 List<CellRangeAddress> mergedRegions = sheet.getMergedRegions();
-                for (int rowIndex = sheet.getFirstRowNum() + 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+                int headerRowCount = detectHeaderRowCount(sheet, mergedRegions);
+                List<List<String>> headerPaths = readHeaderPaths(sheet, headerRowCount, evaluator, mergedRegions);
+                List<String> headers = flattenHeaderPaths(headerPaths);
+                for (int rowIndex = sheet.getFirstRowNum() + headerRowCount; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
                     Row row = sheet.getRow(rowIndex);
                     if (row == null) {
                         continue;
                     }
-                    List<String> values = readRow(row);
+                    List<String> values = readRow(row, evaluator);
                     String rowText = formatRowGroup(headers, values);
                     if (rowText.isBlank()) {
                         continue;
                     }
                     builder.append(rowText).append('\n');
                     List<Map<String, Object>> mergedCells = mergedCellsForRow(mergedRegions, rowIndex);
+                    Map<Integer, String> formulas = formulasForRow(row);
                     blocks.add(tableRowBlock(rowText, ordinal++, rowIndex, rowIndex, headers, values, Map.of(
                             "tableFormat", "spreadsheet",
                             "sheetName", sheet.getSheetName(),
                             "sheetIndex", sheetIndex,
+                            "headerRowCount", headerRowCount,
+                            "headerPathsByColumn", headerPaths,
+                            "hiddenRow", row.getZeroHeight(),
+                            "hiddenColumns", hiddenColumns(sheet, Math.max(headers.size(), values.size())),
+                            "formulaCells", formulas,
+                            "crossSheetReferences", crossSheetReferences(formulas),
                             "mergedCells", mergedCells,
                             "hasMergedCells", !mergedCells.isEmpty()
                     )));
@@ -147,15 +158,29 @@ public final class StructuredTableDocumentParser implements DocumentParser {
     }
 
     private List<String> readRow(Row row) {
+        return readRow(row, null);
+    }
+
+    private List<String> readRow(Row row, FormulaEvaluator evaluator) {
         if (row == null) {
             return List.of();
         }
         List<String> values = new ArrayList<>();
         for (int cellIndex = row.getFirstCellNum(); cellIndex < row.getLastCellNum(); cellIndex++) {
             Cell cell = row.getCell(cellIndex);
-            values.add(cell == null ? "" : formatter.formatCellValue(cell).trim());
+            values.add(cell == null ? "" : formatCell(cell, evaluator));
         }
         return values;
+    }
+
+    private String formatCell(Cell cell, FormulaEvaluator evaluator) {
+        if (cell == null) {
+            return "";
+        }
+        if (evaluator == null) {
+            return formatter.formatCellValue(cell).trim();
+        }
+        return formatter.formatCellValue(cell, evaluator).trim();
     }
 
     private static String formatRowGroup(List<String> headers, List<String> values) {
@@ -201,6 +226,137 @@ public final class StructuredTableDocumentParser implements DocumentParser {
         return new StructuralBlock("table_row", 0, content, ordinal, Map.copyOf(metadata));
     }
 
+    private static int detectHeaderRowCount(Sheet sheet, List<CellRangeAddress> mergedRegions) {
+        int first = sheet.getFirstRowNum();
+        int count = 1;
+        for (CellRangeAddress range : mergedRegions) {
+            if (range.getFirstRow() == first && range.getLastRow() > first) {
+                count = Math.max(count, range.getLastRow() - first + 1);
+            }
+        }
+        Row firstRow = sheet.getRow(first);
+        Row secondRow = sheet.getRow(first + 1);
+        if (count == 1 && firstRow != null && secondRow != null
+                && nonBlankCells(firstRow) < nonBlankCells(secondRow)
+                && nonBlankCells(secondRow) > 1) {
+            count = 2;
+        }
+        return Math.max(1, count);
+    }
+
+    private static int nonBlankCells(Row row) {
+        int count = 0;
+        if (row == null) {
+            return 0;
+        }
+        for (int index = row.getFirstCellNum(); index < row.getLastCellNum(); index++) {
+            Cell cell = row.getCell(index);
+            if (cell != null && !new DataFormatter().formatCellValue(cell).isBlank()) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private List<List<String>> readHeaderPaths(
+            Sheet sheet,
+            int headerRowCount,
+            FormulaEvaluator evaluator,
+            List<CellRangeAddress> mergedRegions
+    ) {
+        int first = sheet.getFirstRowNum();
+        int maxColumns = 0;
+        List<List<String>> rows = new ArrayList<>();
+        for (int rowOffset = 0; rowOffset < headerRowCount; rowOffset++) {
+            List<String> values = readRow(sheet.getRow(first + rowOffset), evaluator);
+            rows.add(values);
+            maxColumns = Math.max(maxColumns, values.size());
+        }
+        List<List<String>> paths = new ArrayList<>();
+        for (int column = 0; column < maxColumns; column++) {
+            List<String> path = new ArrayList<>();
+            for (int rowOffset = 0; rowOffset < rows.size(); rowOffset++) {
+                List<String> row = rows.get(rowOffset);
+                String value = column < row.size() ? row.get(column) : "";
+                if ((value == null || value.isBlank()) && !mergedRegions.isEmpty()) {
+                    value = mergedHeaderValue(sheet, mergedRegions, first + rowOffset, column, evaluator);
+                }
+                if (value != null && !value.isBlank()) {
+                    path.add(value);
+                }
+            }
+            if (path.isEmpty()) {
+                path.add("column_" + (column + 1));
+            }
+            paths.add(List.copyOf(path));
+        }
+        return paths;
+    }
+
+    private String mergedHeaderValue(
+            Sheet sheet,
+            List<CellRangeAddress> mergedRegions,
+            int rowIndex,
+            int columnIndex,
+            FormulaEvaluator evaluator
+    ) {
+        for (CellRangeAddress range : mergedRegions) {
+            if (rowIndex < range.getFirstRow() || rowIndex > range.getLastRow()
+                    || columnIndex < range.getFirstColumn() || columnIndex > range.getLastColumn()) {
+                continue;
+            }
+            Row row = sheet.getRow(range.getFirstRow());
+            if (row == null) {
+                return "";
+            }
+            Cell cell = row.getCell(range.getFirstColumn());
+            return formatCell(cell, evaluator);
+        }
+        return "";
+    }
+
+    private static List<String> flattenHeaderPaths(List<List<String>> headerPaths) {
+        return headerPaths.stream()
+                .map(path -> String.join(" > ", path))
+                .toList();
+    }
+
+    private static List<Integer> hiddenColumns(Sheet sheet, int columnCount) {
+        List<Integer> hidden = new ArrayList<>();
+        for (int column = 0; column < columnCount; column++) {
+            if (sheet.isColumnHidden(column)) {
+                hidden.add(column);
+            }
+        }
+        return hidden;
+    }
+
+    private static Map<Integer, String> formulasForRow(Row row) {
+        Map<Integer, String> formulas = new HashMap<>();
+        for (int index = row.getFirstCellNum(); index < row.getLastCellNum(); index++) {
+            Cell cell = row.getCell(index);
+            if (cell != null && cell.getCellType() == org.apache.poi.ss.usermodel.CellType.FORMULA) {
+                formulas.put(index, cell.getCellFormula());
+            }
+        }
+        return formulas;
+    }
+
+    private static List<String> crossSheetReferences(Map<Integer, String> formulas) {
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(?:'([^']+)'|([A-Za-z0-9_]+))!");
+        List<String> references = new ArrayList<>();
+        for (String formula : formulas.values()) {
+            java.util.regex.Matcher matcher = pattern.matcher(formula);
+            while (matcher.find()) {
+                String sheet = matcher.group(1) == null ? matcher.group(2) : matcher.group(1);
+                if (!references.contains(sheet)) {
+                    references.add(sheet);
+                }
+            }
+        }
+        return references;
+    }
+
     private static List<Map<String, Object>> cellCoordinates(
             int rowIndex,
             List<String> headers,
@@ -218,7 +374,7 @@ public final class StructuredTableDocumentParser implements DocumentParser {
             cell.put("rowIndex", rowIndex);
             cell.put("columnIndex", columnIndex);
             cell.put("coordinate", "R" + (rowIndex + 1) + "C" + (columnIndex + 1));
-            cell.put("headerPath", List.of(header));
+            cell.put("headerPath", header.contains(" > ") ? List.of(header.split(" > ")) : List.of(header));
             cell.put("value", value == null ? "" : value);
             Map<String, Object> merged = mergedMetadataForCell(mergedCells, rowIndex, columnIndex);
             if (!merged.isEmpty()) {

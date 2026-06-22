@@ -76,7 +76,7 @@ public final class OcrLayoutDocumentParser implements DocumentParser {
             if (source.metadata() != null) {
                 parsedMetadata.putAll(source.metadata());
             }
-            List<StructuralBlock> blocks = StructureParsingSupport.parseOcrLayout(text, parsedMetadata);
+            List<StructuralBlock> blocks = structuredOcrBlocks(text, parsedMetadata);
             parsedMetadata.put("parserCode", PARSER_CODE);
             parsedMetadata.put("parser", PARSER_CODE);
             parsedMetadata.put("detectedContentType", metadata.get(Metadata.CONTENT_TYPE));
@@ -100,6 +100,20 @@ public final class OcrLayoutDocumentParser implements DocumentParser {
         } catch (IOException | SAXException | TikaException exception) {
             throw new IllegalStateException("OCR 版面解析失败: " + source.sourceUri(), exception);
         }
+    }
+
+    private static List<StructuralBlock> structuredOcrBlocks(String text, Map<String, Object> metadata) {
+        Object hocr = metadata.get("ocrHocr");
+        if (hocr == null) {
+            hocr = metadata.get("hocr");
+        }
+        if (hocr != null && !String.valueOf(hocr).isBlank()) {
+            List<StructuralBlock> blocks = OcrEngineOutputParser.parseHocr(String.valueOf(hocr), metadata);
+            if (!blocks.isEmpty()) {
+                return blocks;
+            }
+        }
+        return StructureParsingSupport.parseOcrLayout(text, metadata);
     }
 
     private static String resolveLanguage(Map<String, Object> metadata) {

@@ -191,8 +191,20 @@ public final class LayoutPdfTextExtractor {
     private static List<StructuralBlock> toStructuralBlocks(List<LayoutBlock> layoutBlocks) {
         List<StructuralBlock> blocks = new ArrayList<>();
         int ordinal = 0;
+        int tableRegionId = 0;
+        List<LayoutBlock> currentTableRegion = new ArrayList<>();
         for (LayoutBlock block : layoutBlocks) {
             if (block.content().isBlank()) {
+                continue;
+            }
+            if ("table".equals(block.layoutRole())) {
+                currentTableRegion.add(block);
+            } else if (!currentTableRegion.isEmpty()) {
+                appendTableRegion(blocks, currentTableRegion, tableRegionId++, ordinal);
+                ordinal += currentTableRegion.size();
+                currentTableRegion = new ArrayList<>();
+            }
+            if ("table".equals(block.layoutRole())) {
                 continue;
             }
             Map<String, Object> metadata = new HashMap<>();
@@ -231,7 +243,53 @@ public final class LayoutPdfTextExtractor {
                     merged
             ));
         }
+        if (!currentTableRegion.isEmpty()) {
+            appendTableRegion(blocks, currentTableRegion, tableRegionId, ordinal);
+        }
         return StructureParsingSupport.enrichHeadingPathsPublic(blocks);
+    }
+
+    private static void appendTableRegion(
+            List<StructuralBlock> blocks,
+            List<LayoutBlock> tableRegion,
+            int tableRegionId,
+            int startOrdinal
+    ) {
+        List<Double> regionBbox = unionBbox(tableRegion);
+        int rowCount = tableRegion.size();
+        for (int rowIndex = 0; rowIndex < tableRegion.size(); rowIndex++) {
+            LayoutBlock block = tableRegion.get(rowIndex);
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("boundaryType", "table_row");
+            metadata.put("layoutRole", "table");
+            metadata.put("pageNumber", block.pageNumber());
+            metadata.put("readingOrder", block.readingOrder());
+            metadata.put("columnIndex", block.columnIndex());
+            metadata.put("columnCount", block.columnCount());
+            metadata.put("multiColumn", block.columnCount() > 1);
+            metadata.put("bbox", List.of(round(block.x()), round(block.y()), round(block.width()), round(block.height())));
+            metadata.put("tableRegionId", tableRegionId);
+            metadata.put("tableRegionRowIndex", rowIndex);
+            metadata.put("tableRegionRowCount", rowCount);
+            metadata.put("tableRegionBbox", regionBbox);
+            metadata.put("tableDetection", "pdf-layout-region");
+            metadata.put("layoutParsing", true);
+            blocks.add(new StructuralBlock(
+                    "table_row",
+                    0,
+                    block.content().replaceAll("\\s{2,}|\\t+", " | "),
+                    startOrdinal + rowIndex,
+                    Map.copyOf(metadata)
+            ));
+        }
+    }
+
+    private static List<Double> unionBbox(List<LayoutBlock> blocks) {
+        double minX = blocks.stream().mapToDouble(LayoutBlock::x).min().orElse(0);
+        double minY = blocks.stream().mapToDouble(LayoutBlock::y).min().orElse(0);
+        double maxX = blocks.stream().mapToDouble(block -> block.x() + block.width()).max().orElse(minX);
+        double maxY = blocks.stream().mapToDouble(block -> block.y() + block.height()).max().orElse(minY);
+        return List.of(round((float) minX), round((float) minY), round((float) (maxX - minX)), round((float) (maxY - minY)));
     }
 
     private static double round(float value) {
