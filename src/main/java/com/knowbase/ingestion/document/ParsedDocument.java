@@ -57,23 +57,6 @@ public final class ParsedDocument {
         return joiner.toString();
     }
 
-    public ParsedDocument withBlocks(List<DocumentBlock> blocks) {
-        return new ParsedDocument(documentId, contentFamily, blocks, metadata);
-    }
-
-    public ParsedDocument withMetadata(Map<String, String> metadata) {
-        return new ParsedDocument(documentId, contentFamily, blocks, metadata);
-    }
-
-    public ParsedDocument mergeMetadata(Map<String, String> extraMetadata) {
-        if (extraMetadata == null || extraMetadata.isEmpty()) {
-            return this;
-        }
-        Map<String, String> merged = new LinkedHashMap<>(metadata);
-        merged.putAll(extraMetadata);
-        return withMetadata(merged);
-    }
-
     public static Builder builder(String documentId, ContentFamily contentFamily) {
         return new Builder(documentId, contentFamily);
     }

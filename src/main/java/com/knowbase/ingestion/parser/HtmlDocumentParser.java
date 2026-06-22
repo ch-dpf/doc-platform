@@ -6,7 +6,6 @@ import com.knowbase.ingestion.document.ParsedDocument.ContentFamily;
 import com.knowbase.ingestion.document.ParsedDocument.TableBlock;
 import com.knowbase.ingestion.document.ParsedDocument.TableCell;
 import com.knowbase.ingestion.document.ParsedDocument.TextBlock;
-import com.knowbase.ingestion.parser.DocumentParser.ParseRequest;
 
 import java.io.IOException;
 import java.io.StringReader;
@@ -29,28 +28,7 @@ import javax.swing.text.html.parser.ParserDelegator;
 /**
  * JDK-only HTML parser focused on preserving table structure for RAG ingestion.
  */
-public final class HtmlDocumentParser implements DocumentParser {
-
-    @Override
-    public boolean supports(ParseRequest request) {
-        Objects.requireNonNull(request, "request");
-        String mediaType = request.mediaType();
-        String sourceName = request.metadata().getOrDefault("sourceName", "").toLowerCase(Locale.ROOT);
-        return mediaType.equals("text/html")
-                || mediaType.equals("application/xhtml+xml")
-                || sourceName.endsWith(".html")
-                || sourceName.endsWith(".htm");
-    }
-
-    @Override
-    public ParsedDocument parse(ParseRequest request) {
-        Objects.requireNonNull(request, "request");
-        ParsedDocument parsed = parse(request.documentId(), request.content());
-        Map<String, String> metadata = new LinkedHashMap<>(request.metadata());
-        metadata.put("mediaType", request.mediaType());
-        metadata.putAll(parsed.metadata());
-        return parsed.withMetadata(metadata);
-    }
+public final class HtmlDocumentParser {
 
     public ParsedDocument parse(String documentId, String html) {
         Objects.requireNonNull(html, "html");

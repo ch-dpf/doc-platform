@@ -1,75 +1,71 @@
 # Ingestion 接口说明
 
-本文说明 `feature-v1` 中入库链路新增的可替换接口。当前实现保持无外部运行时依赖，目标是先稳定解析、清洗、元数据抽取和切分之间的边界。
+本文说明 `feature-v1` 中 `knowbase-ingestion` 模块的入库接口。当前链路按解析、清洗、元数据增强、切分四段组织，并通过 Spring Boot 自动配置暴露可替换 Bean。
 
 ## 调用顺序
 
-`SimpleIngestionPipeline` 按以下顺序执行：
+`DocumentPreparationPipeline` 按以下顺序执行：
 
-1. `DocumentParser`：根据 `ParseRequest.mediaType`、`sourceName` 等信息选择解析器。
-2. `DocumentCleaner`：在不改变块语义的前提下清洗文本。
-3. `DocumentMetadataExtractor`：补充文档级统计与检索过滤元数据。
-4. `DocumentChunker`：将清洗后的 `ParsedDocument` 切成检索用 `DocumentChunk`。
+1. `DocumentSourceLoader`：加载 inline、file、MinIO 或展开后的子文档来源。
+2. `DocumentParser`：按 `sourceUri` 与 `mimeType` 解析为 `ParsedDocument`。
+3. `DocumentNormalizer`：对文本和结构块做清洗，返回 `NormalizationResult`。
+4. `DocumentMetadataEnricher`：补充文档级统计、Profile 与策略上下文。
+5. `DocumentChunker`：将归一化并增强后的 `ParsedDocument` 切成 `DocumentChunk`。
 
 ## 核心接口
 
 ### `DocumentParser`
 
-位置：`com.knowbase.ingestion.parser.DocumentParser`
+位置：`knowbase-ingestion/src/main/java/com/knowbase/ingestion/DocumentParser.java`
 
-- `supports(ParseRequest request)`：判断解析器是否支持当前输入。
-- `parse(ParseRequest request)`：将源内容解析为 `ParsedDocument`。
-- `ParseRequest`：解析请求，包含 `documentId`、`content`、`mediaType`、`contentFamily` 和源元数据。
+- `supports(String sourceUri, String mimeType)`：判断解析器是否支持当前来源。
+- `parse(DocumentSource source)`：将加载后的内容解析为 `ParsedDocument`。
 
-默认实现：
+默认实现覆盖 Markdown/TXT、HTML、PDF、Word、Excel/CSV、PPT、OCR、QA、ZIP 和 Tika fallback。新增解析器只需实现该接口并加入 `DocumentSourceLoader` 的 parser 列表。
 
-- `HtmlDocumentParser`：支持 `text/html`、`application/xhtml+xml`、`.html`、`.htm`，保留表格结构。
-- `PlainTextDocumentParser`：支持 `text/plain`、`text/markdown`、`.txt`、`.md`，提供基础标题、段落、代码围栏解析。
+### `DocumentNormalizer`
 
-### `DocumentCleaner`
+位置：`knowbase-ingestion/src/main/java/com/knowbase/ingestion/DocumentNormalizer.java`
 
-位置：`com.knowbase.ingestion.cleaning.DocumentCleaner`
+- `normalize(ParsedDocument parsed, DocumentProfile documentProfile)`：执行清洗并返回 `NormalizationResult`。
+- `normalizeText(String text)`：提供单段文本清洗能力。
 
-- `clean(ParsedDocument document, CleaningOptions options)`：返回清洗后的新 `ParsedDocument`。
-- `CleaningOptions`：控制空白折叠、空行折叠和代码行尾清理。
+默认实现 `DocumentTextNormalizer` 已实现该接口，支持控制字符、零宽字符、HTML entity、全角空格、页脚页码、项目符号、软连字符、重复标点和多余空行清理。
 
-默认实现：
+### `DocumentMetadataEnricher`
 
-- `WhitespaceDocumentCleaner`：清洗正文、FAQ、表格文本和代码行尾，保留 block 类型、表格坐标、表头继承和元数据。
+位置：`knowbase-ingestion/src/main/java/com/knowbase/ingestion/DocumentMetadataEnricher.java`
 
-### `DocumentMetadataExtractor`
+- `enrich(ParsedDocument document, MetadataContext context)`：返回补充元数据后的新 `ParsedDocument`。
+- `MetadataContext`：携带 `sourceUri`、`libraryId`、`documentId`、`indexVersionId`、`LibraryProfile`、`DocumentProfile` 与来源选项。
 
-位置：`com.knowbase.ingestion.metadata.DocumentMetadataExtractor`
-
-- `extract(ParsedDocument document, MetadataExtractionOptions options)`：返回补充元数据后的新 `ParsedDocument`。
-- `MetadataExtractionOptions`：控制是否写入块统计、文本统计和首标题。
-
-默认实现：
-
-- `DefaultDocumentMetadataExtractor`：写入 `blockCount.*`、`text.characterCount`、`text.tokenEstimate`、`firstHeading` 和 `contentFamily`。
+默认实现 `DefaultDocumentMetadataEnricher` 写入 `metadataEnricher`、`contentFamily`、`structureAware`、`blockCount`、`textLength`、`firstHeading`、Profile ID、parser code、chunking strategy 和 token/chunk 配置。
 
 ### `DocumentChunker`
 
-位置：`com.knowbase.ingestion.chunking.DocumentChunker`
+位置：`knowbase-ingestion/src/main/java/com/knowbase/ingestion/DocumentChunker.java`
 
-- `chunk(ParsedDocument document, ChunkingOptions options)`：输出检索 chunk 列表。
+- `chunk(UUID libraryId, UUID documentId, ParsedDocument document)`：基础切分入口。
 
-默认实现：
-
-- `SmartDocumentChunker`：继续提供 parent-child、sentence-window、table row group、FAQ pair、code symbol 和 PDF page metadata 路由。
+默认实现 `TokenBasedDocumentChunker` 结合 `StructureSegmenter`、模型 tokenizer 和字符兜底切分，输出 parent-child、结构段、表格行组、代码块、FAQ 等检索 chunk。
 
 ## Pipeline Facade
 
-位置：`com.knowbase.ingestion.pipeline.SimpleIngestionPipeline`
+位置：`knowbase-ingestion/src/main/java/com/knowbase/ingestion/DocumentPreparationPipeline.java`
 
-- `defaults()`：组装 HTML parser、纯文本 parser、whitespace cleaner、默认元数据抽取器和智能切分器。
-- `ingest(ParseRequest request)`：使用默认配置执行完整流程。
-- `ingest(ParseRequest request, IngestionOptions options)`：按调用方传入的清洗、元数据和切分配置执行。
-- `IngestionResult`：包含 `parsedDocument`、`cleanedDocument`、`enrichedDocument` 和最终 `chunks`，便于调试和阶段审计。
+- `prepare(...)`：完整执行加载、解析、结构增强、清洗、元数据增强和切分。
+- `prepareFromParsed(...)`：从已解析文档继续执行清洗、元数据增强和切分。
+- `parse(...)`：只执行加载与解析。
+- `normalize(...)`：只执行清洗。
 
-## 后续扩展点
+`PreparationStage` 支持 `PARSE`、`NORMALIZE`、`CHUNK`、`ALL`，用于预览、调试和分阶段验证。
 
-- 新解析器只需实现 `DocumentParser` 并加入 Pipeline parser 列表。
-- 新清洗策略只需实现 `DocumentCleaner`，可接入 Profile 中的 `cleaning_config`。
-- 新元数据策略只需实现 `DocumentMetadataExtractor`，可补充页码、章节、OCR 置信度等字段。
-- 新切分策略只需实现 `DocumentChunker`，可按 `content_family` 或 `DocumentProfile` 路由。
+## 自动配置扩展
+
+`knowbase-autoconfigure` 默认注册：
+
+- `DocumentTextNormalizer`
+- `DefaultDocumentMetadataEnricher`
+- `DocumentPreparationPipeline`
+
+宿主服务可以覆盖 `DocumentNormalizer` 或 `DocumentMetadataEnricher` Bean，自定义清洗规则、业务元数据、OCR 置信度、页码、章节、权限标签或租户字段。

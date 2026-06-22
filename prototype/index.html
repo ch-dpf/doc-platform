@@ -1,0 +1,1425 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>知库 KnowBase — 原型</title>
+  <style>
+    :root {
+      --dp-primary: #0ea5e9;
+      --dp-primary-dark: #0284c7;
+      --dp-accent: #10b981;
+      --dp-bg: #eef2f7;
+      --dp-surface: #ffffff;
+      --dp-text: #0f172a;
+      --dp-text-secondary: #64748b;
+      --dp-border: #e2e8f0;
+      --dp-radius: 12px;
+      --dp-radius-lg: 14px;
+      --dp-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+      --dp-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 8px 24px rgba(15, 23, 42, 0.06);
+      --dp-shadow-hover: 0 4px 12px rgba(15, 23, 42, 0.08), 0 12px 32px rgba(15, 23, 42, 0.08);
+      --chip: #e0f2fe;
+      --amber: #d97706;
+      --blue: #2563eb;
+      --red: #dc2626;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      color: var(--dp-text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app-layout {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .app-topbar {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      height: 56px;
+      padding: 0 24px;
+      background: var(--dp-surface);
+      border-bottom: 1px solid var(--dp-border);
+      box-shadow: var(--dp-shadow-sm);
+      flex-shrink: 0;
+    }
+
+    .app-topbar__brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      justify-self: start;
+      user-select: none;
+    }
+
+    .app-brand__icon {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--dp-primary) 0%, var(--dp-accent) 100%);
+      color: #fff;
+      font-size: 18px;
+      box-shadow: 0 2px 10px rgba(14, 165, 233, 0.3);
+    }
+
+    .app-brand__title {
+      display: block;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .app-brand__sub {
+      display: block;
+      font-size: 10px;
+      color: var(--dp-text-secondary);
+      margin-top: 1px;
+    }
+
+    .app-topnav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .app-topnav__item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--dp-text-secondary);
+      text-decoration: none;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      transition: color 0.15s ease, background 0.15s ease;
+      white-space: nowrap;
+    }
+
+    .app-topnav__item:hover {
+      color: var(--dp-text);
+      background: #f1f5f9;
+    }
+
+    .app-topnav__item.is-active {
+      color: var(--dp-primary-dark);
+      background: #e0f2fe;
+      font-weight: 600;
+    }
+
+    .app-topbar__actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    .app-footer-link {
+      color: var(--dp-text-secondary);
+      font-size: 13px;
+      text-decoration: none;
+    }
+
+    .app-footer-link:hover {
+      color: var(--dp-primary);
+    }
+
+    .app-main-shell {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--dp-bg);
+    }
+
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+      padding: 0 28px;
+      background: var(--dp-surface);
+      border-bottom: 1px solid var(--dp-border);
+      box-shadow: var(--dp-shadow-sm);
+      flex-shrink: 0;
+    }
+
+    .app-header.is-hidden {
+      display: none;
+    }
+
+    .app-header__title {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .app-header__desc {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: var(--dp-text-secondary);
+      line-height: 1.45;
+    }
+
+    .app-main {
+      flex: 1;
+      min-height: 0;
+      padding: 22px 28px 36px;
+      overflow-y: auto;
+      background:
+        radial-gradient(ellipse 80% 50% at 100% 0%, rgba(14, 165, 233, 0.06), transparent),
+        radial-gradient(ellipse 60% 40% at 0% 100%, rgba(16, 185, 129, 0.05), transparent),
+        linear-gradient(165deg, #eef2f7 0%, #f8fafc 45%, #f1f5f9 100%);
+    }
+
+    .app-main--flush {
+      padding-top: 32px;
+    }
+
+    .page-wrap {
+      width: 100%;
+      max-width: 1320px;
+      margin: 0 auto;
+      animation: page-in 0.35s ease;
+    }
+
+    .page-wrap--fluid {
+      max-width: none;
+    }
+
+    .page-stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    @keyframes page-in {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .workspace { display: none; }
+    .workspace.active { display: block; }
+
+    /* Home */
+    .home-page { max-width: 1080px; padding-top: 12px; }
+    .home-hero { margin-bottom: 36px; }
+    .home-hero__title {
+      margin: 0;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+    .home-hero__desc {
+      margin: 10px 0 0;
+      font-size: 15px;
+      color: var(--dp-text-secondary);
+      line-height: 1.6;
+    }
+    .home-entry-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .home-entry-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      width: 100%;
+      padding: 24px;
+      text-align: left;
+      border: 1px solid var(--dp-border);
+      border-radius: var(--dp-radius-lg);
+      background: var(--dp-surface);
+      box-shadow: var(--dp-shadow);
+      cursor: pointer;
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    }
+    .home-entry-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--dp-shadow-hover);
+    }
+    .home-entry-card--library:hover { border-color: rgba(14, 165, 233, 0.45); }
+    .home-entry-card--ingest:hover { border-color: rgba(99, 102, 241, 0.45); }
+    .home-entry-card--agent:hover { border-color: rgba(245, 158, 11, 0.45); }
+    .home-entry-card--qa:hover { border-color: rgba(16, 185, 129, 0.45); }
+    .home-entry-card--obs:hover { border-color: rgba(139, 92, 246, 0.45); }
+    .home-entry-card__icon {
+      flex-shrink: 0;
+      width: 52px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 14px;
+      font-size: 22px;
+      color: #fff;
+    }
+    .home-entry-card--library .home-entry-card__icon {
+      background: linear-gradient(135deg, var(--dp-primary) 0%, #38bdf8 100%);
+      box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
+    }
+    .home-entry-card--ingest .home-entry-card__icon {
+      background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
+    }
+    .home-entry-card--agent .home-entry-card__icon {
+      background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);
+      box-shadow: 0 4px 14px rgba(245, 158, 11, 0.35);
+    }
+    .home-entry-card--qa .home-entry-card__icon {
+      background: linear-gradient(135deg, var(--dp-accent) 0%, #34d399 100%);
+      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+    }
+    .home-entry-card--obs .home-entry-card__icon {
+      background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+      box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);
+    }
+    .home-entry-card__body { flex: 1; min-width: 0; }
+    .home-entry-card__title { margin: 0; font-size: 18px; font-weight: 600; }
+    .home-entry-card__desc {
+      margin: 8px 0 0;
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--dp-text-secondary);
+    }
+    .home-entry-card__arrow {
+      flex-shrink: 0;
+      margin-top: 4px;
+      font-size: 18px;
+      color: #cbd5e1;
+    }
+    .home-entry-card:hover .home-entry-card__arrow {
+      color: var(--dp-primary);
+      transform: translateX(3px);
+    }
+
+    /* Page card */
+    .page-card {
+      border: none;
+      border-radius: var(--dp-radius-lg);
+      background: var(--dp-surface);
+      box-shadow: var(--dp-shadow);
+      overflow: hidden;
+    }
+    .page-card__header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 24px;
+      border-bottom: 1px solid #f1f5f9;
+      background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+    }
+    .page-card__title {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .page-card__subtitle {
+      margin: 6px 0 0;
+      font-size: 13px;
+      color: var(--dp-text-secondary);
+      line-height: 1.55;
+    }
+    .page-card__body { padding: 24px; }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 14px;
+    }
+    .stat-card {
+      padding: 16px 18px;
+      border-radius: var(--dp-radius);
+      background: linear-gradient(145deg, #f8fafc 0%, #ffffff 100%);
+      border: 1px solid var(--dp-border);
+    }
+    .stat-card--primary {
+      border-color: rgba(14, 165, 233, 0.25);
+      background: linear-gradient(145deg, #f0f9ff 0%, #ffffff 100%);
+    }
+    .stat-card__label {
+      display: block;
+      font-size: 12px;
+      color: var(--dp-text-secondary);
+      margin-bottom: 6px;
+    }
+    .stat-card__value {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+
+    .stat-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 500;
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+
+    .filter-panel {
+      padding: 14px 18px;
+      margin-bottom: 18px;
+      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+      border: 1px solid var(--dp-border);
+      border-radius: var(--dp-radius);
+    }
+
+    .grid { display: grid; gap: 18px; }
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .muted, .row-meta { color: var(--dp-text-secondary); font-size: 13px; }
+    .row-title { font-weight: 600; margin-bottom: 3px; }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .row:last-child { border-bottom: 0; padding-bottom: 0; }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: var(--chip);
+      color: var(--dp-primary-dark);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .chip.blue { color: var(--blue); background: #dbeafe; }
+    .chip.amber { color: var(--amber); background: #fef3c7; }
+    .chip.red { color: var(--red); background: #fee2e2; }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    label {
+      display: grid;
+      gap: 7px;
+      color: #475569;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--dp-border);
+      border-radius: 8px;
+      padding: 10px 11px;
+      font: inherit;
+      color: var(--dp-text);
+      background: #fff;
+    }
+    textarea { min-height: 92px; resize: vertical; }
+
+    .btn {
+      border: 1px solid var(--dp-border);
+      background: #fff;
+      color: var(--dp-text);
+      border-radius: 999px;
+      padding: 9px 16px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn.primary {
+      background: var(--dp-primary);
+      color: #fff;
+      border-color: var(--dp-primary);
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .step {
+      border: 1px solid var(--dp-border);
+      border-radius: var(--dp-radius);
+      background: linear-gradient(145deg, #f8fafc 0%, #ffffff 100%);
+      padding: 12px;
+      min-height: 86px;
+    }
+    .step-num { color: var(--dp-primary); font-size: 12px; font-weight: 800; margin-bottom: 7px; }
+    .step-name { font-weight: 700; font-size: 14px; margin-bottom: 5px; }
+    .step-desc { color: var(--dp-text-secondary); font-size: 12px; line-height: 1.45; }
+
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      border-radius: var(--dp-radius);
+      overflow: hidden;
+    }
+    .matrix th, .matrix td {
+      border-bottom: 1px solid #f1f5f9;
+      padding: 10px 8px;
+      text-align: left;
+    }
+    .matrix th {
+      color: #475569;
+      font-weight: 600;
+      background: #f8fafc;
+    }
+
+    .bar {
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 99px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .bar span {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--dp-primary), var(--dp-accent));
+      border-radius: inherit;
+    }
+
+    .summary-metrics { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .summary-metric {
+      min-width: 72px;
+      padding: 5px 10px;
+      background: #fff;
+      border: 1px solid #eef2f7;
+      border-radius: 6px;
+    }
+    .summary-metric--primary {
+      border-color: rgba(14, 165, 233, 0.2);
+      background: linear-gradient(145deg, #f0f9ff 0%, #ffffff 100%);
+    }
+    .summary-metric__label { display: block; font-size: 10px; color: #64748b; }
+    .summary-metric__value { font-size: 15px; font-weight: 700; }
+
+    /* QA workbench */
+    .qa-layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 20px;
+      min-height: 520px;
+    }
+    .qa-sidebar {
+      border: 1px solid var(--dp-border);
+      border-radius: var(--dp-radius);
+      padding: 16px;
+      background: #f8fafc;
+      display: grid;
+      gap: 16px;
+      align-self: start;
+    }
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid #f1f5f9;
+    }
+    .section-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+    .qa-chat {
+      display: grid;
+      grid-template-rows: minmax(200px, auto) 1fr;
+      gap: 16px;
+    }
+    .qa-chat__messages,
+    .qa-evidence-panel {
+      border: 1px solid var(--dp-border);
+      border-radius: var(--dp-radius);
+      background: #fff;
+      padding: 20px;
+    }
+    .message {
+      border-radius: 12px;
+      padding: 14px;
+      line-height: 1.7;
+      border: 1px solid var(--dp-border);
+      background: #f8fafc;
+    }
+    .message.user {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+      justify-self: end;
+      max-width: min(720px, 86%);
+    }
+    .qa-chat__messages { display: grid; gap: 16px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .tab {
+      border: 1px solid var(--dp-border);
+      background: #fff;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      color: var(--dp-text-secondary);
+      font-size: 13px;
+    }
+    .tab.active {
+      color: var(--dp-primary-dark);
+      background: #e0f2fe;
+      border-color: rgba(14, 165, 233, 0.25);
+      font-weight: 600;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .evidence { display: grid; gap: 10px; }
+    .evidence-item {
+      border: 1px solid var(--dp-border);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .request-context-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .request-context-bar__label {
+      font-size: 12px;
+      color: var(--dp-text-secondary);
+      white-space: nowrap;
+    }
+    .request-context-bar input {
+      width: 96px;
+      padding: 6px 8px;
+      font-size: 12px;
+    }
+
+    .link-btn {
+      border: none;
+      background: none;
+      color: var(--dp-primary-dark);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+    }
+    .link-btn:hover { text-decoration: underline; }
+
+    .drawer-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.35);
+      z-index: 100;
+      align-items: stretch;
+      justify-content: flex-end;
+    }
+    .drawer-backdrop.is-open { display: flex; }
+    .drawer {
+      width: min(720px, 92vw);
+      background: var(--dp-surface);
+      box-shadow: -8px 0 32px rgba(15, 23, 42, 0.12);
+      display: flex;
+      flex-direction: column;
+      animation: drawer-in 0.25s ease;
+    }
+    @keyframes drawer-in {
+      from { transform: translateX(24px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .drawer__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--dp-border);
+    }
+    .drawer__title { margin: 0; font-size: 18px; font-weight: 600; }
+    .drawer__body { padding: 20px 22px 28px; overflow-y: auto; }
+    .drawer-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .drawer-tab {
+      border: 1px solid var(--dp-border);
+      background: #fff;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--dp-text-secondary);
+    }
+    .drawer-tab.active {
+      color: var(--dp-primary-dark);
+      background: #e0f2fe;
+      border-color: rgba(14, 165, 233, 0.25);
+      font-weight: 600;
+    }
+    .drawer-panel { display: none; }
+    .drawer-panel.active { display: block; }
+
+    .meta-bar {
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid var(--dp-border);
+      font-size: 12px;
+      color: var(--dp-text-secondary);
+    }
+
+    .helper-text {
+      margin: 8px 0 0;
+      font-size: 12px;
+      color: var(--dp-text-secondary);
+      line-height: 1.5;
+    }
+
+    .section-head h4 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    @media (max-width: 980px) {
+      .app-topbar { grid-template-columns: 1fr; height: auto; padding: 14px; gap: 10px; }
+      .app-topnav { flex-wrap: wrap; justify-content: flex-start; }
+      .app-main { padding: 18px 16px 28px; }
+      .grid.cols-2, .grid.cols-3, .form-grid, .pipeline, .qa-layout {
+        grid-template-columns: 1fr;
+      }
+      .message.user { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+    <header class="app-topbar">
+      <div class="app-topbar__brand" id="brand-home">
+        <div class="app-brand__icon">📄</div>
+        <div>
+          <span class="app-brand__title">知库</span>
+          <span class="app-brand__sub">knowbase</span>
+        </div>
+      </div>
+
+      <nav class="app-topnav" aria-label="主导航">
+        <button type="button" class="app-topnav__item is-active" data-target="home">🏠 首页</button>
+        <button type="button" class="app-topnav__item" data-target="libraries">📚 知识库</button>
+        <button type="button" class="app-topnav__item" data-target="ingestion">📥 入库任务</button>
+        <button type="button" class="app-topnav__item" data-target="agents">🤖 知识智能体</button>
+        <button type="button" class="app-topnav__item" data-target="observability">📊 观测评测</button>
+        <button type="button" class="app-topnav__item" data-target="qa">💬 智能问答</button>
+      </nav>
+
+      <div class="app-topbar__actions">
+        <div class="request-context-bar" aria-label="请求上下文">
+          <span class="request-context-bar__label">上下文</span>
+          <input value="default" title="租户 ID" />
+          <input value="demo" title="用户 ID" />
+          <input value="admin" title="角色" />
+        </div>
+        <a class="app-footer-link" href="#" onclick="return false">API</a>
+      </div>
+    </header>
+
+    <div class="app-main-shell">
+      <header class="app-header is-hidden" id="page-header">
+        <div>
+          <h1 class="app-header__title" id="page-title">知识库管理</h1>
+          <p class="app-header__desc" id="page-subtitle"></p>
+        </div>
+      </header>
+
+      <main class="app-main app-main--flush" id="app-main">
+        <!-- 首页 -->
+        <section id="home" class="workspace active page-wrap home-page">
+          <section class="home-hero">
+            <h2 class="home-hero__title">欢迎使用知库</h2>
+            <p class="home-hero__desc">从创建知识库、执行入库到编排智能体与智能问答，构建完整 RAG 能力链路</p>
+          </section>
+          <div class="home-entry-grid">
+            <button type="button" class="home-entry-card home-entry-card--library" data-goto="libraries">
+              <div class="home-entry-card__icon">📚</div>
+              <div class="home-entry-card__body">
+                <h3 class="home-entry-card__title">知识库</h3>
+                <p class="home-entry-card__desc">创建知识库、选择库类型预设，管理异构文档 Profile 与索引版本</p>
+              </div>
+              <span class="home-entry-card__arrow">→</span>
+            </button>
+            <button type="button" class="home-entry-card home-entry-card--ingest" data-goto="ingestion">
+              <div class="home-entry-card__icon">📥</div>
+              <div class="home-entry-card__body">
+                <h3 class="home-entry-card__title">入库任务</h3>
+                <p class="home-entry-card__desc">提交文档入库，按 token 驱动 Pipeline 解析、切块并发布索引</p>
+              </div>
+              <span class="home-entry-card__arrow">→</span>
+            </button>
+            <button type="button" class="home-entry-card home-entry-card--agent" data-goto="agents">
+              <div class="home-entry-card__icon">🤖</div>
+              <div class="home-entry-card__body">
+                <h3 class="home-entry-card__title">知识智能体</h3>
+                <p class="home-entry-card__desc">绑定多知识库，管理版本生命周期，执行检索测试</p>
+              </div>
+              <span class="home-entry-card__arrow">→</span>
+            </button>
+            <button type="button" class="home-entry-card home-entry-card--obs" data-goto="observability">
+              <div class="home-entry-card__icon">📊</div>
+              <div class="home-entry-card__body">
+                <h3 class="home-entry-card__title">观测评测</h3>
+                <p class="home-entry-card__desc">查看 Pipeline Trace，创建评测运行并追踪问答链路</p>
+              </div>
+              <span class="home-entry-card__arrow">→</span>
+            </button>
+            <button type="button" class="home-entry-card home-entry-card--qa" data-goto="qa">
+              <div class="home-entry-card__icon">💬</div>
+              <div class="home-entry-card__body">
+                <h3 class="home-entry-card__title">智能问答</h3>
+                <p class="home-entry-card__desc">基于已发布智能体执行多库检索、证据融合与回答生成</p>
+              </div>
+              <span class="home-entry-card__arrow">→</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- 知识库 -->
+        <section id="libraries" class="workspace page-wrap page-wrap--fluid page-stack">
+          <div class="stat-grid">
+            <article class="stat-card stat-card--primary">
+              <span class="stat-card__label">知识库</span>
+              <span class="stat-card__value">7</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-card__label">库类型预设</span>
+              <span class="stat-card__value">7</span>
+            </article>
+            <article class="stat-card">
+              <span class="stat-card__label">已发布索引</span>
+              <span class="stat-card__value">14</span>
+            </article>
+          </div>
+
+          <article class="page-card">
+            <div class="page-card__header">
+              <div>
+                <h2 class="page-card__title">知识库管理</h2>
+                <p class="page-card__subtitle">创建知识库、选择库类型预设，管理 Profile 与标签。</p>
+              </div>
+              <div class="actions">
+                <span class="stat-chip">共 <strong>7</strong> 个</span>
+                <button class="btn">刷新</button>
+                <button class="btn primary">创建样例</button>
+              </div>
+            </div>
+            <div class="page-card__body">
+              <div class="filter-panel">
+                <label>租户 ID <input value="default" style="width:140px;margin-left:8px" /></label>
+                <button class="btn primary" style="margin-left:12px">查询</button>
+              </div>
+              <table class="matrix">
+                <thead>
+                  <tr><th>名称</th><th>预设</th><th>租户</th><th>标签</th><th>状态</th><th>操作</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>研发知识中心</strong><div class="row-meta">技术文档与排障资料</div></td>
+                    <td>technical_docs</td>
+                    <td>default</td>
+                    <td><span class="chip blue">rag</span> <span class="chip blue">docs</span></td>
+                    <td><span class="chip">ACTIVE</span></td>
+                    <td><button type="button" class="link-btn" data-open-drawer>详情</button></td>
+                  </tr>
+                  <tr>
+                    <td><strong>产品支持库</strong><div class="row-meta">FAQ 与产品手册</div></td>
+                    <td>product_knowledge</td>
+                    <td>default</td>
+                    <td><span class="chip blue">faq</span></td>
+                    <td><span class="chip">ACTIVE</span></td>
+                    <td><button type="button" class="link-btn" data-open-drawer>详情</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <div class="grid cols-2">
+            <article class="page-card">
+              <div class="page-card__header"><h2 class="page-card__title">创建知识库</h2></div>
+              <div class="page-card__body">
+                <div class="form-grid">
+                  <label>知识库名称<input value="研发知识中心" /></label>
+                  <label>库类型预设
+                    <select>
+                      <option>technical_docs 技术文档库</option>
+                      <option>product_knowledge 产品知识库</option>
+                      <option>general_docs 通用文档库</option>
+                    </select>
+                  </label>
+                  <label>标签<input value="rag,docs" /></label>
+                  <label>Embedding 模型<select><option>bge-m3</option></select></label>
+                </div>
+                <label style="margin-top:14px">描述<textarea>用于研发规范、接口文档、部署说明与故障排查材料的统一问答。</textarea></label>
+                <div class="actions" style="margin-top:14px"><button class="btn primary">提交知识库</button></div>
+              </div>
+            </article>
+            <article class="page-card">
+              <div class="page-card__header">
+                <div>
+                  <h2 class="page-card__title">库类型预设矩阵</h2>
+                  <p class="page-card__subtitle">快速比对不同预设的分块与检索参数。</p>
+                </div>
+              </div>
+              <div class="page-card__body">
+                <table class="matrix">
+                  <thead><tr><th>预设</th><th>说明</th><th>chunk_max</th><th>overlap</th></tr></thead>
+                  <tbody>
+                    <tr><td>technical_docs</td><td>接口文档、部署文档</td><td>640</td><td>96</td></tr>
+                    <tr><td>table_report</td><td>Excel、周报、月报</td><td>384</td><td>48</td></tr>
+                    <tr><td>policy_compliance</td><td>制度、审计材料</td><td>768</td><td>96</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- 入库任务 -->
+        <section id="ingestion" class="workspace page-wrap page-wrap--fluid page-stack">
+          <article class="page-card">
+            <div class="page-card__header">
+              <div>
+                <h2 class="page-card__title">入库 Pipeline</h2>
+                <p class="page-card__subtitle">从来源加载到索引发布的数据路径。</p>
+              </div>
+            </div>
+            <div class="page-card__body">
+              <div class="pipeline">
+                <div class="step"><div class="step-num">01</div><div class="step-name">LoadSource</div><div class="step-desc">MinIO / inline / 文件 / 目录</div></div>
+                <div class="step"><div class="step-num">02</div><div class="step-name">ParseDocument</div><div class="step-desc">OCR / 表格深度 / Tika 解析</div></div>
+                <div class="step"><div class="step-num">03</div><div class="step-name">TokenWindow</div><div class="step-desc">token 切块与重叠控制</div></div>
+                <div class="step"><div class="step-num">04</div><div class="step-name">PublishIndex</div><div class="step-desc">写入并发布索引版本</div></div>
+              </div>
+            </div>
+          </article>
+
+          <div class="grid cols-2">
+            <article class="page-card">
+              <div class="page-card__header"><h2 class="page-card__title">文件上传（MinIO）</h2></div>
+              <div class="page-card__body">
+                <label>存储桶<input value="knowbase" /></label>
+                <label style="margin-top:12px">选择文件<input type="file" /></label>
+                <div class="actions" style="margin-top:14px">
+                  <button class="btn primary">上传到对象存储</button>
+                </div>
+                <p class="helper-text">已上传：minio://knowbase/a1b2/report.xlsx（24,560 bytes）</p>
+              </div>
+            </article>
+            <article class="page-card">
+              <div class="page-card__header">
+                <div><h2 class="page-card__title">新建入库任务</h2></div>
+                <button class="btn">填充样例目录</button>
+              </div>
+              <div class="page-card__body">
+                <label>知识库
+                  <select>
+                    <option>研发知识中心 (lib-001)</option>
+                    <option>产品支持库 (lib-002)</option>
+                  </select>
+                </label>
+                <label style="margin-top:12px">文档 Profile<input value="default_markdown" placeholder="留空自动选择" /></label>
+                <label style="margin-top:12px">源 URI<textarea>inline:text:KnowBase supports structured ingestion.
+minio://knowbase/a1b2/report.xlsx</textarea></label>
+                <div class="form-grid" style="margin-top:12px">
+                  <label>源类型<input value="minio" /></label>
+                  <label>最大文件数<input value="12" /></label>
+                </div>
+                <p class="helper-text">上传成功后会自动追加 minio:// URI 到源列表。</p>
+                <div class="actions" style="margin-top:14px">
+                  <button class="btn primary">创建任务</button>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div class="grid cols-2">
+            <article class="page-card">
+              <div class="page-card__header">
+                <div><h2 class="page-card__title">运行状态</h2></div>
+                <span class="chip amber">PARTIAL_FAILED</span>
+              </div>
+              <div class="page-card__body">
+                <div class="summary-metrics">
+                  <div class="summary-metric summary-metric--primary"><span class="summary-metric__label">输入</span><span class="summary-metric__value">156</span></div>
+                  <div class="summary-metric"><span class="summary-metric__label">成功</span><span class="summary-metric__value">122</span></div>
+                  <div class="summary-metric"><span class="summary-metric__label">失败</span><span class="summary-metric__value">34</span></div>
+                  <div class="summary-metric"><span class="summary-metric__label">分块</span><span class="summary-metric__value">12.4k</span></div>
+                </div>
+                <div class="bar"><span style="width:78%"></span></div>
+                <p class="muted" style="margin-top:12px">run_2026_0617_001 · 入库部分成功，请检查失败文档</p>
+              </div>
+            </article>
+            <article class="page-card">
+              <div class="page-card__header">
+                <div><h2 class="page-card__title">文档级错误</h2></div>
+                <button class="btn">刷新</button>
+              </div>
+              <div class="page-card__body">
+                <table class="matrix">
+                  <thead><tr><th>来源</th><th>错误</th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td>file://D:/document/scan.png</td>
+                      <td>OCR 解析文档失败：未安装 Tesseract</td>
+                    </tr>
+                    <tr>
+                      <td>minio://knowbase/old/broken.pdf</td>
+                      <td>文档未提取到可索引文本</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- 知识智能体 -->
+        <section id="agents" class="workspace page-wrap page-wrap--fluid page-stack">
+          <div class="stat-grid">
+            <article class="stat-card stat-card--primary"><span class="stat-card__label">智能体</span><span class="stat-card__value">5</span></article>
+            <article class="stat-card"><span class="stat-card__label">已发布版本</span><span class="stat-card__value">4</span></article>
+            <article class="stat-card"><span class="stat-card__label">可绑定知识库</span><span class="stat-card__value">7</span></article>
+          </div>
+
+          <div class="grid cols-2">
+            <article class="page-card">
+              <div class="page-card__header"><h2 class="page-card__title">创建知识智能体</h2></div>
+              <div class="page-card__body">
+                <div class="form-grid">
+                  <label>名称<input value="研发支持助手" /></label>
+                  <label>场景规则预设
+                    <select><option>technical_support 技术支持</option><option>internal_knowledge_assistant</option></select>
+                  </label>
+                  <label>Chat Tokenizer<select><option>ollama:llama3.2</option></select></label>
+                  <label>库路由策略<select><option>selected_libraries</option></select></label>
+                </div>
+                <label style="margin-top:14px">绑定知识库<textarea>研发知识中心&#10;产品支持库</textarea></label>
+                <div class="actions" style="margin-top:14px"><button class="btn primary">创建智能体</button></div>
+              </div>
+            </article>
+            <article class="page-card">
+              <div class="page-card__header">
+                <div><h2 class="page-card__title">智能体版本</h2></div>
+                <select style="width:220px">
+                  <option>研发支持助手</option>
+                  <option>制度合规助手</option>
+                </select>
+              </div>
+              <div class="page-card__body">
+                <table class="matrix">
+                  <thead><tr><th>版本</th><th>场景</th><th>库</th><th>状态</th><th>操作</th></tr></thead>
+                  <tbody>
+                    <tr>
+                      <td>v4</td><td>technical_support</td><td>3</td>
+                      <td><span class="chip">PUBLISHED</span></td>
+                      <td><button class="link-btn">禁用</button></td>
+                    </tr>
+                    <tr>
+                      <td>v5</td><td>technical_support</td><td>4</td>
+                      <td><span class="chip amber">DRAFT</span></td>
+                      <td><button class="link-btn">发布</button></td>
+                    </tr>
+                    <tr>
+                      <td>v3</td><td>technical_support</td><td>3</td>
+                      <td><span class="chip">DISABLED</span></td>
+                      <td>—</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <div style="margin-top:18px;border-top:1px solid #f1f5f9;padding-top:16px">
+                  <div class="section-head"><h4>创建新版本（DRAFT）</h4></div>
+                  <label>场景规则预设
+                    <select><option>technical_support</option><option>compliance_qa</option></select>
+                  </label>
+                  <p class="helper-text">绑定知识库：研发知识中心、产品支持库、运维手册库</p>
+                  <div class="actions" style="margin-top:12px"><button class="btn primary">创建版本</button></div>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <article class="page-card">
+            <div class="page-card__header">
+              <div>
+                <h2 class="page-card__title">检索测试</h2>
+                <p class="page-card__subtitle">不生成最终回答，验证多库路由、证据召回与上下文 token 拼装。</p>
+              </div>
+            </div>
+            <div class="page-card__body">
+              <div class="form-grid">
+                <label>智能体<select><option>研发支持助手</option></select></label>
+                <label>上下文 Token 上限<input value="4096" /></label>
+              </div>
+              <label style="margin-top:12px">问题<textarea>如何安装 PostgreSQL 和 pgvector？</textarea></label>
+              <div class="actions" style="margin-top:14px"><button class="btn primary">运行检索测试</button></div>
+              <div class="meta-bar" style="margin-top:16px">路由库 2 个 · 候选 18 个 · 证据 8 个 · context 2,048 token</div>
+            </div>
+          </article>
+
+          <article class="page-card">
+            <div class="page-card__header"><h2 class="page-card__title">场景规则预设</h2></div>
+            <div class="page-card__body">
+              <div class="grid cols-3">
+                <div class="step"><div class="step-name">technical_support</div><div class="step-desc">步骤化排障，保留版本与环境信息。</div></div>
+                <div class="step"><div class="step-name">compliance_qa</div><div class="step-desc">严格引用，证据不足拒答。</div></div>
+                <div class="step"><div class="step-name">research_analyst</div><div class="step-desc">跨文档归纳，指出共识与差异。</div></div>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <!-- 智能问答 -->
+        <section id="qa" class="workspace page-wrap page-wrap--fluid">
+          <article class="page-card">
+            <div class="page-card__header">
+              <div>
+                <h2 class="page-card__title">智能问答</h2>
+                <p class="page-card__subtitle">左侧配置提问参数，右侧查看回答、证据与 Token 轨迹。</p>
+              </div>
+              <span class="chip">SUCCEEDED</span>
+            </div>
+            <div class="page-card__body">
+              <div class="qa-layout">
+                <aside class="qa-sidebar">
+                  <div>
+                    <div class="section-head"><h3>问答配置</h3></div>
+                    <label>智能体
+                      <select><option>研发支持助手 · agent-001</option><option>制度合规助手 · agent-002</option></select>
+                    </label>
+                    <label style="margin-top:10px">智能体版本 ID<input placeholder="留空使用已发布版本" /></label>
+                    <label style="margin-top:10px">问题<textarea>如何排查部署后接口返回 502 的问题？</textarea></label>
+                    <div class="actions" style="margin-top:14px"><button class="btn primary" style="width:100%">发起问答</button></div>
+                  </div>
+                  <div>
+                    <div class="section-head"><h3>Token 摘要</h3></div>
+                    <div class="summary-metrics">
+                      <div class="summary-metric"><span class="summary-metric__label">Prompt</span><span class="summary-metric__value">2.1k</span></div>
+                      <div class="summary-metric"><span class="summary-metric__label">Completion</span><span class="summary-metric__value">186</span></div>
+                      <div class="summary-metric summary-metric--primary"><span class="summary-metric__label">Total</span><span class="summary-metric__value">2.3k</span></div>
+                    </div>
+                  </div>
+                </aside>
+                <main class="qa-chat">
+                  <div class="qa-chat__messages">
+                    <div class="message user">如何排查部署后接口返回 502 的问题？请结合部署文档和运维库回答。</div>
+                    <div class="message">建议按四步排查：先确认网关 upstream 配置是否指向当前服务端口，再检查应用健康检查路径是否通过，随后查看服务启动日志中的数据库连接与模型服务连接，最后核对反向代理超时配置。[1][2]</div>
+                  </div>
+                  <div class="qa-evidence-panel">
+                    <div class="section-head"><h3>证据与轨迹</h3></div>
+                    <div class="tabs qa-tabs">
+                      <button class="tab active" data-tab="evidence">证据</button>
+                      <button class="tab" data-tab="citations">引用</button>
+                      <button class="tab" data-tab="trace">Token / Trace</button>
+                    </div>
+                    <div class="tab-panel active" data-panel="evidence">
+                      <div class="evidence">
+                        <div class="evidence-item">
+                          <div class="row-title">[1] deploy-guide.md · chunk 18</div>
+                          <div class="row-meta">score 0.84 · 部署与运维库</div>
+                          <p class="muted">upstream 指向服务端口，健康检查路径需与网关配置保持一致。</p>
+                        </div>
+                        <div class="evidence-item">
+                          <div class="row-title">[2] service-runtime.md · chunk 7</div>
+                          <div class="row-meta">score 0.79 · 研发知识中心</div>
+                          <p class="muted">启动日志应检查数据库连接、对象存储连接与模型服务连接。</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="tab-panel" data-panel="citations">
+                      <div class="evidence-item">
+                        <div class="row-title">deploy-guide.md</div>
+                        <div class="row-meta">file://docs/deploy-guide.md</div>
+                        <p class="muted">网关 upstream 与健康检查配置说明。</p>
+                      </div>
+                    </div>
+                    <div class="tab-panel" data-panel="trace">
+                      <div class="meta-bar">Trace 8f3c2a1b-... · 2026-06-18 14:32</div>
+                      <div class="actions" style="margin:12px 0"><button class="btn">加载 Pipeline Span</button></div>
+                      <table class="matrix">
+                        <thead><tr><th>阶段</th><th>状态</th><th>耗时</th></tr></thead>
+                        <tbody>
+                          <tr><td>routing</td><td>SUCCEEDED</td><td>12 ms</td></tr>
+                          <tr><td>retrieval</td><td>SUCCEEDED</td><td>186 ms</td></tr>
+                          <tr><td>generation</td><td>SUCCEEDED</td><td>920 ms</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </main>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <!-- 观测评测 -->
+        <section id="observability" class="workspace page-wrap page-wrap--fluid page-stack">
+          <div class="grid cols-2">
+            <article class="page-card">
+              <div class="page-card__header"><h2 class="page-card__title">Pipeline Trace 查询</h2></div>
+              <div class="page-card__body">
+                <label>Trace ID<input value="8f3c2a1b-6d4e-4a9c-b1f2-0123456789ab" /></label>
+                <div class="actions" style="margin-top:14px"><button class="btn primary">查询 Trace</button></div>
+                <table class="matrix" style="margin-top:16px">
+                  <thead><tr><th>阶段</th><th>状态</th><th>耗时</th><th>Pipeline</th></tr></thead>
+                  <tbody>
+                    <tr><td>routing</td><td>SUCCEEDED</td><td>12 ms</td><td>query</td></tr>
+                    <tr><td>retrieval</td><td>SUCCEEDED</td><td>186 ms</td><td>query</td></tr>
+                    <tr><td>generation</td><td>SUCCEEDED</td><td>920 ms</td><td>query</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+            <article class="page-card">
+              <div class="page-card__header"><h2 class="page-card__title">Pipeline Run 查询</h2></div>
+              <div class="page-card__body">
+                <div class="form-grid">
+                  <label>Pipeline
+                    <select><option>query</option><option>ingestion</option></select>
+                  </label>
+                  <label>Run ID<input value="run_2026_0617_001" /></label>
+                </div>
+                <div class="actions" style="margin-top:14px"><button class="btn primary">查询 Run</button></div>
+                <table class="matrix" style="margin-top:16px">
+                  <thead><tr><th>阶段</th><th>状态</th><th>耗时</th></tr></thead>
+                  <tbody>
+                    <tr><td>pipeline</td><td>SUCCEEDED</td><td>4.2 s</td></tr>
+                    <tr><td>document</td><td>FAILED</td><td>320 ms</td></tr>
+                    <tr><td>document</td><td>SUCCEEDED</td><td>890 ms</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+
+          <article class="page-card">
+            <div class="page-card__header">
+              <div><h2 class="page-card__title">评测运行</h2></div>
+              <button class="btn">刷新列表</button>
+            </div>
+            <div class="page-card__body">
+              <div class="form-grid">
+                <label>租户 ID<input value="default" /></label>
+                <label>智能体<select><option>研发支持助手</option></select></label>
+              </div>
+              <label style="margin-top:12px">评测样例（每行：问题|期望答案）<textarea>如何安装 PostgreSQL|PostgreSQL 安装
+如何排查 502|502 网关错误</textarea></label>
+              <div class="actions" style="margin-top:14px"><button class="btn primary">创建评测运行</button></div>
+              <table class="matrix" style="margin-top:18px">
+                <thead><tr><th>ID</th><th>类型</th><th>状态</th><th>均分</th><th>操作</th></tr></thead>
+                <tbody>
+                  <tr>
+                    <td>eval-001...</td><td>qa-regression</td><td>COMPLETED</td><td>85%</td>
+                    <td><button class="link-btn">详情</button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div style="margin-top:16px">
+                <div class="section-head"><h4>评测详情</h4></div>
+                <div class="meta-bar">样例 2 个 · 均分 85%</div>
+                <div class="evidence-item">
+                  <div class="row-title">Q: 如何安装 PostgreSQL</div>
+                  <div class="row-meta">score 1.0</div>
+                  <p class="muted">A: 请参考部署文档安装 PostgreSQL 并启用 pgvector 扩展…</p>
+                </div>
+              </div>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- 知识库详情抽屉 -->
+  <div class="drawer-backdrop" id="library-drawer">
+    <aside class="drawer" role="dialog" aria-label="知识库详情">
+      <div class="drawer__header">
+        <h2 class="drawer__title">研发知识中心</h2>
+        <button type="button" class="btn" data-close-drawer>关闭</button>
+      </div>
+      <div class="drawer__body">
+        <div class="meta-bar">lib-001 · technical_docs · ACTIVE</div>
+        <div class="drawer-tabs">
+          <button type="button" class="drawer-tab active" data-drawer-tab="index">索引版本</button>
+          <button type="button" class="drawer-tab" data-drawer-tab="documents">文档</button>
+          <button type="button" class="drawer-tab" data-drawer-tab="acl">ACL</button>
+        </div>
+        <div class="drawer-panel active" data-drawer-panel="index">
+          <table class="matrix">
+            <thead><tr><th>版本</th><th>状态</th><th>文档/块</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>v3</td><td><span class="chip">PUBLISHED</span></td><td>122 / 12.4k</td><td><button class="link-btn">看文档</button></td></tr>
+              <tr><td>v2</td><td><span class="chip">DRAFT</span></td><td>98 / 9.1k</td><td><button class="link-btn">看文档</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="drawer-panel" data-drawer-panel="documents">
+          <table class="matrix">
+            <thead><tr><th>标题</th><th>来源</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>deploy-guide.md</td><td>minio://knowbase/docs/deploy-guide.md</td><td><button class="link-btn">块</button></td></tr>
+              <tr><td>api-spec.xlsx</td><td>minio://knowbase/docs/api-spec.xlsx</td><td><button class="link-btn">块</button></td></tr>
+            </tbody>
+          </table>
+          <div class="evidence-item" style="margin-top:14px">
+            <div class="row-title">chunk-018 · 512 tokens</div>
+            <p class="muted">upstream 指向服务端口，健康检查路径需与网关配置保持一致…</p>
+          </div>
+        </div>
+        <div class="drawer-panel" data-drawer-panel="acl">
+          <div class="form-grid">
+            <label>主体类型<select><option>USER</option><option>ROLE</option></select></label>
+            <label>主体 ID<input placeholder="alice / admin" /></label>
+          </div>
+          <label style="margin-top:12px">权限<select><option>READ</option><option>WRITE</option><option>ADMIN</option></select></label>
+          <div class="actions" style="margin-top:14px">
+            <button class="btn primary">授予 ACL</button>
+            <button class="btn">刷新</button>
+          </div>
+          <table class="matrix" style="margin-top:16px">
+            <thead><tr><th>主体</th><th>ID</th><th>权限</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>USER</td><td>alice</td><td>READ</td><td><button class="link-btn">撤销</button></td></tr>
+              <tr><td>ROLE</td><td>admin</td><td>ADMIN</td><td><button class="link-btn">撤销</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const meta = {
+      home: { title: '', subtitle: '', hideHeader: true },
+      libraries: {
+        title: '知识库管理',
+        subtitle: '创建知识库、选择库类型预设，管理异构文档 Profile 与索引版本。'
+      },
+      ingestion: {
+        title: '入库任务',
+        subtitle: '执行 token 驱动的入库 Pipeline，发布可检索索引版本。'
+      },
+      agents: {
+        title: '知识智能体',
+        subtitle: '绑定多知识库，管理版本生命周期，执行检索测试与评测。'
+      },
+      observability: {
+        title: '观测与评测',
+        subtitle: '查看 Pipeline Trace、创建评测运行并追踪问答链路。'
+      },
+      qa: {
+        title: '智能问答',
+        subtitle: '基于已发布智能体版本执行多库检索、证据融合与回答生成。'
+      }
+    };
+
+    const navButtons = document.querySelectorAll('.app-topnav__item[data-target]');
+    const pages = document.querySelectorAll('.workspace');
+    const pageHeader = document.getElementById('page-header');
+    const pageTitle = document.getElementById('page-title');
+    const pageSubtitle = document.getElementById('page-subtitle');
+    const appMain = document.getElementById('app-main');
+
+    function navigate(target) {
+      navButtons.forEach(btn => {
+        btn.classList.toggle('is-active', btn.dataset.target === target);
+      });
+      pages.forEach(page => {
+        page.classList.toggle('active', page.id === target);
+      });
+
+      const info = meta[target] || meta.home;
+      if (info.hideHeader) {
+        pageHeader.classList.add('is-hidden');
+        appMain.classList.add('app-main--flush');
+      } else {
+        pageHeader.classList.remove('is-hidden');
+        appMain.classList.remove('app-main--flush');
+        pageTitle.textContent = info.title;
+        pageSubtitle.textContent = info.subtitle;
+      }
+    }
+
+    navButtons.forEach(button => {
+      button.addEventListener('click', () => navigate(button.dataset.target));
+    });
+
+    document.querySelectorAll('[data-goto]').forEach(card => {
+      card.addEventListener('click', () => navigate(card.dataset.goto));
+    });
+
+    document.getElementById('brand-home').addEventListener('click', () => navigate('home'));
+
+    document.querySelectorAll('.tab[data-tab]').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const group = tab.closest('.qa-evidence-panel') || tab.parentElement.parentElement;
+        group.querySelectorAll('.tab[data-tab]').forEach(item => item.classList.remove('active'));
+        tab.classList.add('active');
+        const name = tab.dataset.tab;
+        group.querySelectorAll('.tab-panel').forEach(panel => {
+          panel.classList.toggle('active', panel.dataset.panel === name);
+        });
+      });
+    });
+
+    const libraryDrawer = document.getElementById('library-drawer');
+    document.querySelectorAll('[data-open-drawer]').forEach(button => {
+      button.addEventListener('click', () => libraryDrawer.classList.add('is-open'));
+    });
+    document.querySelectorAll('[data-close-drawer]').forEach(button => {
+      button.addEventListener('click', () => libraryDrawer.classList.remove('is-open'));
+    });
+    libraryDrawer.addEventListener('click', event => {
+      if (event.target === libraryDrawer) {
+        libraryDrawer.classList.remove('is-open');
+      }
+    });
+
+    document.querySelectorAll('.drawer-tab[data-drawer-tab]').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const drawer = tab.closest('.drawer__body');
+        drawer.querySelectorAll('.drawer-tab').forEach(item => item.classList.remove('active'));
+        tab.classList.add('active');
+        const name = tab.dataset.drawerTab;
+        drawer.querySelectorAll('.drawer-panel').forEach(panel => {
+          panel.classList.toggle('active', panel.dataset.drawerPanel === name);
+        });
+      });
+    });
+  </script>
+</body>
+</html>
