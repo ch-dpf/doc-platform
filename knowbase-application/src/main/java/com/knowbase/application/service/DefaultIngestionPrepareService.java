@@ -34,6 +34,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 入库准备服务：编排解析 → 清洗 → 切块三阶段，并将 ingestion 层结果映射为 API DTO。
+ * <p>
+ * 解析层调用链：
+ * <ol>
+ *   <li>{@link DocumentProfileResolver} 按 URI / Profile 选定文档配置（含 parserCode）</li>
+ *   <li>{@link ParseOptionsSupport#applyParseMode} 根据 parseMode 覆盖 parser 路由</li>
+ *   <li>{@link DocumentPreparationPipeline#parse} → {@link com.knowbase.ingestion.DocumentSourceLoader} 选 parser 并产出 {@link ParsedDocument}</li>
+ *   <li>{@link #toParseStage} 裁剪为 {@link ParseStageResult} 返回前端</li>
+ * </ol>
+ */
 public final class DefaultIngestionPrepareService implements PrepareIngestionUseCase {
 
     private static final int DEFAULT_MAX_PREVIEW_BLOCKS = 30;
@@ -56,6 +67,13 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
         this.tokenizerRegistry = tokenizerRegistry;
     }
 
+    /**
+     * 批量执行入库准备流水线。
+     * <p>
+     * 对每个 sourceUri：解析 DocumentProfile → 合并 parser 选项 → 调用 {@link DocumentPreparationPipeline#parse}
+     * 获取原始 {@link ParsedDocument}，再按 prepareStage 决定是否继续 normalize / chunk。
+     * prepareStage=parse 时 pipeline 在 PARSE 阶段即返回，不执行后续清洗与切块。
+     */
     @Override
     public IngestionPrepareResult prepare(PrepareIngestionCommand command) {
         repository.findLibrary(command.libraryId())
@@ -114,6 +132,7 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
 
                 UUID documentId = UUID.randomUUID();
                 UUID indexVersionId = UUID.randomUUID();
+                // 解析层入口：加载源文件 → 路由 parser → 产出 ParsedDocument（含结构块与 flat text）
                 ParsedDocument rawParsed = preparationPipeline.parse(sourceUri, sourceOptions);
                 DocumentPreparationResult prepared = preparationPipeline.prepareFromParsed(
                         rawParsed,
@@ -174,6 +193,12 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
         );
     }
 
+    /**
+     * 将 ingestion 层 {@link ParsedDocument} 映射为 API 层 {@link ParseStageResult}。
+     * <p>
+     * 结构块与全文均按 maxBlocks / maxChars 裁剪，避免大文档响应体过大；
+     * blockCount / textCharCount 保留完整统计，不受裁剪影响。
+     */
     private static ParseStageResult toParseStage(ParsedDocument parsed, int maxBlocks, int maxChars) {
         List<StructuralBlockResult> blocks = new ArrayList<>();
         int count = 0;
@@ -282,6 +307,11 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
         );
     }
 
+    /**
+     * 合并请求 options、路由元数据与 DocumentProfile 默认值。
+     * <p>
+     * parserCode 来自 Profile，可被请求级 options 或 parseMode 覆盖（见 {@link ParseOptionsSupport}）。
+     */
     private static Map<String, Object> mergeDocumentProfileOptions(
             Map<String, Object> requestOptions,
             DocumentProfile documentProfile,

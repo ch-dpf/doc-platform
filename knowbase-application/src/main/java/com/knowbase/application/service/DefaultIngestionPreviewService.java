@@ -33,6 +33,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * 入库预览服务：完整执行 parse → normalize → chunk，返回含解析快照的预览结果。
+ * <p>
+ * 与 {@link DefaultIngestionPrepareService} 共用解析路由逻辑，但固定执行到 CHUNK 阶段，
+ * 并将 {@link ParseStageResult} 嵌入 {@link com.knowbase.api.result.DocumentPreviewResult}。
+ */
 public final class DefaultIngestionPreviewService implements PreviewIngestionUseCase {
 
     private static final int DEFAULT_MAX_PREVIEW_BLOCKS = 20;
@@ -55,6 +61,12 @@ public final class DefaultIngestionPreviewService implements PreviewIngestionUse
         this.tokenizerRegistry = tokenizerRegistry;
     }
 
+    /**
+     * 批量预览文档解析与切块结果，不写入索引。
+     * <p>
+     * 解析步骤与 prepare 一致：Profile 路由 → ParseOptionsSupport → DocumentPreparationPipeline.parse。
+     * 随后强制执行 normalize + chunk 以展示完整流水线效果。
+     */
     @Override
     public IngestionPreviewResult preview(PreviewIngestionCommand command) {
         repository.findLibrary(command.libraryId())
@@ -110,6 +122,7 @@ public final class DefaultIngestionPreviewService implements PreviewIngestionUse
                 ModelTokenizer tokenizer = resolveTokenizer(profile, tokenizerProfile);
                 sourceOptions = withTokenizerMetadata(sourceOptions, tokenizerProfile, tokenizer);
 
+                // 解析层：DocumentSourceLoader 按 parserCode / MIME / parseMode 选择 DocumentParser
                 ParsedDocument rawParsed = preparationPipeline.parse(sourceUri, sourceOptions);
                 DocumentPreparationResult prepared = preparationPipeline.prepareFromParsed(
                         rawParsed,
@@ -172,6 +185,7 @@ public final class DefaultIngestionPreviewService implements PreviewIngestionUse
         );
     }
 
+    /** 将 ParsedDocument 转为 ParseStageResult，逻辑与 {@link DefaultIngestionPrepareService#toParseStage} 一致。 */
     private static ParseStageResult toParseStage(ParsedDocument parsed, int maxBlocks, int maxChars) {
         List<StructuralBlockResult> blocks = new ArrayList<>();
         int count = 0;
@@ -279,6 +293,7 @@ public final class DefaultIngestionPreviewService implements PreviewIngestionUse
         );
     }
 
+    /** 合并 DocumentProfile 默认 parserCode 等到 sourceOptions，供 DocumentSourceLoader 路由。 */
     private static Map<String, Object> mergeDocumentProfileOptions(
             Map<String, Object> requestOptions,
             DocumentProfile documentProfile,
