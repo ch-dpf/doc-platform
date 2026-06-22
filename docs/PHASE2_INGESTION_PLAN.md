@@ -98,7 +98,114 @@
 - 外部解析器与 Java parser 共用同一 chunker。
 - 外部解析器禁用时，默认 Java pipeline 不受影响。
 
-## 4. 实施顺序
+## 4. 缺项与后续完善项
+
+当前分支已经完成入库主链路与复杂文档有限增强，但与 Docling、Unstructured、RAGFlow 等深度文档解析能力相比，仍需在二期继续补齐以下缺项。
+
+### 4.1 PDF 表格精准识别
+
+现状：
+
+- 已有基于 TextPosition 的行聚类、bbox、readingOrder、多栏和 table region 启发式。
+
+不足：
+
+- 表格检测仍以文本行间距和空白特征为主，不能稳定识别复杂网格线、跨页表格、无边框表格和嵌套表格。
+- table region 尚未输出完整表格对象、单元格 bbox、列边界和跨页续表关系。
+
+后续完善：
+
+- 增加表格区域检测器，支持 ruled table、stream table 和跨页 continuation。
+- 输出 table、row、cell 三层结构，保留 bbox、rowSpan、columnSpan、headerPath。
+- 支持按 `tableRegionId` 构造 citation，并在前端定位页内区域。
+
+### 4.2 OCR 引擎深度集成
+
+现状：
+
+- 已支持 hOCR 中的 bbox 与 confidence 解析，并在缺失时保留估算/不可用标记。
+
+不足：
+
+- 尚未固化 PaddleOCR、Tesseract TSV、云 OCR JSON 等多引擎适配。
+- rotation、language、paragraph/line/word 层级、低置信度策略仍不完整。
+
+后续完善：
+
+- 定义 `OcrEngineAdapter` SPI，统一输出 page、block、line、word、bbox、confidence、language、rotation。
+- 支持 Profile 级 OCR 引擎选择和参数配置。
+- 对低置信度 chunk 增加降权、过滤、人工复核标记。
+
+### 4.3 外部解析器协议固化
+
+现状：
+
+- 已有可选外部解析器 HTTP adapter，可接 Docling/Unstructured 风格服务。
+
+不足：
+
+- 请求/响应 JSON Schema 尚未版本化。
+- 认证、超时、重试、fallback、错误码和可观测字段尚未规范。
+- 外部解析器返回的 table/page/image/citation 坐标尚未完整映射。
+
+后续完善：
+
+- 定义 `external-parser.schema.json`，包含 `text`、`blocks`、`tables`、`pages`、`images`、`metadata`。
+- 增加 adapter 级超时、重试、熔断和 fallback 到 Java parser。
+- 将外部解析 trace 写入 `IngestionRun` 阶段轨迹。
+
+### 4.4 语义切分与评测集
+
+现状：
+
+- 已有结构优先、token 预算、字符兜底，以及单元级自动化测试。
+
+不足：
+
+- 缺少真实样本文档回归集。
+- 缺少 chunk 边界快照、召回质量、引用完整性、OCR 低置信度样本评估。
+- semantic chunk、sentence-window、parent-child profile 还不是可评测的产品预设。
+
+后续完善：
+
+- 建立 `sample-documents` 数据集，覆盖 PDF、扫描件、Excel、Markdown 长文、代码/配置。
+- 增加 chunk snapshot 测试，固定 `boundaryType`、tokenCount、metadata、parent/child 关系。
+- 增加 ingestion eval 脚本，输出召回、引用、chunk 边界和证据完整性报告。
+
+### 4.5 Citation 坐标闭环
+
+现状：
+
+- 解析和 chunk metadata 已逐步保留 page、bbox、table/cell 坐标。
+
+不足：
+
+- 检索证据、引用对象和前端展示尚未形成 page/bbox/cell coordinate 闭环。
+- 多页、跨表格、跨 sheet 引用的展示策略未定义。
+
+后续完善：
+
+- 扩展 evidence/citation 结果，保留 `pageNumber`、`bbox`、`sheetName`、`rowRange`、`columnRange`、`cellCoordinates`。
+- 前端支持页内区域、表格行/单元格和低置信度 OCR 标记展示。
+- 问答上下文裁剪时保留 citation metadata 一致性。
+
+### 4.6 多模态证据资产
+
+现状：
+
+- 当前以文本 chunk 和结构 metadata 为主。
+
+不足：
+
+- 尚未保留 PDF 页截图、表格区域截图、图片 OCR 原图区域等多模态证据资产。
+
+后续完善：
+
+- 为 PDF/OCR/table region 生成可选 artifact 引用。
+- 在 evidence pack 中保留图片/表格区域 asset URI。
+- 前端支持引用处预览页截图或表格区域截图。
+
+## 5. 实施顺序
 
 1. 定义外部解析器响应 Schema 与样例。
 2. 完成 OCR hOCR/TSV/JSON 解析器和 confidence/bbox 映射。
@@ -108,14 +215,14 @@
 6. 接入可选 Docling/Unstructured adapter。
 7. 将高质量 citation metadata 接入证据构造与前端展示。
 
-## 5. 非目标
+## 6. 非目标
 
 - 二期不训练自研 OCR 或版面模型。
 - 二期不强制所有部署环境安装 Docling/Unstructured。
 - 二期不改变已发布索引版本的读取兼容性。
 - 二期不替换现有 Java 入库主链路。
 
-## 6. 风险与约束
+## 7. 风险与约束
 
 - 深度 PDF 与 OCR 对 CPU、内存和外部依赖要求更高，需要 Profile 级开关。
 - 外部解析器输出格式差异较大，需要稳定 Schema 做隔离。
