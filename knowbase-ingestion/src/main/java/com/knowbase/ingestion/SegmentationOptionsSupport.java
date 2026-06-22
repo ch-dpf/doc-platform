@@ -10,7 +10,7 @@ public final class SegmentationOptionsSupport {
 
     public static final String MODE_SMART = "smart";
     public static final String MODE_ADVANCED = "advanced";
-    /** 主流 RAG 智能分段默认：结构段内 500 字窗口 + 50 重叠（Dify/LangChain 量级） */
+    /** 字符兜底默认：token 窗口前后用递归字符切分限制过长结构段。 */
     public static final int SMART_CHUNK_MAX_CHARS = 500;
     public static final int SMART_CHUNK_OVERLAP_CHARS = 50;
 

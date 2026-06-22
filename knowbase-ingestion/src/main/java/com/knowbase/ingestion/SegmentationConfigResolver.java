@@ -73,9 +73,10 @@ public final class SegmentationConfigResolver {
         if (SegmentationOptionsSupport.isSmartMode(requestOptions)) {
             merged.put("chunkMode", "flat");
             merged.put("splitMode", "recursive");
-            merged.put("chunkSizeUnit", "char");
-            merged.put("chunkMaxChars", SegmentationOptionsSupport.SMART_CHUNK_MAX_CHARS);
-            merged.put("chunkOverlapChars", SegmentationOptionsSupport.SMART_CHUNK_OVERLAP_CHARS);
+            merged.put("chunkSizeUnit", "token");
+            merged.putIfAbsent("fallbackSplitMode", "recursive");
+            merged.putIfAbsent("chunkMaxChars", SegmentationOptionsSupport.SMART_CHUNK_MAX_CHARS);
+            merged.putIfAbsent("chunkOverlapChars", SegmentationOptionsSupport.SMART_CHUNK_OVERLAP_CHARS);
             merged.putIfAbsent("minChunkChars", 80);
             merged.put("prependHeadingContext", true);
             merged.putIfAbsent("preserveStructureBoundary", true);

@@ -31,7 +31,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                             documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                             documentProfile("default_faq", "PLAIN_TEXT", "qa", "qa_token_window"),
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
-                            documentProfile("default_table", "STRUCTURED_TABLE", "tika", "table_row_token_window"),
+                            documentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                             documentProfile("default_presentation", "PRESENTATION", "tika", "slide_token_window"),
                             documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window")
                     )
@@ -48,7 +48,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                             documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                             documentProfile("default_code_or_config", "CODE_OR_CONFIG", "text", "code_token_window"),
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
-                            documentProfile("default_table", "STRUCTURED_TABLE", "tika", "table_row_token_window"),
+                            documentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                             documentProfile("default_presentation", "PRESENTATION", "tika", "slide_token_window"),
                             documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window")
                     )
@@ -64,7 +64,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                             documentProfile("default_markdown", "RICH_TEXT", "markdown-structure", "structure_token_window"),
                             documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
-                            documentProfile("default_table", "STRUCTURED_TABLE", "tika", "table_row_token_window"),
+                            documentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                             documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window"),
                             documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "ocr-layout", "page_token_window")
                     )
@@ -77,7 +77,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                     48,
                     12,
                     List.of(
-                            documentProfile("default_table", "STRUCTURED_TABLE", "tika", "table_row_token_window"),
+                            documentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                             documentProfile("default_markdown", "RICH_TEXT", "markdown-structure", "structure_token_window"),
                             documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
@@ -285,9 +285,9 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                         Map.entry("fallbackSplitMode", "recursive"),
                         Map.entry("chunkMode", "flat"),
                         Map.entry("splitMode", "recursive"),
-                        Map.entry("chunkSizeUnit", "char"),
-                        Map.entry("chunkMaxChars", 500),
-                        Map.entry("chunkOverlapChars", 50),
+                        Map.entry("chunkSizeUnit", "token"),
+                        Map.entry("chunkMaxChars", 2048),
+                        Map.entry("chunkOverlapChars", 256),
                         Map.entry("minChunkChars", 80),
                         Map.entry("prependHeadingContext", true),
                         Map.entry("unicodeNormalize", true),
@@ -307,7 +307,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                 documentProfile("default_faq", "PLAIN_TEXT", "qa", "qa_token_window"),
                 documentProfile("default_zip_bundle", "RICH_TEXT", "zip", "structure_token_window"),
                 documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
-                documentProfile("default_table", "STRUCTURED_TABLE", "tika", "table_row_token_window"),
+                documentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                 documentProfile("default_presentation", "PRESENTATION", "tika", "slide_token_window"),
                 documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window"),
                 documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "ocr-layout", "page_token_window"),

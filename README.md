@@ -31,10 +31,10 @@ KnowBase 是面向内部知识管理场景的 RAG 平台，提供知识库建设
 
 当前 ingestion core 接口演进：
 
-- `DocumentParser`：解析器 SPI，按 `sourceUri` 与 `mimeType` 选择 Markdown、HTML、PDF、Word、Excel、OCR、ZIP 等解析器。
+- `DocumentParser`：解析器 SPI，按 `sourceUri` 与 `mimeType` 选择 Markdown、HTML、PDF、Word、Excel、OCR、ZIP 等解析器，表格默认走 `table-deep`。
 - `DocumentNormalizer`：清洗阶段接口，默认 `DocumentTextNormalizer` 执行文本归一化和结构块清洗。
 - `DocumentMetadataEnricher`：元数据增强接口，默认实现补充块统计、首标题、Profile 与 chunk/token 配置上下文。
-- `DocumentChunker`：切分阶段接口，默认 `TokenBasedDocumentChunker` 结合结构段、模型 tokenizer 与字符兜底切分。
+- `DocumentChunker`：切分阶段接口，默认 `TokenBasedDocumentChunker` 统一为语义边界优先、token 预算约束、字符切分兜底。
 - `DocumentPreparationPipeline`：入库准备编排，将加载、解析、结构增强、清洗、元数据增强和切分串联为可分阶段验证的流程。
 
 ## 独立运行

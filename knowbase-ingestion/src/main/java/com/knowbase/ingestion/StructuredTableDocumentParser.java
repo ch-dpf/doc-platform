@@ -43,36 +43,42 @@ public final class StructuredTableDocumentParser implements DocumentParser {
     public ParsedDocument parse(DocumentSource source) {
         String lowerUri = source.sourceUri() == null ? "" : source.sourceUri().toLowerCase();
         try {
-            String text;
+            TableParseResult table;
             Map<String, Object> parsedMetadata = new HashMap<>(source.metadata());
             if (lowerUri.endsWith(".csv")) {
-                text = new String(source.inputStream().readAllBytes(), StandardCharsets.UTF_8);
+                table = parseCsv(new String(source.inputStream().readAllBytes(), StandardCharsets.UTF_8));
                 parsedMetadata.put("tableFormat", "csv");
             } else {
-                text = parseSpreadsheet(source);
+                table = parseSpreadsheet(source);
                 parsedMetadata.put("tableFormat", "spreadsheet");
             }
+            String text = table.text();
             if (text == null || text.isBlank()) {
                 Metadata metadata = new Metadata();
                 text = tika.parseToString(source.inputStream(), metadata);
                 parsedMetadata.put("fallbackParser", "tika");
+                table = new TableParseResult(text, List.of());
             }
             parsedMetadata.put("parser", "table-deep");
-            parsedMetadata.put("rowGroupCount", countRowGroups(text));
+            parsedMetadata.put("rowGroupCount", table.rowGroupCount());
+            parsedMetadata.put("structureAware", !table.blocks().isEmpty());
             return new ParsedDocument(
                     source.sourceUri(),
                     firstNonBlank(source.filename(), source.sourceUri()),
                     text,
                     ContentFamily.STRUCTURED_TABLE,
-                    parsedMetadata
+                    parsedMetadata,
+                    table.blocks()
             );
         } catch (IOException | TikaException exception) {
             throw new IllegalStateException("表格深度解析失败: " + source.sourceUri(), exception);
         }
     }
 
-    private String parseSpreadsheet(DocumentSource source) throws IOException {
+    private TableParseResult parseSpreadsheet(DocumentSource source) throws IOException {
         StringBuilder builder = new StringBuilder();
+        List<StructuralBlock> blocks = new ArrayList<>();
+        int ordinal = 0;
         try (Workbook workbook = WorkbookFactory.create(source.inputStream())) {
             for (int sheetIndex = 0; sheetIndex < workbook.getNumberOfSheets(); sheetIndex++) {
                 Sheet sheet = workbook.getSheetAt(sheetIndex);
@@ -84,12 +90,55 @@ public final class StructuredTableDocumentParser implements DocumentParser {
                         continue;
                     }
                     List<String> values = readRow(row);
-                    builder.append(formatRowGroup(headers, values)).append('\n');
+                    String rowText = formatRowGroup(headers, values);
+                    if (rowText.isBlank()) {
+                        continue;
+                    }
+                    builder.append(rowText).append('\n');
+                    blocks.add(tableRowBlock(rowText, ordinal++, rowIndex, Map.of(
+                            "tableFormat", "spreadsheet",
+                            "sheetName", sheet.getSheetName(),
+                            "sheetIndex", sheetIndex
+                    )));
                 }
                 builder.append('\n');
             }
         }
-        return builder.toString();
+        return new TableParseResult(builder.toString(), blocks);
+    }
+
+    private TableParseResult parseCsv(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return new TableParseResult("", List.of());
+        }
+        String[] lines = csv.replace("\r\n", "\n").replace('\r', '\n').split("\n");
+        char delimiter = detectDelimiter(lines);
+        List<String> headers = List.of();
+        List<StructuralBlock> blocks = new ArrayList<>();
+        StringBuilder builder = new StringBuilder();
+        int ordinal = 0;
+        for (int lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            String line = lines[lineIndex];
+            if (line == null || line.isBlank()) {
+                continue;
+            }
+            List<String> values = parseDelimitedLine(line, delimiter);
+            if (headers.isEmpty()) {
+                headers = values;
+                builder.append("# CSV Table").append('\n');
+                continue;
+            }
+            String rowText = formatRowGroup(headers, values);
+            if (rowText.isBlank()) {
+                continue;
+            }
+            builder.append(rowText).append('\n');
+            blocks.add(tableRowBlock(rowText, ordinal++, lineIndex, Map.of("tableFormat", "csv")));
+        }
+        if (blocks.isEmpty()) {
+            return new TableParseResult(csv, List.of(StructuralBlock.tableRow(csv.trim(), 0, 0)));
+        }
+        return new TableParseResult(builder.toString(), blocks);
     }
 
     private List<String> readRow(Row row) {
@@ -123,11 +172,67 @@ public final class StructuredTableDocumentParser implements DocumentParser {
         return builder.toString();
     }
 
-    private static int countRowGroups(String text) {
-        if (text == null || text.isBlank()) {
-            return 0;
+    private static StructuralBlock tableRowBlock(String content, int ordinal, int rowIndex, Map<String, Object> extraMetadata) {
+        Map<String, Object> metadata = new HashMap<>(extraMetadata);
+        metadata.put("boundaryType", "table_row");
+        metadata.put("rowIndex", rowIndex);
+        return new StructuralBlock("table_row", 0, content, ordinal, Map.copyOf(metadata));
+    }
+
+    private static char detectDelimiter(String[] lines) {
+        String sample = "";
+        for (String line : lines) {
+            if (line != null && !line.isBlank()) {
+                sample = line;
+                break;
+            }
         }
-        return (int) text.lines().filter(line -> line.contains("=")).count();
+        int comma = count(sample, ',');
+        int tab = count(sample, '\t');
+        int semicolon = count(sample, ';');
+        if (tab >= comma && tab >= semicolon) {
+            return '\t';
+        }
+        if (semicolon > comma) {
+            return ';';
+        }
+        return ',';
+    }
+
+    private static int count(String value, char delimiter) {
+        int count = 0;
+        for (int index = 0; index < value.length(); index++) {
+            if (value.charAt(index) == delimiter) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static List<String> parseDelimitedLine(String line, char delimiter) {
+        List<String> values = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean quoted = false;
+        for (int index = 0; index < line.length(); index++) {
+            char ch = line.charAt(index);
+            if (ch == '"') {
+                if (quoted && index + 1 < line.length() && line.charAt(index + 1) == '"') {
+                    current.append('"');
+                    index++;
+                } else {
+                    quoted = !quoted;
+                }
+                continue;
+            }
+            if (ch == delimiter && !quoted) {
+                values.add(current.toString().trim());
+                current.setLength(0);
+                continue;
+            }
+            current.append(ch);
+        }
+        values.add(current.toString().trim());
+        return values;
     }
 
     private static String firstNonBlank(String... values) {
@@ -137,5 +242,18 @@ public final class StructuredTableDocumentParser implements DocumentParser {
             }
         }
         return "untitled";
+    }
+
+    private record TableParseResult(String text, List<StructuralBlock> blocks) {
+        private TableParseResult {
+            text = text == null ? "" : text;
+            blocks = blocks == null ? List.of() : List.copyOf(blocks);
+        }
+
+        private int rowGroupCount() {
+            return blocks.isEmpty()
+                    ? (int) text.lines().filter(line -> line.contains("=")).count()
+                    : blocks.size();
+        }
     }
 }

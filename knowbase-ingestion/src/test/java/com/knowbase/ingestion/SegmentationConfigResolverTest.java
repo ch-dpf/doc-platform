@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SegmentationConfigResolverTest {
 
     @Test
-    void smartModeDefaultsToFlatRecursiveSplit() {
+    void smartModeDefaultsToStructureFirstTokenBudgetWithCharacterFallback() {
         SegmentationConfig config = SegmentationConfigResolver.resolve(
                 sampleLibraryProfile(),
                 sampleDocumentProfile(),
@@ -23,10 +23,13 @@ class SegmentationConfigResolverTest {
         );
         assertEquals(SegmentationConfig.ChunkMode.FLAT, config.chunkMode());
         assertEquals(SegmentationConfig.SplitMode.RECURSIVE, config.splitMode());
-        assertEquals(SegmentationConfig.SizeUnit.CHAR, config.sizeUnit());
+        assertEquals(SegmentationConfig.SizeUnit.TOKEN, config.sizeUnit());
+        assertEquals(512, config.chunkMaxTokens());
+        assertEquals(64, config.chunkOverlapTokens());
         assertEquals(500, config.chunkMaxChars());
         assertEquals(50, config.chunkOverlapChars());
         assertTrue(config.prependHeadingContext());
+        assertTrue(config.preserveStructureBoundary());
     }
 
     @Test
@@ -63,8 +66,9 @@ class SegmentationConfigResolverTest {
                 profileWithSmallChunks,
                 Map.of("segmentationMode", "smart")
         );
-        assertEquals(500, config.chunkMaxChars());
-        assertEquals(50, config.chunkOverlapChars());
+        assertEquals(SegmentationConfig.SizeUnit.TOKEN, config.sizeUnit());
+        assertEquals(512, config.chunkMaxTokens());
+        assertEquals(64, config.chunkOverlapTokens());
     }
 
     private static LibraryProfile sampleLibraryProfile() {

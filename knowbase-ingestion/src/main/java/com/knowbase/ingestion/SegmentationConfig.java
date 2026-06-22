@@ -43,14 +43,14 @@ public record SegmentationConfig(
         return new SegmentationConfig(
                 ChunkMode.FLAT,
                 SplitMode.RECURSIVE,
-                SizeUnit.CHAR,
+                SizeUnit.TOKEN,
                 RecursiveCharacterSplitter.defaultSeparators(),
                 true,
                 true,
                 chunkMaxTokens,
                 chunkOverlapTokens,
-                500,
-                50,
+                Math.max(256, chunkMaxTokens * 4),
+                Math.max(32, chunkOverlapTokens * 4),
                 80,
                 chunkingStrategy
         );

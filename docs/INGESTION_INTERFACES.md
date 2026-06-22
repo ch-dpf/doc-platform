@@ -10,7 +10,7 @@
 2. `DocumentParser`：按 `sourceUri` 与 `mimeType` 解析为 `ParsedDocument`。
 3. `DocumentNormalizer`：对文本和结构块做清洗，返回 `NormalizationResult`。
 4. `DocumentMetadataEnricher`：补充文档级统计、Profile 与策略上下文。
-5. `DocumentChunker`：将归一化并增强后的 `ParsedDocument` 切成 `DocumentChunk`。
+5. `DocumentChunker`：按语义/结构边界优先、token 预算约束、递归字符切分兜底的默认策略，将归一化并增强后的 `ParsedDocument` 切成 `DocumentChunk`。
 
 ## 核心接口
 
@@ -21,7 +21,7 @@
 - `supports(String sourceUri, String mimeType)`：判断解析器是否支持当前来源。
 - `parse(DocumentSource source)`：将加载后的内容解析为 `ParsedDocument`。
 
-默认实现覆盖 Markdown/TXT、HTML、PDF、Word、Excel/CSV、PPT、OCR、QA、ZIP 和 Tika fallback。新增解析器只需实现该接口并加入 `DocumentSourceLoader` 的 parser 列表。
+默认实现覆盖 Markdown/TXT、HTML、PDF、Word、Excel/CSV、PPT、OCR、QA、ZIP 和 Tika fallback；表格类默认使用 `table-deep`，将 CSV/Excel 行解析为 `table_row` 结构块。新增解析器只需实现该接口并加入 `DocumentSourceLoader` 的 parser 列表。
 
 ### `DocumentNormalizer`
 
@@ -47,7 +47,7 @@
 
 - `chunk(UUID libraryId, UUID documentId, ParsedDocument document)`：基础切分入口。
 
-默认实现 `TokenBasedDocumentChunker` 结合 `StructureSegmenter`、模型 tokenizer 和字符兜底切分，输出 parent-child、结构段、表格行组、代码块、FAQ 等检索 chunk。
+默认实现 `TokenBasedDocumentChunker` 先由 `StructureSegmenter` 生成标题、页码、表格行、代码块、DOM 块等候选语义段，再使用模型 tokenizer 做 token 窗口约束；超长结构段先按递归字符分隔符切分后再进入 token 窗口，避免仅按字符数作为主策略。
 
 ## Pipeline Facade
 
