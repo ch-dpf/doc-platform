@@ -15,6 +15,7 @@ import com.knowbase.domain.model.KnowledgeLibrary;
 import com.knowbase.domain.model.LibraryProfile;
 import com.knowbase.domain.model.QueryRun;
 import com.knowbase.domain.model.TokenizerProfile;
+import com.knowbase.domain.support.PagedList;
 
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +28,12 @@ public interface KnowbaseRepository {
     Optional<KnowledgeLibrary> findLibrary(UUID libraryId);
 
     List<KnowledgeLibrary> listLibraries(String tenantId);
+
+    PagedList<KnowledgeLibrary> pageLibraries(String tenantId, int page, int size);
+
+    void deleteLibrary(UUID libraryId);
+
+    boolean isLibraryReferencedByAgent(UUID libraryId);
 
     LibraryProfile saveLibraryProfile(LibraryProfile profile);
 

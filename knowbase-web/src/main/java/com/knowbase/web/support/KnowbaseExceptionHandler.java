@@ -30,6 +30,12 @@ public class KnowbaseExceptionHandler {
                 .body(ApiResponse.failed("BAD_REQUEST", exception.getMessage()));
     }
 
+    @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
+    ResponseEntity<ApiResponse<Void>> handleBusinessRule(Exception exception) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.failed("BAD_REQUEST", exception.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiResponse<Void>> handleInternalError(Exception exception) {
         String message = exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();

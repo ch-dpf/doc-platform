@@ -17,6 +17,7 @@ import com.knowbase.domain.status.IndexVersionStatus;
 import com.knowbase.domain.model.QueryRun;
 import com.knowbase.domain.model.TokenizerProfile;
 import com.knowbase.domain.repository.KnowbaseRepository;
+import com.knowbase.domain.support.PagedList;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -58,7 +59,40 @@ public final class InMemoryKnowbaseRepository implements KnowbaseRepository {
     public List<KnowledgeLibrary> listLibraries(String tenantId) {
         return libraries.values().stream()
                 .filter(item -> tenantId == null || tenantId.equals(item.tenantId()))
+                .sorted((left, right) -> right.updatedAt().compareTo(left.updatedAt()))
                 .toList();
+    }
+
+    @Override
+    public PagedList<KnowledgeLibrary> pageLibraries(String tenantId, int page, int size) {
+        List<KnowledgeLibrary> all = listLibraries(tenantId);
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.max(size, 1);
+        int fromIndex = Math.min((safePage - 1) * safeSize, all.size());
+        int toIndex = Math.min(fromIndex + safeSize, all.size());
+        return new PagedList<>(all.subList(fromIndex, toIndex), all.size(), safePage, safeSize);
+    }
+
+    @Override
+    public void deleteLibrary(UUID libraryId) {
+        libraries.remove(libraryId);
+        libraryProfiles.entrySet().removeIf(entry -> entry.getKey().equals(libraryId));
+        documentProfiles.remove(libraryId);
+        ingestionRuns.entrySet().removeIf(entry -> entry.getValue().libraryId().equals(libraryId));
+        indexVersions.entrySet().removeIf(entry -> entry.getValue().libraryId().equals(libraryId));
+        documents.entrySet().removeIf(entry -> entry.getValue().libraryId().equals(libraryId));
+        chunksByIndexVersion.entrySet().removeIf(entry ->
+                indexVersions.containsKey(entry.getKey())
+                        && indexVersions.get(entry.getKey()).libraryId().equals(libraryId));
+        ingestionErrors.entrySet().removeIf(entry ->
+                ingestionRuns.containsKey(entry.getKey())
+                        && ingestionRuns.get(entry.getKey()).libraryId().equals(libraryId));
+    }
+
+    @Override
+    public boolean isLibraryReferencedByAgent(UUID libraryId) {
+        return agentVersions.values().stream()
+                .anyMatch(version -> version.libraryIds().contains(libraryId));
     }
 
     @Override
