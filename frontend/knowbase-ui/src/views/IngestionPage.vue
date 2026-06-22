@@ -96,7 +96,12 @@
         </el-form-item>
 
         <div v-if="segmentationMode === 'smart'" class="segment-panel segment-panel--smart">
-          <p>结构感知解析 → 识别章节标题 → 节内递归切分（主流默认 500/50 字符窗口）。</p>
+          <p>语义/结构边界优先 → 模型 tokenizer 预算约束 → 递归字符切分兜底，默认适合多数生产入库场景。</p>
+          <div class="capability-strip">
+            <span><b>PDF</b> 页码 / bbox / 阅读顺序 / 多栏</span>
+            <span><b>OCR</b> confidence / bbox / 低置信度元数据</span>
+            <span><b>表格</b> sheet / 表头路径 / 单元格坐标</span>
+          </div>
         </div>
 
         <div v-else class="segment-panel segment-panel--advanced">
@@ -116,12 +121,19 @@
           </div>
           <el-form-item label="尺寸单位">
             <el-select v-model="advanced.chunkSizeUnit" class="full-width">
-              <el-option label="字符（主流 RAG）" value="char" />
-              <el-option label="Token（平台治理）" value="token" />
+              <el-option label="Token（默认，生产推荐）" value="token" />
+              <el-option label="字符（兜底/调试）" value="char" />
             </el-select>
           </el-form-item>
           <el-form-item label="文档 Profile（可选）">
-            <el-input v-model="advanced.documentProfileCode" placeholder="留空则仍按文件类型自动选择" />
+            <el-select v-model="advanced.documentProfileCode" clearable filterable class="full-width" placeholder="留空则按文件类型自动选择">
+              <el-option
+                v-for="item in documentProfileOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+              />
+            </el-select>
           </el-form-item>
           <el-form-item label="切块策略">
             <el-select v-model="advanced.chunkingStrategy" class="full-width">
@@ -165,6 +177,13 @@
           >
             确认并开始入库
           </el-button>
+          <el-switch
+            v-model="publishIndexOnSuccess"
+            inline-prompt
+            active-text="成功后发布索引"
+            inactive-text="仅入库不发布"
+            class="publish-switch"
+          />
         </div>
         <p v-if="!prepareOk" class="helper-text">请先运行流水线预览，确认解析/清洗/分段结果无误后再入库。</p>
       </el-form>
@@ -174,6 +193,20 @@
       </div>
 
       <div v-if="prepareResult" class="preview-panel">
+        <div class="ingestion-insight-grid">
+          <div class="insight-card">
+            <span class="insight-card__label">命中文档 Profile</span>
+            <strong>{{ profileSummary }}</strong>
+          </div>
+          <div class="insight-card">
+            <span class="insight-card__label">内容类型</span>
+            <strong>{{ contentFamilySummary }}</strong>
+          </div>
+          <div class="insight-card">
+            <span class="insight-card__label">解析能力</span>
+            <strong>{{ parserCapabilitySummary }}</strong>
+          </div>
+        </div>
         <el-tabs v-model="prepareTab" class="pipeline-tabs">
           <el-tab-pane label="解析" name="parse">
             <div class="preview-summary">
@@ -191,6 +224,11 @@
                     {{ document.parse.parserCode }} · {{ document.parse.blockCount }} 结构块 ·
                     {{ document.parse.structureAware ? '结构感知' : '纯文本' }}
                   </p>
+                  <div class="metadata-tags">
+                    <el-tag v-for="item in documentMetadataTags(document)" :key="item.key" size="small" effect="plain">
+                      {{ item.label }}: {{ item.value }}
+                    </el-tag>
+                  </div>
                   <el-table :data="document.parse.blocks" size="small" class="data-table">
                     <el-table-column prop="ordinal" label="#" width="50" />
                     <el-table-column prop="blockType" label="类型" width="90" />
@@ -199,6 +237,15 @@
                     </el-table-column>
                     <el-table-column label="页码" width="70">
                       <template #default="{ row }">{{ row.metadata?.pageNumber ?? '—' }}</template>
+                    </el-table-column>
+                    <el-table-column label="结构元数据" min-width="210">
+                      <template #default="{ row }">
+                        <div class="metadata-tags metadata-tags--compact">
+                          <el-tag v-for="item in blockMetadataTags(row)" :key="item.key" size="small" effect="plain">
+                            {{ item.label }} {{ item.value }}
+                          </el-tag>
+                        </div>
+                      </template>
                     </el-table-column>
                     <el-table-column prop="contentPreview" label="内容预览" min-width="240" show-overflow-tooltip />
                   </el-table>
@@ -253,6 +300,15 @@
                         <el-tag size="small" :type="row.indexable ? 'success' : 'info'">{{ row.indexable ? '是' : '否' }}</el-tag>
                       </template>
                     </el-table-column>
+                    <el-table-column label="分段元数据" min-width="220">
+                      <template #default="{ row }">
+                        <div class="metadata-tags metadata-tags--compact">
+                          <el-tag v-for="item in chunkMetadataTags(row)" :key="item.key" size="small" effect="plain">
+                            {{ item.label }} {{ item.value }}
+                          </el-tag>
+                        </div>
+                      </template>
+                    </el-table-column>
                     <el-table-column prop="content" label="内容预览" min-width="240" show-overflow-tooltip />
                   </el-table>
                 </template>
@@ -283,6 +339,10 @@
             <span class="summary-metric__label">分块</span>
             <span class="summary-metric__value">{{ formatNumber(latestRun.chunkCount) }}</span>
           </div>
+          <div class="summary-metric">
+            <span class="summary-metric__label">索引版本</span>
+            <span class="summary-metric__value">{{ latestRun.indexVersionId ? shortId(latestRun.indexVersionId, 8) : '—' }}</span>
+          </div>
         </div>
         <div class="bar"><span :style="{ width: `${progressPercent}%` }" /></div>
         <p class="helper-text">
@@ -290,9 +350,11 @@
           {{ latestRun.message || (polling ? '正在向量化并写入索引…' : '任务已提交') }}
         </p>
         <p class="row-meta">Run {{ shortId(latestRun.runId, 12) }} · {{ formatDateTime(latestRun.updatedAt) }}</p>
+        <p class="row-meta">发布策略：{{ publishIndexOnSuccess ? '成功后自动发布索引版本' : '仅写入入库结果，暂不发布' }}</p>
 
         <el-table v-if="ingestionErrors.length" :data="ingestionErrors" size="small" class="data-table" style="margin-top: 16px">
           <el-table-column prop="sourceUri" label="来源" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="errorCode" label="错误码" width="120" />
           <el-table-column prop="errorMessage" label="错误" min-width="180" show-overflow-tooltip />
         </el-table>
       </template>
@@ -333,6 +395,39 @@ const chunkingStrategies = [
   { value: 'dom_token_window', label: 'HTML 块' }
 ];
 
+const documentProfileOptions = [
+  { value: 'default_markdown', label: 'Markdown / 富文本 · markdown-structure' },
+  { value: 'default_text', label: '纯文本 · text-structure' },
+  { value: 'default_pdf', label: 'PDF Layout · page_token_window' },
+  { value: 'default_pdf_structure', label: 'PDF 文本结构 · pdf-structure' },
+  { value: 'default_table', label: '表格 / Excel / CSV · table-deep' },
+  { value: 'default_scanned_document', label: '扫描 PDF · OCR Layout' },
+  { value: 'default_image', label: '图片 OCR · OCR Layout' },
+  { value: 'default_web_page', label: 'HTML / Web 页面 · html-structure' },
+  { value: 'default_faq', label: 'FAQ 问答对 · qa' },
+  { value: 'default_code_or_config', label: '代码 / 配置 · code_token_window' },
+  { value: 'default_presentation', label: 'PPT / 演示文稿 · slide_token_window' },
+  { value: 'default_rich_text', label: '通用富文本 · Tika fallback' }
+];
+
+const metadataDisplayKeys = [
+  ['pageNumber', '页'],
+  ['bbox', 'bbox'],
+  ['readingOrder', '序'],
+  ['columnIndex', '列'],
+  ['columnCount', '列数'],
+  ['tableRegionId', '表区'],
+  ['sheetName', 'Sheet'],
+  ['rowRange', '行'],
+  ['columnRange', '列域'],
+  ['headerPath', '表头'],
+  ['ocrConfidence', '置信度'],
+  ['bboxSource', 'bbox源'],
+  ['parser', 'Parser'],
+  ['tableFormat', '表格'],
+  ['rowGroupCount', '行组']
+];
+
 const currentStep = ref(0);
 const libraryId = ref('');
 const libraries = ref([]);
@@ -351,9 +446,9 @@ const segmentationMode = ref('smart');
 const advanced = ref({
   chunkMaxTokens: 512,
   chunkOverlapTokens: 64,
-  chunkMaxChars: 500,
-  chunkOverlapChars: 50,
-  chunkSizeUnit: 'char',
+  chunkMaxChars: 2048,
+  chunkOverlapChars: 256,
+  chunkSizeUnit: 'token',
   documentProfileCode: '',
   chunkingStrategy: 'structure_token_window',
   preserveStructureBoundary: true,
@@ -366,6 +461,7 @@ const advanced = ref({
 const previewValidated = ref(false);
 const latestRun = ref(null);
 const ingestionErrors = ref([]);
+const publishIndexOnSuccess = ref(true);
 
 const uploading = ref(false);
 const previewing = ref(false);
@@ -388,6 +484,16 @@ const totalChunkCount = computed(() =>
 const totalIndexableChunks = computed(() =>
   (prepareResult.value?.documents || []).reduce((sum, doc) => sum + (doc.chunk?.indexableChunkCount || 0), 0)
 );
+const profileSummary = computed(() => uniquePreviewValues('documentProfileCode').join(' / ') || '自动路由');
+const contentFamilySummary = computed(() => uniquePreviewValues('contentFamily').join(' / ') || '—');
+const parserCapabilitySummary = computed(() => {
+  const parsers = new Set();
+  for (const doc of prepareResult.value?.documents || []) {
+    if (doc.parse?.parserCode) parsers.add(doc.parse.parserCode);
+    if (doc.parse?.metadata?.parser) parsers.add(doc.parse.metadata.parser);
+  }
+  return [...parsers].join(' / ') || '—';
+});
 const parsePanelClass = computed(() => ({
   'segment-panel--smart': parseMode.value === 'standard',
   'segment-panel--layout': parseMode.value === 'layout',
@@ -415,9 +521,9 @@ function buildSegmentationOptions() {
     segmentationMode: segmentationMode.value,
     chunkMode: 'flat',
     splitMode: 'recursive',
-    chunkSizeUnit: 'char',
-    chunkMaxChars: 500,
-    chunkOverlapChars: 50,
+    chunkSizeUnit: 'token',
+    chunkMaxChars: 2048,
+    chunkOverlapChars: 256,
     prependHeadingContext: true,
     maxPreviewChunks: 100,
     maxPreviewChars: 600,
@@ -578,7 +684,7 @@ async function confirmIngestion() {
       sourceUris: uploadedUris.value,
       sourceType: 'minio',
       documentProfileCode: buildDocumentProfileCode(),
-      publishIndexOnSuccess: true,
+      publishIndexOnSuccess: publishIndexOnSuccess.value,
       options: buildSegmentationOptions()
     });
     latestRun.value = data;
@@ -634,10 +740,88 @@ function resetWizard() {
   previewValidated.value = false;
   latestRun.value = null;
   ingestionErrors.value = [];
+  publishIndexOnSuccess.value = true;
   parseMode.value = 'standard';
   ocrLanguage.value = '';
   prepareTab.value = 'parse';
   segmentationMode.value = 'smart';
+}
+
+function uniquePreviewValues(key) {
+  const values = new Set();
+  for (const doc of prepareResult.value?.documents || []) {
+    if (doc?.[key]) values.add(doc[key]);
+  }
+  return [...values];
+}
+
+function documentMetadataTags(document) {
+  const tags = [];
+  if (document.documentProfileCode) tags.push({ key: 'profile', label: 'Profile', value: document.documentProfileCode });
+  if (document.contentFamily) tags.push({ key: 'family', label: '类型', value: document.contentFamily });
+  const metadata = document.parse?.metadata || {};
+  for (const [key, label] of metadataDisplayKeys) {
+    if (metadata[key] !== undefined && metadata[key] !== null && metadata[key] !== '') {
+      tags.push({ key, label, value: formatMetadataValue(metadata[key]) });
+    }
+  }
+  return tags.slice(0, 10);
+}
+
+function blockMetadataTags(row) {
+  return metadataTags(row?.metadata || {}, [
+    ['pageNumber', 'P'],
+    ['bbox', 'bbox'],
+    ['readingOrder', '#'],
+    ['columnIndex', 'col'],
+    ['tableRegionId', 'table'],
+    ['sheetName', 'sheet'],
+    ['rowRange', 'row'],
+    ['columnRange', 'col'],
+    ['ocrConfidence', 'conf'],
+    ['headerPath', 'head']
+  ]);
+}
+
+function chunkMetadataTags(row) {
+  return metadataTags(row?.metadata || {}, [
+    ['chunkRole', 'role'],
+    ['sourceStructure', 'structure'],
+    ['pageNumber', 'P'],
+    ['bbox', 'bbox'],
+    ['tableRegionId', 'table'],
+    ['sheetName', 'sheet'],
+    ['rowRange', 'row'],
+    ['columnRange', 'col'],
+    ['ocrConfidence', 'conf'],
+    ['fallback', 'fallback']
+  ]);
+}
+
+function metadataTags(metadata, keys) {
+  return keys
+    .filter(([key]) => metadata[key] !== undefined && metadata[key] !== null && metadata[key] !== '')
+    .map(([key, label]) => ({ key, label, value: formatMetadataValue(metadata[key]) }))
+    .slice(0, 8);
+}
+
+function formatMetadataValue(value) {
+  if (Array.isArray(value)) {
+    if (value.length > 4 && value.every(item => typeof item === 'number')) {
+      return value.slice(0, 4).join(',');
+    }
+    if (value.length && typeof value[0] === 'object') {
+      return `${value.length} 项`;
+    }
+    return value.slice(0, 3).join(' > ');
+  }
+  if (typeof value === 'object') {
+    return `${Object.keys(value).length} 项`;
+  }
+  if (typeof value === 'number' && value > 0 && value < 1) {
+    return `${Math.round(value * 100)}%`;
+  }
+  return String(value);
 }
 
 function isTerminal(status) {
@@ -686,6 +870,27 @@ onMounted(loadLibraries);
 .ocr-language-item {
   margin-top: 10px;
   margin-bottom: 0;
+}
+
+.capability-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.capability-strip span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(14, 165, 233, 0.16);
+  color: #334155;
+  font-size: 12px;
+}
+
+.publish-switch {
+  align-self: center;
+  margin-left: 4px;
 }
 
 .pipeline-tabs {
@@ -803,6 +1008,37 @@ onMounted(loadLibraries);
   margin-top: 20px;
 }
 
+.ingestion-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.insight-card {
+  padding: 14px 16px;
+  border: 1px solid rgba(14, 165, 233, 0.14);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(16, 185, 129, 0.04)),
+    #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.insight-card__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.insight-card strong {
+  display: block;
+  color: #0f172a;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
 .preview-summary {
   display: flex;
   gap: 16px;
@@ -811,7 +1047,31 @@ onMounted(loadLibraries);
   color: var(--text-secondary, #666);
 }
 
+.metadata-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+
+.metadata-tags--compact {
+  margin: 0;
+}
+
+.metadata-tags :deep(.el-tag) {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
 .error-text {
   color: var(--el-color-danger);
+}
+
+@media (max-width: 960px) {
+  .ingestion-insight-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
