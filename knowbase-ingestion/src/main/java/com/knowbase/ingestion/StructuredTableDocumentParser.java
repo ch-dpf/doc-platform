@@ -103,19 +103,19 @@ public final class StructuredTableDocumentParser implements DocumentParser {
                     builder.append(rowText).append('\n');
                     List<Map<String, Object>> mergedCells = mergedCellsForRow(mergedRegions, rowIndex);
                     Map<Integer, String> formulas = formulasForRow(row);
-                    blocks.add(tableRowBlock(rowText, ordinal++, rowIndex, rowIndex, headers, values, Map.of(
-                            "tableFormat", "spreadsheet",
-                            "sheetName", sheet.getSheetName(),
-                            "sheetIndex", sheetIndex,
-                            "headerRowCount", headerRowCount,
-                            "headerPathsByColumn", headerPaths,
-                            "hiddenRow", row.getZeroHeight(),
-                            "hiddenColumns", hiddenColumns(sheet, Math.max(headers.size(), values.size())),
-                            "formulaCells", formulas,
-                            "crossSheetReferences", crossSheetReferences(formulas),
-                            "mergedCells", mergedCells,
-                            "hasMergedCells", !mergedCells.isEmpty()
-                    )));
+                    Map<String, Object> rowMetadata = new HashMap<>();
+                    rowMetadata.put("tableFormat", "spreadsheet");
+                    rowMetadata.put("sheetName", sheet.getSheetName());
+                    rowMetadata.put("sheetIndex", sheetIndex);
+                    rowMetadata.put("headerRowCount", headerRowCount);
+                    rowMetadata.put("headerPathsByColumn", headerPaths);
+                    rowMetadata.put("hiddenRow", row.getZeroHeight());
+                    rowMetadata.put("hiddenColumns", hiddenColumns(sheet, Math.max(headers.size(), values.size())));
+                    rowMetadata.put("formulaCells", formulas);
+                    rowMetadata.put("crossSheetReferences", crossSheetReferences(formulas));
+                    rowMetadata.put("mergedCells", mergedCells);
+                    rowMetadata.put("hasMergedCells", !mergedCells.isEmpty());
+                    blocks.add(tableRowBlock(rowText, ordinal++, rowIndex, rowIndex, headers, values, rowMetadata));
                 }
                 builder.append('\n');
             }
