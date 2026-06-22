@@ -5,7 +5,7 @@
     <div class="stat-grid">
       <article class="stat-card stat-card--primary">
         <span class="stat-card__label">知识库</span>
-        <span class="stat-card__value">{{ formatNumber(libraries.length) }}</span>
+        <span class="stat-card__value">{{ formatNumber(total) }}</span>
       </article>
       <article class="stat-card">
         <span class="stat-card__label">库类型预设</span>
@@ -19,18 +19,18 @@
 
     <PageCard title="知识库管理" subtitle="创建知识库、选择库类型预设，管理 Profile 与标签。">
       <template #actions>
-        <span v-if="libraries.length" class="stat-chip">共 <strong>{{ libraries.length }}</strong> 个</span>
+        <span v-if="total" class="stat-chip">共 <strong>{{ total }}</strong> 个</span>
         <el-button round @click="refresh">刷新</el-button>
         <el-button type="primary" round :loading="loading" @click="createSample">创建样例</el-button>
       </template>
 
       <div class="filter-panel">
-        <el-form :inline="true" class="filter-form" @submit.prevent="refresh">
+        <el-form :inline="true" class="filter-form" @submit.prevent="search">
           <el-form-item label="租户 ID">
-            <el-input v-model="form.tenantId" style="width: 140px" clearable @change="refresh" />
+            <el-input v-model="form.tenantId" style="width: 140px" clearable @change="search" />
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" round @click="refresh">查询</el-button>
+            <el-button type="primary" round @click="search">查询</el-button>
           </el-form-item>
         </el-form>
       </div>
@@ -57,13 +57,26 @@
         <el-table-column label="更新时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.updatedAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
+        <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button link type="danger" @click="confirmDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
-      <el-empty v-else description="还没有知识库，先创建一个样例库试跑整条链路。" />
+      <el-empty v-else-if="!loading" description="还没有知识库，先创建一个样例库试跑整条链路。" />
+      <div v-if="total > 0" class="table-pagination">
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.size"
+          :total="total"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          background
+          @current-change="refresh"
+          @size-change="handlePageSizeChange"
+        />
+      </div>
     </PageCard>
 
     <div class="grid cols-2">
@@ -128,12 +141,15 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { ElMessageBox } from 'element-plus';
 import PageCard from '../components/PageCard.vue';
 import LibraryDetailDrawer from '../components/LibraryDetailDrawer.vue';
-import { createLibrary, listLibraries, listLibraryTypePresets } from '../api';
+import { createLibrary, deleteLibrary, pageLibraries, listLibraryTypePresets } from '../api';
 import { formatDateTime, formatNumber } from '../format';
 
 const libraries = ref([]);
+const total = ref(0);
+const pagination = ref({ page: 1, size: 10 });
 const detailVisible = ref(false);
 const selectedLibrary = ref(null);
 const libraryTypePresets = ref([
@@ -169,10 +185,65 @@ async function loadPresets() {
 }
 
 async function refresh() {
+  loading.value = true;
   try {
-    libraries.value = await listLibraries({ tenantId: form.value.tenantId });
+    const data = await pageLibraries({
+      tenantId: form.value.tenantId,
+      page: pagination.value.page,
+      size: pagination.value.size
+    });
+    libraries.value = data.items ?? [];
+    total.value = data.total ?? 0;
+    pagination.value.page = data.page ?? pagination.value.page;
+    pagination.value.size = data.size ?? pagination.value.size;
   } catch (error) {
     showMessage(error.message, 'error');
+  } finally {
+    loading.value = false;
+  }
+}
+
+function handlePageSizeChange() {
+  pagination.value.page = 1;
+  refresh();
+}
+
+function search() {
+  pagination.value.page = 1;
+  refresh();
+}
+
+async function confirmDelete(library) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除知识库「${library.name}」吗？此操作不可恢复，关联的索引与文档数据将一并删除。`,
+      '删除确认',
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        confirmButtonClass: 'el-button--danger'
+      }
+    );
+  } catch {
+    return;
+  }
+  loading.value = true;
+  try {
+    await deleteLibrary(library.libraryId);
+    showMessage('知识库已删除', 'success');
+    if (detailVisible.value && selectedLibrary.value?.libraryId === library.libraryId) {
+      detailVisible.value = false;
+      selectedLibrary.value = null;
+    }
+    if (libraries.value.length === 1 && pagination.value.page > 1) {
+      pagination.value.page -= 1;
+    }
+    await refresh();
+  } catch (error) {
+    showMessage(error.message, 'error');
+  } finally {
+    loading.value = false;
   }
 }
 
@@ -212,3 +283,11 @@ onMounted(async () => {
   await refresh();
 });
 </script>
+
+<style scoped>
+.table-pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+</style>

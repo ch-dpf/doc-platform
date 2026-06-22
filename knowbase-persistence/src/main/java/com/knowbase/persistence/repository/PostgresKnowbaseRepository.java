@@ -1,6 +1,7 @@
 package com.knowbase.persistence.repository;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.knowbase.domain.model.ChatMessage;
 import com.knowbase.domain.model.ChatSession;
 import com.knowbase.domain.model.AgentVersion;
@@ -18,6 +19,7 @@ import com.knowbase.domain.model.QueryRun;
 import com.knowbase.domain.model.TokenizerProfile;
 import com.knowbase.domain.repository.KnowbaseRepository;
 import com.knowbase.domain.status.IndexVersionStatus;
+import com.knowbase.domain.support.PagedList;
 import com.knowbase.persistence.entity.AgentEntity;
 import com.knowbase.persistence.entity.AgentVersionEntity;
 import com.knowbase.persistence.entity.ChunkEntity;
@@ -124,7 +126,65 @@ public final class PostgresKnowbaseRepository implements KnowbaseRepository {
         if (tenantId != null) {
             wrapper.eq(LibraryEntity::getTenantId, tenantId);
         }
+        wrapper.orderByDesc(LibraryEntity::getUpdatedAt);
         return libraryMapper.selectList(wrapper).stream().map(DomainMapper::toLibrary).toList();
+    }
+
+    @Override
+    public PagedList<KnowledgeLibrary> pageLibraries(String tenantId, int page, int size) {
+        LambdaQueryWrapper<LibraryEntity> wrapper = new LambdaQueryWrapper<>();
+        if (tenantId != null && !tenantId.isBlank()) {
+            wrapper.eq(LibraryEntity::getTenantId, tenantId);
+        }
+        wrapper.orderByDesc(LibraryEntity::getUpdatedAt);
+        Page<LibraryEntity> result = libraryMapper.selectPage(new Page<>(page, size), wrapper);
+        List<KnowledgeLibrary> items = result.getRecords().stream().map(DomainMapper::toLibrary).toList();
+        return new PagedList<>(items, result.getTotal(), page, size);
+    }
+
+    @Override
+    public void deleteLibrary(UUID libraryId) {
+        jdbcTemplate.update(
+                """
+                        DELETE FROM kb_ingestion_document_error
+                        WHERE run_id IN (SELECT run_id FROM kb_ingestion_run WHERE library_id = ?)
+                        """,
+                libraryId
+        );
+        ingestionRunMapper.delete(new LambdaQueryWrapper<IngestionRunEntity>()
+                .eq(IngestionRunEntity::getLibraryId, libraryId));
+        jdbcTemplate.update(
+                """
+                        DELETE FROM kb_embedding
+                        WHERE chunk_id IN (SELECT chunk_id FROM kb_chunk WHERE library_id = ?)
+                        """,
+                libraryId
+        );
+        chunkMapper.delete(new LambdaQueryWrapper<ChunkEntity>()
+                .eq(ChunkEntity::getLibraryId, libraryId));
+        documentMapper.delete(new LambdaQueryWrapper<DocumentEntity>()
+                .eq(DocumentEntity::getLibraryId, libraryId));
+        indexVersionMapper.delete(new LambdaQueryWrapper<IndexVersionEntity>()
+                .eq(IndexVersionEntity::getLibraryId, libraryId));
+        documentProfileMapper.delete(new LambdaQueryWrapper<DocumentProfileEntity>()
+                .eq(DocumentProfileEntity::getLibraryId, libraryId));
+        libraryProfileMapper.delete(new LambdaQueryWrapper<LibraryProfileEntity>()
+                .eq(LibraryProfileEntity::getLibraryId, libraryId));
+        jdbcTemplate.update(
+                "DELETE FROM kb_acl_entry WHERE resource_type = 'LIBRARY' AND resource_id = ?",
+                libraryId
+        );
+        libraryMapper.deleteById(libraryId);
+    }
+
+    @Override
+    public boolean isLibraryReferencedByAgent(UUID libraryId) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM kb_agent_version WHERE library_ids @> ?::jsonb",
+                Integer.class,
+                "[\"" + libraryId + "\"]"
+        );
+        return count != null && count > 0;
     }
 
     @Override

@@ -5,6 +5,7 @@ import com.knowbase.api.command.DocumentProfileCommand;
 import com.knowbase.api.command.LibraryProfileCommand;
 import com.knowbase.api.facade.KnowbaseLibraryFacade;
 import com.knowbase.api.result.LibraryResult;
+import com.knowbase.api.result.PageResult;
 import com.knowbase.application.mapper.ResultMapper;
 import com.knowbase.application.security.AccessControlService;
 import com.knowbase.application.usecase.CreateLibraryUseCase;
@@ -16,6 +17,7 @@ import com.knowbase.domain.repository.KnowbaseRepository;
 import com.knowbase.domain.security.AclPermission;
 import com.knowbase.domain.status.ContentFamily;
 import com.knowbase.domain.status.LibraryStatus;
+import com.knowbase.domain.support.PagedList;
 import com.knowbase.preset.PresetCatalog;
 
 import java.time.Instant;
@@ -79,6 +81,28 @@ public class DefaultLibraryService implements CreateLibraryUseCase, KnowbaseLibr
     }
 
     @Override
+    public PageResult<LibraryResult> page(String tenantId, int page, int size) {
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        PagedList<KnowledgeLibrary> paged = repository.pageLibraries(tenantId, safePage, safeSize);
+        List<LibraryResult> items = accessControlService.filterLibraries(paged.items(), AclPermission.READ).stream()
+                .map(ResultMapper::toLibraryResult)
+                .toList();
+        return new PageResult<>(items, paged.total(), safePage, safeSize);
+    }
+
+    @Override
+    public void delete(UUID libraryId) {
+        accessControlService.requireLibraryAccess(libraryId, AclPermission.ADMIN);
+        repository.findLibrary(libraryId)
+                .orElseThrow(() -> new ResourceNotFoundException("知识库不存在: " + libraryId));
+        if (repository.isLibraryReferencedByAgent(libraryId)) {
+            throw new IllegalStateException("知识库正在被智能体引用，无法删除");
+        }
+        repository.deleteLibrary(libraryId);
+    }
+
+    @Override
     public LibraryResult createLibrary(CreateLibraryCommand command) {
         return create(command);
     }
@@ -91,6 +115,16 @@ public class DefaultLibraryService implements CreateLibraryUseCase, KnowbaseLibr
     @Override
     public List<LibraryResult> listLibraries(String tenantId) {
         return list(tenantId);
+    }
+
+    @Override
+    public PageResult<LibraryResult> pageLibraries(String tenantId, int page, int size) {
+        return page(tenantId, page, size);
+    }
+
+    @Override
+    public void deleteLibrary(UUID libraryId) {
+        delete(libraryId);
     }
 
     private void saveDocumentProfiles(UUID libraryId, List<DocumentProfileCommand> commands, Map<String, Object> presetConfig) {

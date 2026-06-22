@@ -15,8 +15,17 @@ function unwrap(response) {
   return response.data.data;
 }
 
-export async function listLibraries(params = {}) {
+export async function pageLibraries(params = {}) {
   return unwrap(await http.get('/libraries', { params }));
+}
+
+export async function listLibraries(params = {}) {
+  const data = await pageLibraries({ page: 1, size: 200, ...params });
+  return data.items ?? [];
+}
+
+export async function deleteLibrary(libraryId) {
+  return unwrap(await http.delete(`/libraries/${libraryId}`));
 }
 
 export async function createLibrary(payload) {
