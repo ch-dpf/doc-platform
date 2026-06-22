@@ -756,6 +756,7 @@ Profile 必须版本化。索引版本引用创建该版本时使用的 Profile�
 3. 表格语义增强：支持 sheet、row/column range、多级表头、cell coordinate、公式值、隐藏行列、合并单元格和跨 sheet 引用。
 4. 语义切分评测：建立 PDF、Excel、扫描件、Markdown 长文和代码配置文件的 chunk 边界回归集。
 5. 外部解析器适配：固化 Docling/Unstructured 风格 HTTP/JSON Schema，并允许按 Profile 启用。
+6. 管理与运维能力：补齐 Document Profile 管理、Library Profile 版本治理、入库任务运维、失败重试和 Pipeline 可观测。
 
 详细实施方案见 `docs/PHASE2_INGESTION_PLAN.md`。
 

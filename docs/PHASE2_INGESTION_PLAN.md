@@ -205,6 +205,63 @@
 - 在 evidence pack 中保留图片/表格区域 asset URI。
 - 前端支持引用处预览页截图或表格区域截图。
 
+### 4.7 知识库与 Profile 管理
+
+现状：
+
+- 已支持知识库创建、分页查询、删除，以及按库类型预设生成默认 `LibraryProfile` 与 `DocumentProfile`。
+
+不足：
+
+- Document Profile 仍主要在建库和入库时隐式使用，缺少独立 CRUD、启停、版本历史和差异对比。
+- Library Profile 缺少版本历史、复制、回滚和变更影响提示。
+- 前端缺少面向租户/知识库维度的 Profile 配置台账。
+
+后续完善：
+
+- 增加 Document Profile 列表、创建、编辑、启停、复制和删除接口。
+- 增加 Library Profile 版本列表、版本对比、复制为新版本和回滚能力。
+- 前端增加 Profile 管理页，展示 parser、cleaning、chunking、tokenizer、metadata schema 配置。
+- 变更 Profile 时提示是否需要创建新索引版本或重新入库。
+
+### 4.8 入库任务运维
+
+现状：
+
+- 已支持创建入库任务、查看单个任务状态、轮询终态和查看失败错误。
+
+不足：
+
+- 缺少入库任务列表、按状态/时间/知识库筛选、任务取消、失败文档重试。
+- 失败恢复粒度仍偏粗，尚未支持复用解析/清洗/分段中间产物。
+- 缺少重建索引、仅发布已有索引版本、删除草稿索引等运维动作。
+
+后续完善：
+
+- 增加 IngestionRun 列表与筛选接口。
+- 支持取消运行中的任务、重试失败文档、跳过失败文档继续发布。
+- 将解析、清洗、分段中间产物作为可选调试/重试缓存。
+- 前端增加入库任务运维页，支持任务列表、失败重试、错误导出和索引版本跳转。
+
+### 4.9 Pipeline 可观测与审计
+
+现状：
+
+- 已有 Pipeline span、错误记录和观测页面基础能力。
+
+不足：
+
+- 入库页与观测 trace 尚未深度联动。
+- 缺少阶段耗时、文档级失败分布、parser/chunker/tokenizer 统计和吞吐量指标。
+- 缺少面向运维的告警与慢任务识别。
+
+后续完善：
+
+- 为 `LoadSource`、`ParseDocument`、`NormalizeText`、`ExtractMetadata`、`ChunkDocument`、`EmbedChunks`、`WriteIndex`、`PublishIndexVersion` 增加阶段耗时与计数指标。
+- 入库任务详情页展示阶段瀑布图、失败文档分布、平均 token/chunk 数和 embedding 耗时。
+- 支持按 runId 跳转观测 trace，并从观测页反查知识库、文档和索引版本。
+- 增加慢任务、失败率和低 OCR 置信度告警指标。
+
 ## 5. 实施顺序
 
 1. 定义外部解析器响应 Schema 与样例。
@@ -213,7 +270,10 @@
 4. 完成 Excel 多级表头、公式、隐藏行列、跨 sheet 引用。
 5. 建立样本文档回归集与 chunk 边界快照。
 6. 接入可选 Docling/Unstructured adapter。
-7. 将高质量 citation metadata 接入证据构造与前端展示。
+7. 补齐 Document Profile 与 Library Profile 管理能力。
+8. 补齐入库任务列表、取消、失败重试和索引版本运维能力。
+9. 建立 Pipeline 阶段耗时、失败分布与 runId trace 联动。
+10. 将高质量 citation metadata 接入证据构造与前端展示。
 
 ## 6. 非目标
 
@@ -228,3 +288,4 @@
 - 外部解析器输出格式差异较大，需要稳定 Schema 做隔离。
 - bbox 和 reading order 会影响 citation 展示，必须有快照测试约束。
 - OCR confidence 不同引擎口径不一致，需要记录 `confidenceSource`。
+- Profile 与入库任务运维会影响已发布索引版本，必须明确版本兼容和回滚策略。
