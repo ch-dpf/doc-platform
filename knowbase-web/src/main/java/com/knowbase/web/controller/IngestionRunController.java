@@ -72,7 +72,10 @@ public class IngestionRunController {
         return ApiResponse.ok(runIngestionUseCase.create(normalized));
     }
 
-    @Operation(summary = "上传并创建入库任务", description = "批量上传文件到对象存储后自动创建入库任务")
+    @Operation(
+            summary = "上传并创建入库任务",
+            description = "向指定知识库批量上传文件到 ObjectStorage（默认本地 FS，可配置 MinIO）后自动创建入库任务；知识库 ID 来自路径参数"
+    )
     @PostMapping(value = "/libraries/{libraryId}/ingestion-runs/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<UploadAndIngestResponse> uploadAndCreate(
             @Parameter(description = "知识库 ID") @PathVariable UUID libraryId,
@@ -103,13 +106,13 @@ public class IngestionRunController {
             ingestionRun = runIngestionUseCase.create(new CreateIngestionRunCommand(
                     libraryId,
                     sourceUris,
-                    "minio",
+                    uploadService.storageType(),
                     documentProfileCode,
                     publishIndexOnSuccess,
                     options
             ));
         }
-        return ApiResponse.ok(new UploadAndIngestResponse(uploadResult, ingestionRun));
+        return ApiResponse.ok(new UploadAndIngestResponse(uploadResult, ingestionRun, uploadService.storageType()));
     }
 
     @Operation(summary = "入库分段预览", description = "解析并切块预览，不写入索引")
@@ -191,7 +194,8 @@ public class IngestionRunController {
 
     public record UploadAndIngestResponse(
             BatchObjectUploadResult upload,
-            IngestionRunResult ingestionRun
+            IngestionRunResult ingestionRun,
+            String storageType
     ) {
     }
 }

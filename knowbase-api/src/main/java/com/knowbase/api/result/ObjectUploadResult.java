@@ -5,6 +5,7 @@ public record ObjectUploadResult(
         String objectKey,
         String uri,
         String contentType,
-        long size
+        long size,
+        String storageType
 ) {
 }

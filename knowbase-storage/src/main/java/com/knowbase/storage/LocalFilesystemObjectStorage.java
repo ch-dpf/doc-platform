@@ -23,6 +23,11 @@ public final class LocalFilesystemObjectStorage implements ObjectStorage {
     }
 
     @Override
+    public String storageType() {
+        return "local-fs";
+    }
+
+    @Override
     public StoredObject put(String bucket, String objectKey, InputStream inputStream, String contentType) {
         try {
             Path target = root.resolve(bucket).resolve(objectKey);

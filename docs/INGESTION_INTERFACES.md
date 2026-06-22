@@ -12,6 +12,14 @@
 4. `DocumentMetadataEnricher`：补充文档级统计、Profile 与策略上下文。
 5. `DocumentChunker`：按语义/结构边界优先、token 预算约束、递归字符切分兜底的默认策略，将归一化并增强后的 `ParsedDocument` 切成 `DocumentChunk`。
 
+## 上传与存储语义
+
+- 上传文件统一写入 `ObjectStorage` 抽象。
+- 默认 `knowbase.storage.type=local`，对象会写入本地文件系统对象存储根目录。
+- 配置 `knowbase.storage.type=minio` 时，对象会写入 MinIO，并返回 `minio://bucket/objectKey`。
+- `POST /api/v1/libraries/{libraryId}/ingestion-runs/upload` 使用路径参数 `libraryId` 绑定目标知识库，multipart 中只传文件、bucket、Profile 和发布选项。
+- 前端批量/文件夹上传会保留浏览器提供的相对路径作为 multipart filename，后端按对象 key 存储并返回 source URI。
+
 ## 核心接口
 
 ### `DocumentParser`

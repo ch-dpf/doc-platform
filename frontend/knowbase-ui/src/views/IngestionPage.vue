@@ -37,13 +37,18 @@
           @click="fileInputRef?.click()"
         >
           <input ref="fileInputRef" type="file" multiple class="upload-input-hidden" @change="onFilesSelected" />
+          <input ref="folderInputRef" type="file" multiple webkitdirectory directory class="upload-input-hidden" @change="onFilesSelected" />
           <p class="upload-dropzone__title">拖拽文件到此处，或点击选择</p>
-          <p class="upload-dropzone__hint">支持 PDF、Word、Markdown、图片、Excel、ZIP 等；单次最多 50 个，单文件 100MB</p>
+          <p class="upload-dropzone__hint">支持批量文件或文件夹上传；PDF、Word、Markdown、图片、Excel、ZIP 等；单次最多 50 个，单文件 100MB</p>
+          <div class="upload-dropzone__actions">
+            <el-button size="small" round @click.stop="fileInputRef?.click()">选择文件</el-button>
+            <el-button size="small" round @click.stop="folderInputRef?.click()">选择文件夹</el-button>
+          </div>
         </div>
 
         <ul v-if="selectedFiles.length" class="file-list">
           <li v-for="file in selectedFiles" :key="file.name + file.size">
-            <span>{{ file.name }}</span>
+            <span>{{ displayFileName(file) }}</span>
             <span class="file-list__meta">{{ formatNumber(file.size) }} bytes</span>
           </li>
         </ul>
@@ -51,6 +56,9 @@
         <div class="wizard-actions">
           <el-button type="primary" round :loading="uploading" :disabled="!canProceedUpload" @click="goToSegmentationStep">
             下一步：分段设置
+          </el-button>
+          <el-button type="success" plain round :loading="quickIngesting" :disabled="!canProceedUpload" @click="quickUploadAndIngest">
+            上传并创建入库任务
           </el-button>
         </div>
       </el-form>
@@ -376,6 +384,7 @@ import {
   listIngestionErrors,
   listLibraries,
   prepareIngestion,
+  uploadAndIngest,
   uploadFiles
 } from '../api';
 import { requestContext } from '../context';
@@ -435,6 +444,7 @@ const uploadBucket = ref('knowbase');
 const selectedFiles = ref([]);
 const uploadedUris = ref([]);
 const fileInputRef = ref(null);
+const folderInputRef = ref(null);
 const dragOver = ref(false);
 
 const parseMode = ref('standard');
@@ -464,6 +474,7 @@ const ingestionErrors = ref([]);
 const publishIndexOnSuccess = ref(true);
 
 const uploading = ref(false);
+const quickIngesting = ref(false);
 const previewing = ref(false);
 const loading = ref(false);
 const polling = ref(false);
@@ -614,6 +625,10 @@ function addFiles(files) {
   }
 }
 
+function displayFileName(file) {
+  return file.webkitRelativePath || file.name;
+}
+
 async function loadLibraries() {
   try {
     libraries.value = await listLibraries({ tenantId: requestContext.tenantId });
@@ -646,6 +661,40 @@ async function goToSegmentationStep() {
     showMessage(error.message, 'error');
   } finally {
     uploading.value = false;
+  }
+}
+
+async function quickUploadAndIngest() {
+  if (!canProceedUpload.value) return;
+  quickIngesting.value = true;
+  currentStep.value = 2;
+  try {
+    const data = await uploadAndIngest(libraryId.value, selectedFiles.value, {
+      bucket: uploadBucket.value || undefined,
+      documentProfileCode: buildDocumentProfileCode(),
+      publishIndexOnSuccess: publishIndexOnSuccess.value,
+      autoStart: true,
+      maxFiles: MAX_FILES
+    });
+    uploadedUris.value = (data.upload?.uploaded || []).map(item => item.uri);
+    latestRun.value = data.ingestionRun;
+    ingestionErrors.value = [];
+    const storageText = data.storageType ? `（${data.storageType}）` : '';
+    if (!latestRun.value) {
+      showMessage(`文件已上传到对象存储${storageText}，但未创建入库任务`, 'success');
+      return;
+    }
+    showMessage(`已上传到对象存储${storageText}并创建入库任务`, 'success');
+    if (!isTerminal(latestRun.value.status)) {
+      await pollIngestionRun(latestRun.value.runId);
+    } else {
+      await loadErrors();
+    }
+  } catch (error) {
+    showMessage(error.message, 'error');
+    currentStep.value = 0;
+  } finally {
+    quickIngesting.value = false;
   }
 }
 
@@ -736,6 +785,7 @@ function resetWizard() {
   currentStep.value = 0;
   selectedFiles.value = [];
   uploadedUris.value = [];
+  folderInputRef.value = null;
   prepareResult.value = null;
   previewValidated.value = false;
   latestRun.value = null;
@@ -943,6 +993,13 @@ onMounted(loadLibraries);
   margin: 0;
   font-size: 13px;
   color: var(--text-secondary, #666);
+}
+
+.upload-dropzone__actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
 }
 
 .upload-input-hidden {

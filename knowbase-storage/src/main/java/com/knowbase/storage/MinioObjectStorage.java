@@ -21,6 +21,11 @@ public final class MinioObjectStorage implements ObjectStorage {
     }
 
     @Override
+    public String storageType() {
+        return "minio";
+    }
+
+    @Override
     public StoredObject put(String bucket, String objectKey, InputStream inputStream, String contentType) {
         try {
             ensureBucket(bucket);

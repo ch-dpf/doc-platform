@@ -102,7 +102,7 @@ export async function uploadFile(file, bucket) {
 export async function uploadFiles(files, bucket) {
   const formData = new FormData();
   for (const file of files) {
-    formData.append('files', file);
+    formData.append('files', file, file.webkitRelativePath || file.name);
   }
   if (bucket) {
     formData.append('bucket', bucket);
@@ -124,7 +124,7 @@ export async function prepareIngestion(libraryId, payload, stage = 'all') {
 export async function uploadAndIngest(libraryId, files, options = {}) {
   const formData = new FormData();
   for (const file of files) {
-    formData.append('files', file);
+    formData.append('files', file, file.webkitRelativePath || file.name);
   }
   if (options.bucket) {
     formData.append('bucket', options.bucket);

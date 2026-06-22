@@ -57,7 +57,8 @@ public final class DefaultObjectUploadService {
                 stored.objectKey(),
                 stored.uri(),
                 stored.contentType(),
-                stored.size()
+                stored.size(),
+                objectStorage.storageType()
         );
     }
 
@@ -93,6 +94,10 @@ public final class DefaultObjectUploadService {
 
     public long maxFileSizeBytes() {
         return maxFileSizeBytes;
+    }
+
+    public String storageType() {
+        return objectStorage.storageType();
     }
 
     public record UploadCandidate(String filename, InputStream inputStream, String contentType, long sizeBytes) {
