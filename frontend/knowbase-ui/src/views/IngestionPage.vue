@@ -24,30 +24,12 @@
           </el-select>
         </el-form-item>
 
-        <div
-          class="upload-dropzone"
-          :class="{ 'upload-dropzone--active': dragOver }"
-          @dragover.prevent="dragOver = true"
-          @dragleave.prevent="dragOver = false"
-          @drop.prevent="onDrop"
-          @click="fileInputRef?.click()"
-        >
-          <input ref="fileInputRef" type="file" multiple class="upload-input-hidden" @change="onFilesSelected" />
-          <input ref="folderInputRef" type="file" multiple webkitdirectory directory class="upload-input-hidden" @change="onFilesSelected" />
-          <p class="upload-dropzone__title">拖拽文件到此处，或点击选择</p>
-          <p class="upload-dropzone__hint">支持批量文件或文件夹上传；PDF、Word、Markdown、图片、Excel、ZIP 等；单次最多 50 个，单文件 100MB</p>
-          <div class="upload-dropzone__actions">
-            <el-button size="small" round @click.stop="fileInputRef?.click()">选择文件</el-button>
-            <el-button size="small" round @click.stop="folderInputRef?.click()">选择文件夹</el-button>
-          </div>
-        </div>
-
-        <ul v-if="selectedFiles.length" class="file-list">
-          <li v-for="file in selectedFiles" :key="file.name + file.size">
-            <span>{{ displayFileName(file) }}</span>
-            <span class="file-list__meta">{{ formatNumber(file.size) }} bytes</span>
-          </li>
-        </ul>
+        <DocumentPickPanel
+          ref="pickPanelRef"
+          v-model="selectedFiles"
+          :max-files="MAX_FILES"
+          :max-file-size="MAX_FILE_SIZE"
+        />
 
         <div class="wizard-actions">
           <el-button type="primary" round :loading="uploading" :disabled="!canProceedUpload" @click="goToSegmentationStep">
@@ -382,6 +364,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import PageCard from '../components/PageCard.vue';
+import DocumentPickPanel from '../components/DocumentPickPanel.vue';
 import {
   createIngestionRun,
   getIngestionRun,
@@ -446,9 +429,7 @@ const libraryId = ref('');
 const libraries = ref([]);
 const selectedFiles = ref([]);
 const uploadedUris = ref([]);
-const fileInputRef = ref(null);
-const folderInputRef = ref(null);
-const dragOver = ref(false);
+const pickPanelRef = ref(null);
 
 const parseMode = ref('standard');
 const ocrLanguage = ref('');
@@ -600,42 +581,6 @@ function prepareDocumentTitle(document, stage) {
     return `${document.title || document.sourceUri} · ${document.chunk.chunkCount} 分段`;
   }
   return document.title || document.sourceUri;
-}
-
-function onFilesSelected(event) {
-  addFiles(Array.from(event.target.files || []));
-  event.target.value = '';
-}
-
-function onDrop(event) {
-  dragOver.value = false;
-  addFiles(Array.from(event.dataTransfer?.files || []));
-}
-
-function addFiles(files) {
-  const valid = [];
-  const errors = [];
-  for (const file of files) {
-    if (file.size > MAX_FILE_SIZE) {
-      errors.push(`${file.name} 超过 100MB`);
-      continue;
-    }
-    valid.push(file);
-  }
-  const merged = [...selectedFiles.value, ...valid];
-  if (merged.length > MAX_FILES) {
-    selectedFiles.value = merged.slice(0, MAX_FILES);
-    showMessage(`单次最多 ${MAX_FILES} 个文件`, 'error');
-  } else {
-    selectedFiles.value = merged;
-  }
-  if (errors.length) {
-    showMessage(errors.join('；'), 'error');
-  }
-}
-
-function displayFileName(file) {
-  return file.webkitRelativePath || file.name;
 }
 
 async function loadLibraries() {
@@ -793,7 +738,7 @@ function resetWizard() {
   currentStep.value = 0;
   selectedFiles.value = [];
   uploadedUris.value = [];
-  folderInputRef.value = null;
+  pickPanelRef.value?.reset();
   prepareResult.value = null;
   previewValidated.value = false;
   latestRun.value = null;
@@ -983,70 +928,6 @@ onMounted(loadLibraries);
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 8px;
-}
-
-.upload-dropzone {
-  border: 2px dashed var(--el-border-color, #dcdfe6);
-  border-radius: 12px;
-  padding: 36px 24px;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  background: linear-gradient(180deg, #fafbfc 0%, #fff 100%);
-}
-
-.upload-dropzone--active,
-.upload-dropzone:hover {
-  border-color: var(--el-color-primary);
-  background: #f0f7ff;
-}
-
-.upload-dropzone__title {
-  margin: 0 0 8px;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.upload-dropzone__hint {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-secondary, #666);
-}
-
-.upload-dropzone__actions {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.upload-input-hidden {
-  display: none;
-}
-
-.file-list {
-  margin: 16px 0 0;
-  padding: 0;
-  list-style: none;
-  border: 1px solid var(--el-border-color-lighter, #ebeef5);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.file-list li {
-  display: flex;
-  justify-content: space-between;
-  padding: 10px 14px;
-  font-size: 13px;
-  border-bottom: 1px solid var(--el-border-color-lighter, #ebeef5);
-}
-
-.file-list li:last-child {
-  border-bottom: none;
-}
-
-.file-list__meta {
-  color: var(--text-secondary, #666);
 }
 
 .segment-panel {
