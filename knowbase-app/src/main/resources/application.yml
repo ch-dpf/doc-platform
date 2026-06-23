@@ -36,8 +36,16 @@ knowbase:
     max-file-size-bytes: 209715200   # 200MB
     max-files-per-batch: 50
   storage:
-    type: local
+# 本地FS存储系统，默认本地文件系统对象存储根目录
+#    type: local
+#    local-root: D:\data\knowbase-storage
+    type: minio
     default-bucket: knowbase
+    minio:
+      endpoint: http://192.168.14.65:9001/
+      access-key: minioadmin
+      secret-key: minioadmin
+      auto-create-bucket: true
 
 springdoc:
   api-docs:
