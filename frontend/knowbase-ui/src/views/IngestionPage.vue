@@ -24,10 +24,6 @@
           </el-select>
         </el-form-item>
 
-        <el-form-item label="存储桶">
-          <el-input v-model="uploadBucket" placeholder="默认 knowbase" />
-        </el-form-item>
-
         <div
           class="upload-dropzone"
           :class="{ 'upload-dropzone--active': dragOver }"
@@ -448,7 +444,6 @@ const metadataDisplayKeys = [
 const currentStep = ref(0);
 const libraryId = ref('');
 const libraries = ref([]);
-const uploadBucket = ref('knowbase');
 const selectedFiles = ref([]);
 const uploadedUris = ref([]);
 const fileInputRef = ref(null);
@@ -658,7 +653,7 @@ async function goToSegmentationStep() {
   if (!canProceedUpload.value) return;
   uploading.value = true;
   try {
-    const data = await uploadFiles(selectedFiles.value, uploadBucket.value || undefined);
+    const data = await uploadFiles(selectedFiles.value);
     uploadedUris.value = (data.uploaded || []).map(item => item.uri);
     if (!uploadedUris.value.length) {
       const failureText = (data.failures || []).map(item => `${item.filename}: ${item.message}`).join('；');
@@ -684,7 +679,6 @@ async function quickUploadAndIngest() {
   currentStep.value = 2;
   try {
     const data = await uploadAndIngest(libraryId.value, selectedFiles.value, {
-      bucket: uploadBucket.value || undefined,
       documentProfileCode: buildDocumentProfileCode(),
       publishIndexOnSuccess: publishIndexOnSuccess.value,
       autoStart: true,

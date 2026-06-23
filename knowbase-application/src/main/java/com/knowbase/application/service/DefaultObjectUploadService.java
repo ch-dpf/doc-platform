@@ -37,21 +37,19 @@ public final class DefaultObjectUploadService {
         this.maxFileSizeBytes = Math.max(1L, maxFileSizeBytes);
     }
 
-    public ObjectUploadResult upload(String bucket, String filename, InputStream inputStream, String contentType) {
-        return upload(bucket, filename, inputStream, contentType, -1L);
+    public ObjectUploadResult upload(String filename, InputStream inputStream, String contentType) {
+        return upload(filename, inputStream, contentType, -1L);
     }
 
     public ObjectUploadResult upload(
-            String bucket,
             String filename,
             InputStream inputStream,
             String contentType,
             long sizeBytes
     ) {
         validateUpload(filename, sizeBytes);
-        String targetBucket = bucket == null || bucket.isBlank() ? defaultBucket : bucket;
         String objectKey = UUID.randomUUID() + "/" + sanitize(filename);
-        StoredObject stored = objectStorage.put(targetBucket, objectKey, inputStream, contentType);
+        StoredObject stored = objectStorage.put(defaultBucket, objectKey, inputStream, contentType);
         return new ObjectUploadResult(
                 stored.bucket(),
                 stored.objectKey(),
@@ -62,7 +60,7 @@ public final class DefaultObjectUploadService {
         );
     }
 
-    public BatchObjectUploadResult uploadBatch(String bucket, List<UploadCandidate> files) {
+    public BatchObjectUploadResult uploadBatch(List<UploadCandidate> files) {
         if (files == null || files.isEmpty()) {
             throw new IllegalArgumentException("请至少选择一个文件");
         }
@@ -74,7 +72,7 @@ public final class DefaultObjectUploadService {
         for (UploadCandidate file : files) {
             String filename = file.filename() == null || file.filename().isBlank() ? "upload.bin" : file.filename();
             try {
-                uploaded.add(upload(bucket, filename, file.inputStream(), file.contentType(), file.sizeBytes()));
+                uploaded.add(upload(filename, file.inputStream(), file.contentType(), file.sizeBytes()));
             } catch (Exception exception) {
                 failures.add(new UploadFailureResult(filename, failureMessage(exception)));
             }

@@ -88,24 +88,18 @@ export async function listIngestionErrors(runId) {
   return unwrap(await http.get(`/ingestion-runs/${runId}/errors`));
 }
 
-export async function uploadFile(file, bucket) {
+export async function uploadFile(file) {
   const formData = new FormData();
   formData.append('file', file);
-  if (bucket) {
-    formData.append('bucket', bucket);
-  }
   return unwrap(await http.post('/storage/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }));
 }
 
-export async function uploadFiles(files, bucket) {
+export async function uploadFiles(files) {
   const formData = new FormData();
   for (const file of files) {
     formData.append('files', file, file.webkitRelativePath || file.name);
-  }
-  if (bucket) {
-    formData.append('bucket', bucket);
   }
   return unwrap(await http.post('/storage/upload-batch', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
@@ -125,9 +119,6 @@ export async function uploadAndIngest(libraryId, files, options = {}) {
   const formData = new FormData();
   for (const file of files) {
     formData.append('files', file, file.webkitRelativePath || file.name);
-  }
-  if (options.bucket) {
-    formData.append('bucket', options.bucket);
   }
   if (options.documentProfileCode) {
     formData.append('documentProfileCode', options.documentProfileCode);
