@@ -30,12 +30,10 @@ public class StorageController {
     @Operation(summary = "上传文件")
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<ObjectUploadResult> upload(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam(required = false) String bucket
+            @RequestParam("file") MultipartFile file
     ) throws Exception {
         uploadService.validateUpload(file.getOriginalFilename(), file.getSize());
         return ApiResponse.ok(uploadService.upload(
-                bucket,
                 file.getOriginalFilename(),
                 file.getInputStream(),
                 file.getContentType(),
@@ -46,8 +44,7 @@ public class StorageController {
     @Operation(summary = "批量上传文件", description = "单次最多上传 50 个文件，单个文件不超过 100MB")
     @PostMapping(value = "/upload-batch", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiResponse<BatchObjectUploadResult> uploadBatch(
-            @RequestParam("files") List<MultipartFile> files,
-            @RequestParam(required = false) String bucket
+            @RequestParam("files") List<MultipartFile> files
     ) throws Exception {
         List<DefaultObjectUploadService.UploadCandidate> candidates = new ArrayList<>();
         for (MultipartFile file : files) {
@@ -58,6 +55,6 @@ public class StorageController {
                     file.getSize()
             ));
         }
-        return ApiResponse.ok(uploadService.uploadBatch(bucket, candidates));
+        return ApiResponse.ok(uploadService.uploadBatch(candidates));
     }
 }

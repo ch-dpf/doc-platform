@@ -35,6 +35,9 @@ knowbase:
   upload:
     max-file-size-bytes: 209715200   # 200MB
     max-files-per-batch: 50
+  storage:
+    type: local
+    default-bucket: knowbase
 
 springdoc:
   api-docs:

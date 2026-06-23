@@ -80,7 +80,6 @@ public class IngestionRunController {
     public ApiResponse<UploadAndIngestResponse> uploadAndCreate(
             @Parameter(description = "知识库 ID") @PathVariable UUID libraryId,
             @RequestParam("files") List<MultipartFile> files,
-            @RequestParam(required = false) String bucket,
             @RequestParam(required = false) String documentProfileCode,
             @RequestParam(defaultValue = "true") boolean publishIndexOnSuccess,
             @RequestParam(defaultValue = "true") boolean autoStart,
@@ -95,7 +94,7 @@ public class IngestionRunController {
                     file.getSize()
             ));
         }
-        BatchObjectUploadResult uploadResult = uploadService.uploadBatch(bucket, candidates);
+        BatchObjectUploadResult uploadResult = uploadService.uploadBatch(candidates);
         List<String> sourceUris = uploadResult.uploaded().stream().map(ObjectUploadResult::uri).toList();
         IngestionRunResult ingestionRun = null;
         if (autoStart && !sourceUris.isEmpty()) {
