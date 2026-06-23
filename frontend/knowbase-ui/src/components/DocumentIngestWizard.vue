@@ -1,29 +1,17 @@
 <template>
-  <div class="page-wrap page-wrap--fluid page-stack ingestion-wizard">
+  <div class="ingestion-wizard" :class="{ 'ingestion-wizard--embedded': embedded }">
     <el-alert v-if="message" :title="message" :type="messageType === 'success' ? 'success' : 'error'" show-icon closable @close="message = ''" />
 
-    <PageCard title="文档入库向导" subtitle="上传 → 解析/清洗/分段 → 确认向量化入库">
-      <el-steps :active="currentStep" align-center finish-status="success" class="wizard-steps">
-        <el-step title="上传文档" description="选择知识库并上传文件" />
-        <el-step title="解析与分段" description="Layout/OCR 解析与流水线预览" />
-        <el-step title="入库完成" description="向量化与索引发布" />
-      </el-steps>
-    </PageCard>
+    <el-steps :active="currentStep" align-center finish-status="success" class="wizard-steps">
+      <el-step title="上传文档" description="选择文件并上传" />
+      <el-step title="解析与分段" description="Layout/OCR 解析与流水线预览" />
+      <el-step title="入库完成" description="向量化与索引写入" />
+    </el-steps>
 
     <!-- Step 1: Upload -->
-    <PageCard v-show="currentStep === 0" title="第一步：上传文档">
+    <PageCard v-show="currentStep === 0" :title="embedded ? undefined : '第一步：上传文档'" :class="{ 'wizard-section--embedded': embedded }">
+      <h4 v-if="embedded" class="wizard-section__title">上传文档</h4>
       <el-form label-position="top" class="wizard-form">
-        <el-form-item label="目标知识库" required>
-          <el-select v-model="libraryId" filterable class="full-width" placeholder="选择知识库">
-            <el-option
-              v-for="library in libraries"
-              :key="library.libraryId"
-              :label="`${library.name} (${shortId(library.libraryId, 8)})`"
-              :value="library.libraryId"
-            />
-          </el-select>
-        </el-form-item>
-
         <DocumentPickPanel
           ref="pickPanelRef"
           v-model="selectedFiles"
@@ -44,7 +32,7 @@
             :style="quickIngestButtonStyle"
             @click="quickUploadAndIngest"
           >
-            上传并创建入库任务
+            快速入库（跳过预览）
           </el-button>
         </div>
       </el-form>
@@ -171,14 +159,14 @@
           >
             确认并开始入库
           </el-button>
-          <el-switch
-            v-model="publishIndexOnSuccess"
-            inline-prompt
-            active-text="成功后发布索引"
-            inactive-text="仅入库不发布"
-            class="publish-switch"
-          />
         </div>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          class="publish-hint"
+          title="文档索引成功即标记 INDEXED 并写入当前 active 代次，无需额外发布索引版本。"
+        />
         <p v-if="!prepareOk" class="helper-text">请先运行流水线预览，确认解析/清洗/分段结果无误后再入库。</p>
       </el-form>
 
@@ -344,7 +332,7 @@
           {{ latestRun.message || (polling ? '正在向量化并写入索引…' : '任务已提交') }}
         </p>
         <p class="row-meta">Run {{ shortId(latestRun.runId, 12) }} · {{ formatDateTime(latestRun.updatedAt) }}</p>
-        <p class="row-meta">发布策略：{{ publishIndexOnSuccess ? '成功后自动发布索引版本' : '仅写入入库结果，暂不发布' }}</p>
+        <p class="row-meta">入库策略：文档 INDEXED 后即可检索（active 代次 upsert）</p>
 
         <el-table v-if="ingestionErrors.length" :data="ingestionErrors" size="small" class="data-table" style="margin-top: 16px">
           <el-table-column prop="sourceUri" label="来源" min-width="160" show-overflow-tooltip />
@@ -362,20 +350,25 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
-import PageCard from '../components/PageCard.vue';
-import DocumentPickPanel from '../components/DocumentPickPanel.vue';
+import { computed, ref, watch } from 'vue';
+import PageCard from './PageCard.vue';
+import DocumentPickPanel from './DocumentPickPanel.vue';
 import {
   createIngestionRun,
   getIngestionRun,
   listIngestionErrors,
-  listLibraries,
   prepareIngestion,
-  uploadAndIngest,
+  uploadDocuments,
   uploadFiles
 } from '../api';
-import { requestContext } from '../context';
 import { formatDateTime, formatNumber, shortId } from '../format';
+
+const props = defineProps({
+  libraryId: { type: String, required: true },
+  embedded: { type: Boolean, default: false }
+});
+
+const emit = defineEmits(['completed', 'message']);
 
 const MAX_FILES = 50;
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
@@ -425,8 +418,6 @@ const metadataDisplayKeys = [
 ];
 
 const currentStep = ref(0);
-const libraryId = ref('');
-const libraries = ref([]);
 const selectedFiles = ref([]);
 const uploadedUris = ref([]);
 const pickPanelRef = ref(null);
@@ -465,7 +456,7 @@ const polling = ref(false);
 const message = ref('');
 const messageType = ref('success');
 
-const canProceedUpload = computed(() => Boolean(libraryId.value) && selectedFiles.value.length > 0);
+const canProceedUpload = computed(() => Boolean(props.libraryId) && selectedFiles.value.length > 0);
 const prepareOk = computed(() =>
   previewValidated.value
   && prepareResult.value
@@ -583,17 +574,6 @@ function prepareDocumentTitle(document, stage) {
   return document.title || document.sourceUri;
 }
 
-async function loadLibraries() {
-  try {
-    libraries.value = await listLibraries({ tenantId: requestContext.tenantId });
-    if (!libraryId.value && libraries.value.length > 0) {
-      libraryId.value = libraries.value[0].libraryId;
-    }
-  } catch (error) {
-    showMessage(error.message, 'error');
-  }
-}
-
 async function goToSegmentationStep() {
   if (!canProceedUpload.value) return;
   uploading.value = true;
@@ -623,11 +603,10 @@ async function quickUploadAndIngest() {
   quickIngesting.value = true;
   currentStep.value = 2;
   try {
-    const data = await uploadAndIngest(libraryId.value, selectedFiles.value, {
+    const data = await uploadDocuments(props.libraryId, selectedFiles.value, {
       documentProfileCode: buildDocumentProfileCode(),
       publishIndexOnSuccess: publishIndexOnSuccess.value,
-      autoStart: true,
-      maxFiles: MAX_FILES
+      autoStart: true
     });
     uploadedUris.value = (data.upload?.uploaded || []).map(item => item.uri);
     latestRun.value = data.ingestionRun;
@@ -642,6 +621,7 @@ async function quickUploadAndIngest() {
       await pollIngestionRun(latestRun.value.runId);
     } else {
       await loadErrors();
+      emitCompletedIfOk(latestRun.value);
     }
   } catch (error) {
     showMessage(error.message, 'error');
@@ -652,11 +632,11 @@ async function quickUploadAndIngest() {
 }
 
 async function runPipelinePreview() {
-  if (!libraryId.value || !uploadedUris.value.length) return;
+  if (!props.libraryId || !uploadedUris.value.length) return;
   previewing.value = true;
   try {
-    prepareResult.value = await prepareIngestion(libraryId.value, {
-      libraryId: libraryId.value,
+    prepareResult.value = await prepareIngestion(props.libraryId, {
+      libraryId: props.libraryId,
       sourceUris: uploadedUris.value,
       documentProfileCode: buildDocumentProfileCode(),
       prepareStage: 'all',
@@ -681,8 +661,8 @@ async function confirmIngestion() {
   loading.value = true;
   currentStep.value = 2;
   try {
-    const data = await createIngestionRun(libraryId.value, {
-      libraryId: libraryId.value,
+    const data = await createIngestionRun(props.libraryId, {
+      libraryId: props.libraryId,
       sourceUris: uploadedUris.value,
       sourceType: 'minio',
       documentProfileCode: buildDocumentProfileCode(),
@@ -697,7 +677,8 @@ async function confirmIngestion() {
       return;
     }
     await loadErrors();
-    showMessage(`入库完成：${data.status}`, data.status === 'FAILED' ? 'error' : 'success');
+    showMessage(`入库完成：${data.status}。评测样本将自动生成（每批最多 20 条，前 5 条默认启用），请到「召回与评测」审核。`, data.status === 'FAILED' ? 'error' : 'success');
+    emitCompletedIfOk(data);
   } catch (error) {
     showMessage(error.message, 'error');
     currentStep.value = 1;
@@ -724,7 +705,8 @@ async function pollIngestionRun(runId) {
       latestRun.value = data;
       if (isTerminal(data.status)) {
         await loadErrors();
-        showMessage(`入库结束：${data.status}`, data.status === 'FAILED' ? 'error' : 'success');
+        showMessage(`入库结束：${data.status}。评测样本将自动生成（每批最多 20 条，前 5 条默认启用），请到「召回与评测」审核。`, data.status === 'FAILED' ? 'error' : 'success');
+        emitCompletedIfOk(data);
         return;
       }
     }
@@ -831,19 +813,47 @@ function isTerminal(status) {
   return ['SUCCEEDED', 'PARTIAL_FAILED', 'FAILED', 'CANCELLED'].includes(String(status || '').toUpperCase());
 }
 
+function emitCompletedIfOk(run) {
+  const status = String(run?.status || '').toUpperCase();
+  if (status === 'SUCCEEDED' || status === 'PARTIAL_FAILED') {
+    emit('completed', run);
+  }
+}
+
 function showMessage(text, type) {
   message.value = text || '操作失败';
   messageType.value = type;
+  emit('message', text, type);
 }
 
 function sleep(ms) {
   return new Promise(resolve => window.setTimeout(resolve, ms));
 }
 
-onMounted(loadLibraries);
+watch(
+  () => props.libraryId,
+  () => resetWizard()
+);
 </script>
 
 <style scoped>
+.ingestion-wizard--embedded {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wizard-section__title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.wizard-section--embedded {
+  box-shadow: none;
+  border: none;
+  padding: 0;
+}
 .wizard-steps {
   margin-top: 8px;
 }

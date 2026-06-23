@@ -1,5 +1,7 @@
 package com.knowbase.domain.model;
 
+import com.knowbase.domain.status.DocumentStatus;
+
 import java.time.Instant;
 import java.util.UUID;
 
@@ -9,6 +11,12 @@ public record KnowledgeDocument(
         UUID indexVersionId,
         String sourceUri,
         String title,
-        Instant createdAt
+        DocumentStatus status,
+        UUID documentProfileId,
+        String contentHash,
+        Instant lastIndexedAt,
+        String lastError,
+        Instant createdAt,
+        Instant updatedAt
 ) {
 }

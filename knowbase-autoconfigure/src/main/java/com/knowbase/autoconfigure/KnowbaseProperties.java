@@ -222,6 +222,8 @@ public class KnowbaseProperties {
     public static class Ingestion {
         private boolean asyncEnabled = false;
         private int asyncPoolSize = 2;
+        private boolean documentUpsertEnabled = true;
+        private boolean promoteEvalGateEnabled = true;
 
         public boolean isAsyncEnabled() {
             return asyncEnabled;
@@ -237,6 +239,22 @@ public class KnowbaseProperties {
 
         public void setAsyncPoolSize(int asyncPoolSize) {
             this.asyncPoolSize = asyncPoolSize;
+        }
+
+        public boolean isDocumentUpsertEnabled() {
+            return documentUpsertEnabled;
+        }
+
+        public void setDocumentUpsertEnabled(boolean documentUpsertEnabled) {
+            this.documentUpsertEnabled = documentUpsertEnabled;
+        }
+
+        public boolean isPromoteEvalGateEnabled() {
+            return promoteEvalGateEnabled;
+        }
+
+        public void setPromoteEvalGateEnabled(boolean promoteEvalGateEnabled) {
+            this.promoteEvalGateEnabled = promoteEvalGateEnabled;
         }
     }
 

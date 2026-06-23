@@ -12,18 +12,7 @@
         </div>
         <div class="home-entry-card__body">
           <h3 class="home-entry-card__title">知识库</h3>
-          <p class="home-entry-card__desc">创建知识库、选择库类型预设，管理异构文档 Profile 与索引版本</p>
-        </div>
-        <el-icon class="home-entry-card__arrow"><ArrowRight /></el-icon>
-      </button>
-
-      <button type="button" class="home-entry-card home-entry-card--ingest" @click="router.push('/ingestions')">
-        <div class="home-entry-card__icon">
-          <el-icon><Upload /></el-icon>
-        </div>
-        <div class="home-entry-card__body">
-          <h3 class="home-entry-card__title">入库任务</h3>
-          <p class="home-entry-card__desc">提交文档入库，按 token 驱动 Pipeline 解析、切块并发布索引</p>
+          <p class="home-entry-card__desc">创建知识库、在详情中上传文档、查看分段预览与入库进度</p>
         </div>
         <el-icon class="home-entry-card__arrow"><ArrowRight /></el-icon>
       </button>
@@ -55,7 +44,7 @@
 
 <script setup>
 import { useRouter } from 'vue-router';
-import { ArrowRight, ChatLineRound, Coin, DataBoard, Upload } from '@element-plus/icons-vue';
+import { ArrowRight, ChatLineRound, Coin, DataBoard } from '@element-plus/icons-vue';
 
 const router = useRouter();
 </script>
@@ -115,10 +104,6 @@ const router = useRouter();
   border-color: rgba(14, 165, 233, 0.45);
 }
 
-.home-entry-card--ingest:hover {
-  border-color: rgba(99, 102, 241, 0.45);
-}
-
 .home-entry-card--agent:hover {
   border-color: rgba(245, 158, 11, 0.45);
 }
@@ -142,11 +127,6 @@ const router = useRouter();
 .home-entry-card--library .home-entry-card__icon {
   background: linear-gradient(135deg, var(--dp-primary) 0%, #38bdf8 100%);
   box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
-}
-
-.home-entry-card--ingest .home-entry-card__icon {
-  background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.35);
 }
 
 .home-entry-card--agent .home-entry-card__icon {

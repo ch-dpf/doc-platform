@@ -1,0 +1,38 @@
+{
+  "version": "1",
+  "replaceExisting": false,
+  "samples": [
+    {
+      "question": "如何安装 PostgreSQL 和 pgvector？",
+      "expectedSourceUris": ["guide.md"],
+      "groundTruthContexts": ["Install PostgreSQL and pgvector on port 5433"],
+      "hitRank": 8,
+      "notes": "sample-documents/markdown/guide.md",
+      "enabled": true
+    },
+    {
+      "question": "如何在知识库中上传文档并做召回测试？",
+      "expectedSourceUris": ["guide.md"],
+      "groundTruthContexts": ["Upload documents from the library workspace and run retrieval tests"],
+      "hitRank": 8,
+      "notes": "sample-documents/markdown/guide.md",
+      "enabled": true
+    },
+    {
+      "question": "Markdown 分块是否保留标题边界？",
+      "expectedSourceUris": ["guide.md"],
+      "groundTruthContexts": ["Structure-aware markdown parsing should preserve heading boundaries"],
+      "hitRank": 8,
+      "notes": "sample-documents/markdown/guide.md",
+      "enabled": true
+    },
+    {
+      "question": "FAQ 文档包含哪些章节？",
+      "expectedSourceUris": ["faq-outline.md"],
+      "groundTruthContexts": ["Retrieval evaluation"],
+      "hitRank": 8,
+      "notes": "sample-documents/markdown/faq-outline.md",
+      "enabled": true
+    }
+  ]
+}

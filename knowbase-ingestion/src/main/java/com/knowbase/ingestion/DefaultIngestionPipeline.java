@@ -1,14 +1,17 @@
 package com.knowbase.ingestion;
 
 import com.knowbase.domain.model.DocumentChunk;
+import com.knowbase.domain.model.DocumentIndexJob;
 import com.knowbase.domain.model.DocumentProfile;
 import com.knowbase.domain.model.IndexVersion;
 import com.knowbase.domain.model.IndexedChunk;
 import com.knowbase.domain.model.IngestionRun;
+import com.knowbase.domain.model.KnowledgeDocument;
 import com.knowbase.domain.model.LibraryProfile;
 import com.knowbase.domain.model.TokenizerProfile;
 import com.knowbase.domain.observability.PipelineObserver;
 import com.knowbase.domain.repository.KnowbaseRepository;
+import com.knowbase.domain.status.DocumentStatus;
 import com.knowbase.domain.status.IndexVersionStatus;
 import com.knowbase.domain.status.IngestionRunStatus;
 import com.knowbase.model.EmbeddingModelClient;
@@ -22,6 +25,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 public final class DefaultIngestionPipeline implements IngestionPipeline {
 
@@ -30,6 +35,9 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
     private final EmbeddingModelClient embeddingModelClient;
     private final TokenizerRegistry tokenizerRegistry;
     private final PipelineObserver pipelineObserver;
+    private final Function<UUID, UUID> activeGenerationResolver;
+    private final Consumer<UUID> generationStatsRefresher;
+    private final boolean documentUpsertEnabled;
     private final DocumentSourceUriExpander sourceUriExpander = new DocumentSourceUriExpander();
     private final DocumentProfileResolver documentProfileResolver = new DocumentProfileResolver();
 
@@ -40,11 +48,56 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
             TokenizerRegistry tokenizerRegistry,
             PipelineObserver pipelineObserver
     ) {
+        this(
+                repository,
+                documentPreparationPipeline,
+                embeddingModelClient,
+                tokenizerRegistry,
+                pipelineObserver,
+                null,
+                null
+        );
+    }
+
+    public DefaultIngestionPipeline(
+            KnowbaseRepository repository,
+            DocumentPreparationPipeline documentPreparationPipeline,
+            EmbeddingModelClient embeddingModelClient,
+            TokenizerRegistry tokenizerRegistry,
+            PipelineObserver pipelineObserver,
+            Function<UUID, UUID> activeGenerationResolver,
+            Consumer<UUID> generationStatsRefresher
+    ) {
+        this(
+                repository,
+                documentPreparationPipeline,
+                embeddingModelClient,
+                tokenizerRegistry,
+                pipelineObserver,
+                activeGenerationResolver,
+                generationStatsRefresher,
+                true
+        );
+    }
+
+    public DefaultIngestionPipeline(
+            KnowbaseRepository repository,
+            DocumentPreparationPipeline documentPreparationPipeline,
+            EmbeddingModelClient embeddingModelClient,
+            TokenizerRegistry tokenizerRegistry,
+            PipelineObserver pipelineObserver,
+            Function<UUID, UUID> activeGenerationResolver,
+            Consumer<UUID> generationStatsRefresher,
+            boolean documentUpsertEnabled
+    ) {
         this.repository = repository;
         this.documentPreparationPipeline = documentPreparationPipeline;
         this.embeddingModelClient = embeddingModelClient;
         this.tokenizerRegistry = tokenizerRegistry;
         this.pipelineObserver = pipelineObserver == null ? new com.knowbase.domain.observability.NoopPipelineObserver() : pipelineObserver;
+        this.activeGenerationResolver = activeGenerationResolver;
+        this.generationStatsRefresher = generationStatsRefresher;
+        this.documentUpsertEnabled = documentUpsertEnabled;
     }
 
     @Override
@@ -70,12 +123,308 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
             throw new IllegalStateException("未发现可入库的文档来源: " + request.sourceUris());
         }
 
+        if (!documentUpsertEnabled) {
+            return runLegacySnapshotMode(
+                    existing,
+                    request,
+                    profile,
+                    documentProfiles,
+                    resolvedProfileCode,
+                    sourceUris,
+                    requestOptions
+            );
+        }
+
         IngestionRun running = updateStatus(
                 existing,
                 IngestionRunStatus.RUNNING,
                 sourceUris,
                 sourceUris.size(),
                 "正在执行入库 Pipeline，已展开 " + sourceUris.size() + " 个文档来源"
+        );
+        repository.saveIngestionRun(running);
+        UUID ingestSpan = pipelineObserver.startSpan("ingestion", request.runId(), "pipeline", Map.of("libraryId", request.libraryId().toString()));
+
+        UUID targetGenerationId = resolveTargetGeneration(request.libraryId(), requestOptions);
+        boolean deferDocumentGeneration = IngestionPipelineOptions.deferDocumentGenerationUpdate(requestOptions);
+
+        int succeeded = 0;
+        int failed = 0;
+        int chunkCount = 0;
+        List<String> failureMessages = new ArrayList<>();
+
+        for (String sourceUri : sourceUris) {
+            UUID documentSpan = pipelineObserver.startSpan("ingestion", request.runId(), "document", Map.of("sourceUri", sourceUri));
+            DocumentIndexJob indexJob = DocumentIndexJobProgress.start(repository, request.runId(), request.libraryId(), sourceUri);
+            KnowledgeDocument document = null;
+            try {
+                DocumentProfile resolvedProfile = documentProfileResolver.resolve(
+                        sourceUri,
+                        resolvedProfileCode,
+                        documentProfiles
+                );
+                Map<String, Object> sourceOptions = mergeDocumentProfileOptions(
+                        requestOptions,
+                        resolvedProfile,
+                        documentProfileResolver.routingMetadata(sourceUri, resolvedProfile)
+                );
+                sourceOptions = ParseOptionsSupport.applyParseMode(sourceOptions, sourceUri);
+                DocumentProfile documentProfile = SegmentationOptionsSupport.applyDocumentProfileOverrides(
+                        resolvedProfile,
+                        requestOptions
+                );
+                TokenizerProfile tokenizerProfile = resolveTokenizerProfile(profile, documentProfile);
+                ModelTokenizer tokenizer = resolveTokenizer(profile, tokenizerProfile);
+                sourceOptions = withTokenizerMetadata(sourceOptions, tokenizerProfile, tokenizer);
+
+                document = resolveDocument(
+                        request.libraryId(),
+                        targetGenerationId,
+                        sourceUri,
+                        resolvedProfile,
+                        Instant.now(),
+                        deferDocumentGeneration
+                );
+                indexJob = DocumentIndexJobProgress.advanceJob(
+                        repository,
+                        indexJob,
+                        document.documentId(),
+                        DocumentStatus.PARSING,
+                        "正在解析文档"
+                );
+                document = DocumentIndexJobProgress.advanceDocument(repository, document, DocumentStatus.PARSING, "正在解析文档");
+
+                indexJob = DocumentIndexJobProgress.advanceJob(
+                        repository,
+                        indexJob,
+                        document.documentId(),
+                        DocumentStatus.NORMALIZING,
+                        "正在清洗与规范化"
+                );
+                document = DocumentIndexJobProgress.advanceDocument(repository, document, DocumentStatus.NORMALIZING, "正在清洗与规范化");
+
+                DocumentPreparationResult prepared = documentPreparationPipeline.prepare(
+                        sourceUri,
+                        sourceOptions,
+                        request.libraryId(),
+                        document.documentId(),
+                        targetGenerationId,
+                        profile,
+                        documentProfile,
+                        tokenizer,
+                        PreparationStage.CHUNK
+                );
+                List<DocumentChunk> chunks = prepared.chunks();
+                List<DocumentChunk> indexableChunks = chunks.stream()
+                        .filter(DefaultIngestionPipeline::isIndexableChunk)
+                        .toList();
+
+                indexJob = DocumentIndexJobProgress.advanceJob(
+                        repository,
+                        indexJob,
+                        document.documentId(),
+                        DocumentStatus.CHUNKING,
+                        "已生成 " + chunks.size() + " 个分块"
+                );
+                document = DocumentIndexJobProgress.advanceDocument(repository, document, DocumentStatus.CHUNKING, "已生成分块");
+
+                indexJob = DocumentIndexJobProgress.advanceJob(
+                        repository,
+                        indexJob,
+                        document.documentId(),
+                        DocumentStatus.EMBEDDING,
+                        "正在向量化"
+                );
+                document = DocumentIndexJobProgress.advanceDocument(repository, document, DocumentStatus.EMBEDDING, "正在向量化");
+
+                List<float[]> embeddings = embedChunks(embeddingModelClient, profile, indexableChunks);
+                List<IndexedChunk> indexedChunks = new ArrayList<>();
+                for (int index = 0; index < indexableChunks.size(); index++) {
+                    indexedChunks.add(new IndexedChunk(indexableChunks.get(index), embeddings.get(index)));
+                }
+                for (DocumentChunk chunk : chunks) {
+                    if (!isIndexableChunk(chunk)) {
+                        indexedChunks.add(new IndexedChunk(chunk, null));
+                    }
+                }
+
+                repository.replaceDocumentChunks(document.documentId(), indexedChunks);
+                Instant indexedAt = Instant.now();
+                String title = prepared.parsed().title();
+                UUID documentGenerationId = deferDocumentGeneration
+                        ? repository.findDocument(document.documentId())
+                        .map(KnowledgeDocument::indexVersionId)
+                        .orElse(targetGenerationId)
+                        : targetGenerationId;
+                document = new KnowledgeDocument(
+                        document.documentId(),
+                        document.libraryId(),
+                        documentGenerationId,
+                        sourceUri,
+                        title == null || title.isBlank() ? document.title() : title,
+                        DocumentStatus.INDEXED,
+                        resolvedProfile.documentProfileId(),
+                        sourceUri,
+                        indexedAt,
+                        null,
+                        document.createdAt(),
+                        indexedAt
+                );
+                repository.saveDocument(document);
+                DocumentIndexJobProgress.succeed(repository, indexJob, document.documentId(), indexableChunks.size());
+
+                chunkCount += indexableChunks.size();
+                succeeded++;
+                pipelineObserver.finishSpan(documentSpan, "SUCCEEDED", Map.of("chunkCount", chunks.size()));
+            } catch (RuntimeException exception) {
+                failed++;
+                failureMessages.add(shortFailure(sourceUri, exception));
+                pipelineObserver.recordIngestionError(request.runId(), sourceUri, "INGEST_DOCUMENT_FAILED", exception.getMessage());
+                pipelineObserver.finishSpan(documentSpan, "FAILED", Map.of("error", exception.getMessage()));
+                if (document != null) {
+                    repository.saveDocument(markStatus(document, DocumentStatus.FAILED, exception.getMessage()));
+                    DocumentIndexJobProgress.fail(repository, indexJob, document.documentId(), exception.getMessage());
+                } else {
+                    DocumentIndexJobProgress.fail(repository, indexJob, null, exception.getMessage());
+                    repository.findDocumentBySourceUri(request.libraryId(), sourceUri).ifPresent(failedDocument ->
+                            repository.saveDocument(markStatus(failedDocument, DocumentStatus.FAILED, exception.getMessage()))
+                    );
+                }
+            }
+        }
+
+        if (chunkCount == 0) {
+            IngestionRun failedRun = new IngestionRun(
+                    running.runId(),
+                    running.libraryId(),
+                    IngestionRunStatus.FAILED,
+                    running.sourceUris(),
+                    running.sourceType(),
+                    running.documentProfileCode(),
+                    running.publishIndexOnSuccess(),
+                    sourceUris.size(),
+                    succeeded,
+                    failed == 0 ? sourceUris.size() : failed,
+                    0,
+                    targetGenerationId,
+                    "入库失败：没有成功生成任何文本块" + formatFailures(failureMessages),
+                    running.options(),
+                    running.createdAt(),
+                    Instant.now()
+            );
+            repository.saveIngestionRun(failedRun);
+            pipelineObserver.finishSpan(ingestSpan, "FAILED", Map.of("failedDocuments", failed));
+            return failedRun;
+        }
+
+        if (generationStatsRefresher != null) {
+            generationStatsRefresher.accept(targetGenerationId);
+        } else {
+            repository.refreshIndexVersionStats(targetGenerationId);
+        }
+
+        IngestionRunStatus finalStatus = failed > 0 ? IngestionRunStatus.PARTIAL_FAILED : IngestionRunStatus.SUCCEEDED;
+        IngestionRun completed = new IngestionRun(
+                running.runId(),
+                running.libraryId(),
+                finalStatus,
+                running.sourceUris(),
+                running.sourceType(),
+                running.documentProfileCode(),
+                running.publishIndexOnSuccess(),
+                sourceUris.size(),
+                succeeded,
+                failed,
+                chunkCount,
+                targetGenerationId,
+                finalStatus == IngestionRunStatus.SUCCEEDED
+                        ? "入库完成，" + succeeded + " 个文档已写入当前索引代次"
+                        : "入库部分成功，请检查失败文档" + formatFailures(failureMessages),
+                running.options(),
+                running.createdAt(),
+                Instant.now()
+        );
+        pipelineObserver.finishSpan(ingestSpan, finalStatus.name(), Map.of(
+                "succeededDocuments", succeeded,
+                "failedDocuments", failed,
+                "chunkCount", chunkCount
+        ));
+        return repository.saveIngestionRun(completed);
+    }
+
+    private UUID resolveTargetGeneration(UUID libraryId, Map<String, Object> options) {
+        UUID override = IngestionPipelineOptions.targetIndexGenerationId(options);
+        if (override != null) {
+            return override;
+        }
+        return resolveActiveGeneration(libraryId);
+    }
+
+    private UUID resolveActiveGeneration(UUID libraryId) {
+        if (activeGenerationResolver != null) {
+            return activeGenerationResolver.apply(libraryId);
+        }
+        return repository.findActiveIndexVersion(libraryId)
+                .map(version -> version.indexVersionId())
+                .orElseGet(() -> repository.findPublishedIndexVersion(libraryId)
+                        .map(version -> version.indexVersionId())
+                        .orElseThrow(() -> new IllegalStateException("知识库尚未初始化索引代次: " + libraryId)));
+    }
+
+    private KnowledgeDocument resolveDocument(
+            UUID libraryId,
+            UUID generationId,
+            String sourceUri,
+            DocumentProfile profile,
+            Instant now,
+            boolean deferDocumentGeneration
+    ) {
+        return repository.findDocumentBySourceUri(libraryId, sourceUri)
+                .map(existing -> new KnowledgeDocument(
+                        existing.documentId(),
+                        existing.libraryId(),
+                        deferDocumentGeneration ? existing.indexVersionId() : generationId,
+                        sourceUri,
+                        existing.title(),
+                        DocumentStatus.UPLOADED,
+                        profile.documentProfileId(),
+                        sourceUri,
+                        existing.lastIndexedAt(),
+                        null,
+                        existing.createdAt(),
+                        now
+                ))
+                .orElseGet(() -> new KnowledgeDocument(
+                        UUID.randomUUID(),
+                        libraryId,
+                        generationId,
+                        sourceUri,
+                        null,
+                        DocumentStatus.UPLOADED,
+                        profile.documentProfileId(),
+                        sourceUri,
+                        null,
+                        null,
+                        now,
+                        now
+                ));
+    }
+
+    private IngestionRun runLegacySnapshotMode(
+            IngestionRun existing,
+            IngestionRequest request,
+            LibraryProfile profile,
+            List<DocumentProfile> documentProfiles,
+            String resolvedProfileCode,
+            List<String> sourceUris,
+            Map<String, Object> requestOptions
+    ) {
+        IngestionRun running = updateStatus(
+                existing,
+                IngestionRunStatus.RUNNING,
+                sourceUris,
+                sourceUris.size(),
+                "正在执行入库 Pipeline（快照模式），已展开 " + sourceUris.size() + " 个文档来源"
         );
         repository.saveIngestionRun(running);
         UUID ingestSpan = pipelineObserver.startSpan("ingestion", request.runId(), "pipeline", Map.of("libraryId", request.libraryId().toString()));
@@ -131,7 +480,7 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                         profile,
                         documentProfile,
                         tokenizer,
-                        com.knowbase.ingestion.PreparationStage.CHUNK
+                        PreparationStage.CHUNK
                 );
                 List<DocumentChunk> chunks = prepared.chunks();
                 List<DocumentChunk> indexableChunks = chunks.stream()
@@ -210,6 +559,10 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 publishedAt,
                 draftIndex.createdAt()
         ));
+        if (request.publishIndexOnSuccess()) {
+            repository.archivePublishedGenerationsExcept(request.libraryId(), draftIndexVersionId);
+            repository.setActiveIndexGeneration(request.libraryId(), draftIndexVersionId);
+        }
 
         IngestionRunStatus finalStatus = failed > 0 ? IngestionRunStatus.PARTIAL_FAILED : IngestionRunStatus.SUCCEEDED;
         IngestionRun completed = new IngestionRun(
@@ -226,7 +579,7 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 chunkCount,
                 publishedIndexVersionId,
                 finalStatus == IngestionRunStatus.SUCCEEDED
-                        ? "入库完成，已发布索引版本 " + publishedIndexVersionId
+                        ? "入库完成，已发布索引快照 v" + draftIndex.version()
                         : "入库部分成功，请检查失败文档" + formatFailures(failureMessages),
                 running.options(),
                 running.createdAt(),
@@ -238,6 +591,41 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 "chunkCount", chunkCount
         ));
         return repository.saveIngestionRun(completed);
+    }
+
+    private int nextIndexVersion(UUID libraryId) {
+        return repository.listIndexVersions(libraryId).stream()
+                .mapToInt(IndexVersion::version)
+                .max()
+                .orElse(0) + 1;
+    }
+
+    private KnowledgeDocument resolveDocument(
+            UUID libraryId,
+            UUID generationId,
+            String sourceUri,
+            DocumentProfile profile,
+            Instant now
+    ) {
+        return resolveDocument(libraryId, generationId, sourceUri, profile, now, false);
+    }
+
+    private static KnowledgeDocument markStatus(KnowledgeDocument document, DocumentStatus status, String error) {
+        Instant now = Instant.now();
+        return new KnowledgeDocument(
+                document.documentId(),
+                document.libraryId(),
+                document.indexVersionId(),
+                document.sourceUri(),
+                document.title(),
+                status,
+                document.documentProfileId(),
+                document.contentHash(),
+                document.lastIndexedAt(),
+                error,
+                document.createdAt(),
+                now
+        );
     }
 
     private static boolean isIndexableChunk(DocumentChunk chunk) {
@@ -267,13 +655,6 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
             return ollamaClient.embed(model, texts);
         }
         return embeddingModelClient.embed(texts);
-    }
-
-    private int nextIndexVersion(UUID libraryId) {
-        return repository.listIndexVersions(libraryId).stream()
-                .mapToInt(IndexVersion::version)
-                .max()
-                .orElse(0) + 1;
     }
 
     private static Map<String, Object> mergeDocumentProfileOptions(
@@ -339,30 +720,6 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
             enriched.put("tokenizerModelName", tokenizerProfile.modelName());
         }
         return Map.copyOf(enriched);
-    }
-
-    private static ParsedDocument enrichMetadata(ParsedDocument parsed, Map<String, Object> metadata) {
-        java.util.HashMap<String, Object> merged = new java.util.HashMap<>();
-        if (parsed.metadata() != null) {
-            merged.putAll(parsed.metadata());
-        }
-        if (metadata != null) {
-            merged.putAll(metadata);
-        }
-        return new ParsedDocument(
-                parsed.sourceUri(),
-                parsed.title(),
-                parsed.text(),
-                parsed.contentFamily(),
-                Map.copyOf(merged)
-        );
-    }
-
-    private static ParsedDocument ensureExtractedText(ParsedDocument parsed) {
-        if (parsed.text() == null || parsed.text().isBlank()) {
-            throw new IllegalStateException("文档未提取到可索引文本: " + parsed.sourceUri());
-        }
-        return parsed;
     }
 
     private static String shortFailure(String sourceUri, RuntimeException exception) {

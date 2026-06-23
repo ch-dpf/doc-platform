@@ -20,6 +20,7 @@ public class LibraryEntity {
     private String libraryTypePresetCode;
     @TableField(typeHandler = JsonbTypeHandler.class)
     private String tags;
+    private UUID activeIndexGenerationId;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -77,6 +78,14 @@ public class LibraryEntity {
 
     public void setTags(String tags) {
         this.tags = tags;
+    }
+
+    public UUID getActiveIndexGenerationId() {
+        return activeIndexGenerationId;
+    }
+
+    public void setActiveIndexGenerationId(UUID activeIndexGenerationId) {
+        this.activeIndexGenerationId = activeIndexGenerationId;
     }
 
     public Instant getCreatedAt() {

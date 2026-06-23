@@ -114,6 +114,14 @@ public class DefaultIngestionService implements RunIngestionUseCase, KnowbaseIng
         return get(runId);
     }
 
+    public List<IngestionRunResult> listByLibrary(UUID libraryId, int limit) {
+        repository.findLibrary(libraryId)
+                .orElseThrow(() -> new ResourceNotFoundException("知识库不存在: " + libraryId));
+        return repository.listIngestionRuns(libraryId, limit).stream()
+                .map(ResultMapper::toIngestionRunResult)
+                .toList();
+    }
+
     private static boolean isTerminal(IngestionRunStatus status) {
         return status == IngestionRunStatus.SUCCEEDED
                 || status == IngestionRunStatus.PARTIAL_FAILED

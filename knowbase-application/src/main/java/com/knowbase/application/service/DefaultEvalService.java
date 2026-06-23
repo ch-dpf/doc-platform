@@ -7,6 +7,7 @@ import com.knowbase.application.pipeline.DefaultQueryPipeline;
 import com.knowbase.domain.model.AgentVersion;
 import com.knowbase.domain.model.EvalRun;
 import com.knowbase.domain.model.EvalSample;
+import com.knowbase.domain.model.EvidenceSegment;
 import com.knowbase.domain.model.QueryRun;
 import com.knowbase.domain.repository.KnowbaseRepository;
 import com.knowbase.domain.repository.ObservabilityRepository;
@@ -132,10 +133,15 @@ public final class DefaultEvalService {
             QueryRun queryRun = queryPipeline.run(UUID.randomUUID(), agentId, agentVersion.agentVersionId(), input.question(), List.of());
             actualAnswer = queryRun.answer();
             score = scoreAnswer(input.expectedAnswer(), actualAnswer);
+            List<String> evidenceContents = queryRun.evidencePack() == null
+                    ? List.of()
+                    : queryRun.evidencePack().segments().stream().map(EvidenceSegment::content).toList();
+            double faithfulness = AnswerFaithfulnessScorer.score(actualAnswer, evidenceContents);
             metrics.put("queryRunId", queryRun.queryRunId().toString());
             metrics.put("traceId", queryRun.traceId() == null ? null : queryRun.traceId());
             metrics.put("evidenceCount", queryRun.evidencePack() == null ? 0 : queryRun.evidencePack().segments().size());
             metrics.put("citationCount", queryRun.evidencePack() == null ? 0 : queryRun.evidencePack().citations().size());
+            metrics.put("faithfulness", faithfulness);
         }
         EvalSample sample = new EvalSample(
                 sampleId,
@@ -162,12 +168,12 @@ public final class DefaultEvalService {
         double total = 0.0;
         int counted = 0;
         for (EvalSampleResult sample : samples) {
-            if (sample.actualAnswer() == null || sample.actualAnswer().isBlank()) {
+            if (sample.metrics() == null || sample.metrics().get("faithfulness") == null) {
                 continue;
             }
-            Object evidenceCount = sample.metrics() == null ? null : sample.metrics().get("evidenceCount");
-            if (evidenceCount instanceof Number number && number.intValue() > 0) {
-                total += 1.0;
+            Object faithfulness = sample.metrics().get("faithfulness");
+            if (faithfulness instanceof Number number) {
+                total += number.doubleValue();
                 counted++;
             }
         }

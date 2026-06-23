@@ -35,6 +35,10 @@ knowbase:
   upload:
     max-file-size-bytes: 209715200   # 200MB
     max-files-per-batch: 50
+  ingestion:
+    async-enabled: false
+    document-upsert-enabled: true
+    promote-eval-gate-enabled: false
   storage:
 # 本地FS存储系统，默认本地文件系统对象存储根目录
 #    type: local

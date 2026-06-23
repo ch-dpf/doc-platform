@@ -36,6 +36,53 @@ export function formatPercent(value, digits = 0) {
 
 export const percent = formatPercent;
 
+export function formatLocationMeta(metadata) {
+  if (!metadata || typeof metadata !== 'object') {
+    return '';
+  }
+  const parts = [];
+  if (metadata.pageNumber != null) {
+    parts.push(`P${metadata.pageNumber}`);
+  }
+  if (metadata.bbox) {
+    parts.push(`bbox ${String(metadata.bbox)}`);
+  }
+  if (metadata.contentFamily) {
+    parts.push(String(metadata.contentFamily));
+  }
+  if (metadata.vectorRank != null || metadata.keywordRank != null) {
+    parts.push(`v#${metadata.vectorRank ?? '—'} · k#${metadata.keywordRank ?? '—'}`);
+  }
+  return parts.join(' · ');
+}
+
+export function formatChunkLocationTags(metadata) {
+  if (!metadata || typeof metadata !== 'object') {
+    return [];
+  }
+  const tags = [];
+  if (metadata.pageNumber != null) {
+    tags.push({ key: 'page', label: `P${metadata.pageNumber}` });
+  }
+  if (metadata.bbox) {
+    tags.push({ key: 'bbox', label: `bbox ${String(metadata.bbox)}` });
+  }
+  if (metadata.contentFamily) {
+    tags.push({ key: 'family', label: String(metadata.contentFamily) });
+  }
+  if (metadata.chunkBoundaryType) {
+    tags.push({ key: 'boundary', label: String(metadata.chunkBoundaryType) });
+  }
+  return tags;
+}
+
+export function isChunkRetrievalEnabled(metadata) {
+  if (!metadata || metadata.retrievalEnabled == null) {
+    return true;
+  }
+  return metadata.retrievalEnabled !== false && String(metadata.retrievalEnabled).toLowerCase() !== 'false';
+}
+
 export function statusTone(status) {
   const normalized = String(status || '').toUpperCase();
   if (['SUCCEEDED', 'ACTIVE', 'PUBLISHED'].includes(normalized)) {

@@ -65,6 +65,17 @@ mvn -q "-Dmaven.repo.local=.m2/repository" -DskipTests package
 - Swagger UI：`http://localhost:8080/swagger-ui.html`
 - Knife4j：`http://localhost:8080/doc.html`
 
+管理控制台主路由：
+
+| 路径 | 功能 |
+|------|------|
+| `/libraries` | 知识库分页列表、建库、详情抽屉（索引版本 / 文档 chunk / ACL） |
+| `/ingestions` | 三步入库向导：上传 → 分段预览 → 向量化入库 |
+| `/agents` | 智能体创建、版本发布、检索测试 |
+| `/qa` | 基于已发布智能体版本问答 |
+| `/observability` | Pipeline Trace 与评测运行 |
+| `/presets` | 库类型 / 场景规则预设管理 |
+
 也可以在后端打包后使用 root compose 启动应用服务：
 
 ```powershell
@@ -173,12 +184,22 @@ POST /api/v1/agents/{agentId}/retrieval-tests
 
 多库检索已支持可配置后处理策略：`fusion=rrf` 用于跨库排序融合，`rerank=mmr` 用于证据多样性重排，`balanceAcrossLibraries` 用于避免单库占满候选池，`contentFamilyWeights` 用于对表格、代码、富文本、网页等异构文档做轻量权重调节。内存模式与 PostgreSQL/pgvector 模式共用同一套后处理器，宿主服务也可以通过覆盖 `RetrievalPostProcessor` Bean 接入自定义重排策略。
 
+**已实现的管理与运维能力**（详见 [API.md](docs/API.md)）：
+
+- 知识库分页查询与删除；索引版本 / 文档 / chunk 目录 API。
+- 文件上传（本地 FS 或 MinIO）、`upload-and-ingest` 一键入库、分阶段 `preview` / `prepare`。
+- 智能体版本生命周期（测试 → 发布 → 禁用）；库级 ACL；Pipeline Trace 与评测运行。
+- 多轮 Chat 会话 REST API（`/api/v1/chat/sessions`）。
+
+架构演进（文档一等、索引代次内化）见 [DESIGN_EVOLUTION_OUTLINE.md](docs/DESIGN_EVOLUTION_OUTLINE.md)。
+
 ## 文档
 
 - [总体设计规划](docs/DESIGN.md)
 - [接口规范](docs/API.md)
 - [Ingestion 接口说明](docs/INGESTION_INTERFACES.md)
 - [二期复杂文档解析与分段方案](docs/PHASE2_INGESTION_PLAN.md)
+- [架构演进修订提纲](docs/DESIGN_EVOLUTION_OUTLINE.md)
 
 ## 核心接口自检
 

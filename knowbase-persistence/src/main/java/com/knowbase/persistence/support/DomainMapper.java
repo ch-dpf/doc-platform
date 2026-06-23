@@ -2,6 +2,7 @@ package com.knowbase.persistence.support;
 
 import com.knowbase.domain.model.AgentVersion;
 import com.knowbase.domain.model.DocumentChunk;
+import com.knowbase.domain.model.DocumentIndexJob;
 import com.knowbase.domain.model.DocumentProfile;
 import com.knowbase.domain.model.IndexVersion;
 import com.knowbase.domain.model.IndexedChunk;
@@ -15,6 +16,7 @@ import com.knowbase.domain.model.TokenizerProfile;
 import com.knowbase.domain.status.AgentStatus;
 import com.knowbase.domain.status.AgentVersionStatus;
 import com.knowbase.domain.status.ContentFamily;
+import com.knowbase.domain.status.DocumentStatus;
 import com.knowbase.domain.status.IndexVersionStatus;
 import com.knowbase.domain.status.IngestionRunStatus;
 import com.knowbase.domain.status.LibraryStatus;
@@ -23,6 +25,7 @@ import com.knowbase.persistence.entity.AgentEntity;
 import com.knowbase.persistence.entity.AgentVersionEntity;
 import com.knowbase.persistence.entity.ChunkEntity;
 import com.knowbase.persistence.entity.DocumentEntity;
+import com.knowbase.persistence.entity.DocumentIndexJobEntity;
 import com.knowbase.persistence.entity.DocumentProfileEntity;
 import com.knowbase.persistence.entity.IndexVersionEntity;
 import com.knowbase.persistence.entity.IngestionRunEntity;
@@ -45,6 +48,7 @@ public final class DomainMapper {
         entity.setStatus(library.status().name());
         entity.setLibraryTypePresetCode(library.libraryTypePresetCode());
         entity.setTags(JsonSupport.write(library.tags()));
+        entity.setActiveIndexGenerationId(library.activeIndexGenerationId());
         entity.setCreatedAt(library.createdAt());
         entity.setUpdatedAt(library.updatedAt());
         return entity;
@@ -59,6 +63,7 @@ public final class DomainMapper {
                 LibraryStatus.valueOf(entity.getStatus()),
                 entity.getLibraryTypePresetCode(),
                 JsonSupport.readStringList(entity.getTags()),
+                entity.getActiveIndexGenerationId(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
         );
@@ -333,8 +338,31 @@ public final class DomainMapper {
                 entity.getIndexVersionId(),
                 entity.getSourceUri(),
                 entity.getTitle(),
-                entity.getCreatedAt()
+                entity.getStatus() == null ? DocumentStatus.INDEXED : DocumentStatus.valueOf(entity.getStatus()),
+                entity.getDocumentProfileId(),
+                entity.getContentHash(),
+                entity.getLastIndexedAt(),
+                entity.getLastError(),
+                entity.getCreatedAt(),
+                entity.getUpdatedAt() == null ? entity.getCreatedAt() : entity.getUpdatedAt()
         );
+    }
+
+    public static DocumentEntity toDocumentEntity(KnowledgeDocument document) {
+        DocumentEntity entity = new DocumentEntity();
+        entity.setDocumentId(document.documentId());
+        entity.setLibraryId(document.libraryId());
+        entity.setIndexVersionId(document.indexVersionId());
+        entity.setSourceUri(document.sourceUri());
+        entity.setTitle(document.title());
+        entity.setStatus(document.status().name());
+        entity.setDocumentProfileId(document.documentProfileId());
+        entity.setContentHash(document.contentHash());
+        entity.setLastIndexedAt(document.lastIndexedAt());
+        entity.setLastError(document.lastError());
+        entity.setCreatedAt(document.createdAt());
+        entity.setUpdatedAt(document.updatedAt());
+        return entity;
     }
 
     public static QueryRunEntity toQueryRunEntity(QueryRun queryRun) {
@@ -368,6 +396,40 @@ public final class DomainMapper {
                 entity.getCompletionTokens() == null ? 0 : entity.getCompletionTokens(),
                 entity.getCreatedAt(),
                 entity.getCompletedAt()
+        );
+    }
+
+    public static DocumentIndexJobEntity toDocumentIndexJobEntity(DocumentIndexJob job) {
+        DocumentIndexJobEntity entity = new DocumentIndexJobEntity();
+        entity.setJobId(job.jobId());
+        entity.setRunId(job.runId());
+        entity.setLibraryId(job.libraryId());
+        entity.setDocumentId(job.documentId());
+        entity.setSourceUri(job.sourceUri());
+        entity.setStatus(job.status());
+        entity.setStage(job.stage());
+        entity.setChunkCount(job.chunkCount());
+        entity.setMessage(job.message());
+        entity.setErrorMessage(job.errorMessage());
+        entity.setCreatedAt(job.createdAt());
+        entity.setUpdatedAt(job.updatedAt());
+        return entity;
+    }
+
+    public static DocumentIndexJob toDocumentIndexJob(DocumentIndexJobEntity entity) {
+        return new DocumentIndexJob(
+                entity.getJobId(),
+                entity.getRunId(),
+                entity.getLibraryId(),
+                entity.getDocumentId(),
+                entity.getSourceUri(),
+                entity.getStatus(),
+                entity.getStage(),
+                entity.getChunkCount() == null ? 0 : entity.getChunkCount(),
+                entity.getMessage(),
+                entity.getErrorMessage(),
+                entity.getCreatedAt(),
+                entity.getUpdatedAt()
         );
     }
 }

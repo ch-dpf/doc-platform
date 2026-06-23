@@ -18,7 +18,7 @@ public record CreateIngestionRunCommand(
         String sourceType,
         @Schema(description = "文档 Profile 编码")
         String documentProfileCode,
-        @Schema(description = "入库成功后是否自动发布索引", example = "true")
+        @Schema(description = "已废弃：document upsert 模式下文档成功即 INDEXED 可检索，该字段仅 legacy 快照模式生效", deprecated = true)
         boolean publishIndexOnSuccess,
         @Schema(description = "扩展选项")
         Map<String, Object> options

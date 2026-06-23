@@ -55,7 +55,7 @@
 <script setup>
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ChatLineRound, Coin, DataBoard, Document, Files, HomeFilled, Link, Monitor, Setting } from '@element-plus/icons-vue';
+import { ChatLineRound, Coin, DataBoard, Document, HomeFilled, Link, Monitor, Setting } from '@element-plus/icons-vue';
 import { knife4jUrl } from './config';
 import { usePageTitle } from './composables/usePageTitle';
 import RequestContextBar from './components/RequestContextBar.vue';
@@ -67,7 +67,6 @@ const { pageTitleOverride } = usePageTitle();
 const navItems = [
   { path: '/home', label: '首页', icon: HomeFilled },
   { path: '/libraries', label: '知识库', icon: Coin },
-  { path: '/ingestions', label: '入库任务', icon: Files },
   { path: '/agents', label: '知识智能体', icon: DataBoard },
   { path: '/presets', label: '预设管理', icon: Setting },
   { path: '/observability', label: '观测评测', icon: Monitor },
@@ -84,9 +83,6 @@ const activeNav = computed(() => {
   }
   if (route.path.startsWith('/libraries')) {
     return '/libraries';
-  }
-  if (route.path.startsWith('/ingestions')) {
-    return '/ingestions';
   }
   if (route.path.startsWith('/agents')) {
     return '/agents';

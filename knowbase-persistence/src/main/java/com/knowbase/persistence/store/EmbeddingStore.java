@@ -36,6 +36,11 @@ public final class EmbeddingStore {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    public void replaceEmbedding(UUID chunkId, String model, int dimension, float[] vector) {
+        jdbcTemplate.update("DELETE FROM kb_embedding WHERE chunk_id = ?", chunkId);
+        insertEmbedding(UUID.randomUUID(), chunkId, model, dimension, vector);
+    }
+
     public void insertEmbedding(UUID embeddingId, UUID chunkId, String model, int dimension, float[] vector) {
         jdbcTemplate.execute((ConnectionCallback<Void>) connection -> {
             PGvector.addVectorType(connection);
@@ -72,6 +77,9 @@ public final class EmbeddingStore {
                             FROM kb_chunk c
                             INNER JOIN kb_embedding e ON c.chunk_id = e.chunk_id
                             WHERE c.index_version_id = ?
+                              AND (c.metadata_json IS NULL
+                                   OR c.metadata_json::jsonb->>'retrievalEnabled' IS NULL
+                                   OR c.metadata_json::jsonb->>'retrievalEnabled' <> 'false')
                             ORDER BY e.embedding <=> ?::vector
                             LIMIT ?
                             """

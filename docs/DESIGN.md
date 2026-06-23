@@ -50,21 +50,21 @@ KnowBase 是面向内部知识管理场景的 RAG 平台，用于完成知识库
 
 ### 3.1 建仓入库
 
-建仓入库流程覆盖从创建知识库到发布可检索索引版本的完整生命周期。
+建仓入库流程覆盖从创建知识库到文档可检索的完整生命周期。日常单文档/批量上传采用 **document upsert** 写入当前 **active 索引代次**，不 bump 版本号；仅在 L1 变更（换 embedding 模型/维度/tokenizer）或运维 rebuild 时创建新 **索引代次** 并 promote。
 
 核心能力：
 
 - 创建知识库。
 - 配置知识库 Profile。
-- 上传文件或从数据源导入文档。
+- 上传文件或从数据源导入文档（multipart 直传 ObjectStorage）。
 - 解析文档为统一文本。
 - 提取文档元数据。
 - 清洗与规范化文本。
 - 文档切块。
 - 生成 Embedding。
-- 写入文本块与向量索引。
-- 发布索引版本。
-- 追踪入库任务、统计结果与失败原因。
+- 写入文本块与向量索引（upsert 到 active 代次）。
+- **可选** 全库 rebuild + promote 新索引代次（运维路径）。
+- 追踪入库任务、统计结果与失败原因；支持失败文档批量重试与 content_hash 去重检测。
 
 入库流程被建模为一次完整的 `IngestionRun`。一次 `IngestionRun` 拥有明确的输入、阶段状态、输出产物、统计信息和失败原因。
 
@@ -296,7 +296,7 @@ Tokenizer 来源：
 ## 4. 架构原则
 
 1. Pipeline 优先：入库与问答都必须是显式 Pipeline，拥有清晰的输入、输出、状态与执行轨迹。
-2. 索引版本发布：问答只读取已发布的索引版本，避免读取未完成的入库结果。
+2. **索引代次与 upsert 分离**：日常入库 upsert 到 active 代次；问答只读取 active 代次；L1 Profile 漂移时 rebuild 新代次并 promote。避免每次入库 bump 版本号。
 3. 公共契约稳定：宿主侧 Facade API 不暴露内部 DTO、持久化实体或 Pipeline 对象。
 4. 适配器可替换：存储、Embedding、Chat、解析器、向量库都通过适配器边界接入。
 5. 多库优先：单库问答是多知识库编排问答的特殊情况。
@@ -305,6 +305,7 @@ Tokenizer 来源：
 8. 异构文档统一治理：同库文档可异构处理，但统一发布索引版本。
 9. 部署形态中立：独立运行与宿主引入复用同一套应用服务。
 10. 可观测：入库任务、智能体版本与问答任务都是一等审计对象。
+11. **库级闭环**：知识库工作区内可完成上传、入库任务追踪、库级召回测试、索引代次运维与 Profile 健康检查，无需依赖智能体。
 
 ## 5. 目标模块结构
 
@@ -392,8 +393,12 @@ Pipeline 阶段：
 4. `ExtractMetadata`
 5. `ChunkDocument`
 6. `EmbedChunks`
-7. `WriteIndex`
-8. `PublishIndexVersion`
+7. `WriteIndex` — 写入当前目标索引代次（默认同库 active 代次；rebuild 时写入 BUILDING 代次）
+8. `FinalizeDocument` — 更新文档状态（INDEXED / FAILED），统计 chunk 数；**不再**每次入库 bump 索引版本号
+
+`PublishIndexVersion` / promote 为**运维路径**：全库 rebuild 完成后将 BUILDING 代次 promote 为 active；可选 promote 评测门禁（`promoteEvalSamples`）。
+
+配置项 `knowbase.ingestion.document-upsert-enabled` 控制 upsert 与 legacy 快照模式。
 
 失败处理：
 
@@ -561,19 +566,18 @@ Profile 必须版本化。索引版本引用创建该版本时使用的 Profile�
 - `built_in`
 - `enabled`
 
-### 7.7 索引版本
+### 7.7 索引代次（Index Generation）
 
-`kb_index_version` 表示一个已发布、可检索的知识库状态：
+`kb_index_version` 表示知识库的一个**索引代次**（generation），同一库可有多个代次，仅 **active** 代次参与问答与日常 upsert：
 
 - `index_version_id`
 - `library_id`
-- `profile_id`
-- `status`
-- `document_count`
-- `chunk_count`
-- `published_at`
+- `profile_id` — 构建该代次时绑定的 Library Profile
+- `status` — `DRAFT` / `BUILDING` / `PUBLISHED` / `FAILED`
+- `document_count` / `chunk_count`
+- `published_at` — promote 为 active 的时间
 
-问答流程只读取已发布索引版本。
+`KnowledgeLibrary.active_index_generation_id` 指向当前 active 代次。问答与库级召回测试只读取 active 代次。L1 漂移（embedding 模型/维度/tokenizer 变更）时通过 `index-health` 检测并建议 rebuild + promote。
 
 ### 7.8 Embedding
 
@@ -631,101 +635,149 @@ Profile 必须版本化。索引版本引用创建该版本时使用的 Profile�
 
 ## 10. 前端设计
 
-前端是 Vue 3 管理控制台，包含四个主区域：
+前端是 Vue 3 + Element Plus 管理控制台（`frontend/knowbase-ui`），路由与页面对应关系如下：
 
-1. 知识库。
-2. 入库任务。
-3. 知识智能体。
-4. 智能问答。
+| 路由 | 页面 | 职责 |
+|------|------|------|
+| `/home` | 首页 | 平台概览与快捷入口 |
+| `/libraries` | 知识库管理 | 建库、分页列表、详情抽屉 |
+| `/ingestions` | 入库任务 | 三步入库向导 |
+| `/agents` | 知识智能体 | 创建智能体、版本生命周期、检索测试 |
+| `/observability` | 观测与评测 | Pipeline Trace、评测运行 |
+| `/presets` | 预设管理 | 库类型/场景规则 CRUD |
+| `/qa` | 智能问答 | 基于已发布智能体版本提问 |
+
+请求上下文（租户、用户、角色）由 `context.js` 注入到 Axios 请求头，供后端 ACL 过滤使用。
 
 ### 10.1 知识库
 
-能力：
+已实现能力：
 
-- 知识库列表。
-- 创建知识库。
-- 选择库类型预设。
-- 编辑知识库 Profile。
-- 管理同库异构文档 Profile。
-- 查看已发布索引版本。
-- 查看文档与文本块。
+- 知识库分页列表（按租户过滤）、创建样例库、删除（未被智能体引用时）。
+- 创建知识库时选择库类型预设，展示预设分块/检索默认参数矩阵。
+- **详情工作区**（`/libraries/:libraryId/*`）左侧菜单 + 主内容：
+  - **文档列表**（默认）：上传向导、列表、删除；点击行或「详情」进入 **文档详情页**（原文 | 分块双 Tab）。
+  - **文档详情**（P1–P3）：原文 preview/download API；PDF/文本/DOCX（mammoth）内联预览；分块分页 + 页码/bbox 标签；点击块 PDF 跳页；块内容编辑与 `retrievalEnabled` 开关。
+  - **召回与评测**：库级召回测试、黄金集与批量评测（Recall/MRR/CP@K）。
+  - **库配置**：Library Profile、L2 批量重索引、重复文档、promote 评测门禁状态。
+  - **权限 ACL**：授予/撤销。
+- 知识库列表：**进入** / **上传** 跳转工作区。
+
+产品主路径：**知识库 → 详情 → 上传文档 → 文档 INDEXED 即可检索**；索引代次仅在 rebuild / 换模型 / promote 时可见。
 
 ### 10.2 入库任务
 
-能力：
+已实现能力：
 
-- 发起入库。
-- 上传文件。
-- 查看运行进度。
-- 查看失败文档。
-- 通过新建运行进行重试。
-- 查看入库统计。
+- **三步入库向导**（`IngestionPage`）：上传 → 解析/分段预览 → 向量化入库。
+- 支持多文件选择、解析模式（标准 / Layout / OCR）、智能/高级分段参数。
+- 调用 `ingestion/prepare/chunk` 预览切块，确认后 `ingestion-runs/upload` 或 `ingestion-runs` 正式入库。
+- 「上传并创建入库任务」快捷路径跳过预览直接入库。
+- 轮询 `GET /ingestion-runs/{runId}` 直至终态；可查询 `errors` 列表。
 
 ### 10.3 知识智能体
 
-能力：
+已实现能力：
 
-- 创建智能体。
-- 绑定一个或多个知识库。
-- 选择场景规则预设。
-- 配置库路由策略。
-- 配置检索与回答策略。
-- 发布智能体版本。
-- 执行检索测试。
+- 创建智能体：场景规则预设、绑定多知识库、Chat Tokenizer Profile、系统提示词。
+- **版本生命周期**：创建版本 → 标记测试中 → 发布 → 禁用；列表展示各版本状态。
+- 检索测试：输入问题，查看证据、引用、上下文 token 轨迹与 fusion/rerank 生效策略。
 
 ### 10.4 智能问答
 
-能力：
+已实现能力：
 
-- 选择知识智能体。
-- 发起提问。
-- 查看答案。
-- 查看引用。
-- 查看检索轨迹。
-- 按知识库与文档查看证据。
+- 选择已发布智能体版本发起提问。
+- 查看答案、引用、证据包与 QueryRun 轨迹（含 traceId，可跳转观测页）。
+
+REST 层另提供 `/api/v1/chat/sessions` 多轮会话 API，前端问答页当前以单次 QueryRun 为主。
+
+### 10.5 观测与评测
+
+已实现能力：
+
+- 按 traceId 或 pipeline + runId 查询 Pipeline Span 瀑布数据。
+- 创建评测运行（样例格式：`问题|期望答案`），查看 metrics 与逐样例结果。
+
+### 10.6 预设管理
+
+已实现能力：
+
+- 库类型预设与场景规则预设的分页列表、详情、创建、删除（系统内置不可删）。
+- 展示预设完整 config JSON，供建库/建智能体时参考。
 
 ## 11. API 草案
 
+以下与 `knowbase-web` 控制器及 `docs/API.md` 保持一致；标注「规划」的接口尚未实现。
+
 ### 11.1 知识库 API
 
-- `POST /api/v1/libraries`
-- `GET /api/v1/libraries`
-- `GET /api/v1/libraries/{libraryId}`
-- `PUT /api/v1/libraries/{libraryId}`
-- `POST /api/v1/libraries/{libraryId}/profiles`
-- `POST /api/v1/libraries/{libraryId}/document-profiles`
-- `GET /api/v1/libraries/{libraryId}/index-versions`
+- `POST /api/v1/libraries` — 创建
+- `GET /api/v1/libraries` — 分页列表（`page`、`size`）
+- `GET /api/v1/libraries/{libraryId}` — 详情
+- `DELETE /api/v1/libraries/{libraryId}` — 删除
+- `GET /api/v1/libraries/{libraryId}/index-versions` — 索引版本列表
+- `GET /api/v1/libraries/{libraryId}/index-versions/{indexVersionId}` — 索引版本详情
+- `POST /api/v1/libraries/{libraryId}/index-versions/{indexVersionId}/publish` — 发布
+- `GET /api/v1/libraries/{libraryId}/documents` — 文档列表（可选 `indexVersionId`）
+- `GET /api/v1/libraries/{libraryId}/documents/{documentId}` — 文档详情
+- `GET /api/v1/libraries/{libraryId}/documents/{documentId}/preview` — 原文 inline 预览（二进制流）
+- `GET /api/v1/libraries/{libraryId}/documents/{documentId}/download` — 原文下载
+- `GET /api/v1/libraries/{libraryId}/documents/{documentId}/chunks` — 文档块分页列表
+- `PUT /api/v1/libraries/{libraryId}/documents/{documentId}/chunks/{chunkId}` — 更新块内容或 retrievalEnabled
+- `PUT /api/v1/libraries/{libraryId}` — **规划**：更新知识库元数据
+- `POST /api/v1/libraries/{libraryId}/profiles` — **规划**：更新 Library Profile
+- `POST /api/v1/libraries/{libraryId}/document-profiles` — **规划**：Document Profile CRUD
 
 ### 11.2 入库 API
 
-- `POST /api/v1/libraries/{libraryId}/ingestion-runs`
-- `GET /api/v1/ingestion-runs/{runId}`
-- `GET /api/v1/ingestion-runs/{runId}/documents`
-- `GET /api/v1/ingestion-runs/{runId}/errors`
+- `POST /api/v1/libraries/{libraryId}/ingestion-runs` — 创建入库任务
+- `POST /api/v1/libraries/{libraryId}/ingestion-runs/upload` — 上传并入库
+- `POST /api/v1/libraries/{libraryId}/ingestion/preview` — 分段预览
+- `POST /api/v1/libraries/{libraryId}/ingestion/prepare` — 完整准备
+- `POST /api/v1/libraries/{libraryId}/ingestion/prepare/{parse|normalize|chunk}` — 分阶段准备
+- `GET /api/v1/ingestion-runs/{runId}` — 任务详情
+- `GET /api/v1/ingestion-runs/{runId}/errors` — 失败文档列表
+- `POST /api/v1/storage/upload` — 单文件上传
+- `POST /api/v1/storage/upload-batch` — 批量上传
 
 ### 11.3 问答 API
 
-- `POST /api/v1/query-runs`
-- `GET /api/v1/query-runs/{queryRunId}`
-- `GET /api/v1/query-runs/{queryRunId}/evidence`
-- `POST /api/v1/chat/sessions`
-- `POST /api/v1/chat/sessions/{sessionId}/messages`
+- `POST /api/v1/query-runs` — 发起问答
+- `GET /api/v1/query-runs/{queryRunId}` — 问答运行详情
+- `POST /api/v1/chat/sessions` — 创建会话
+- `GET /api/v1/chat/sessions` — 会话列表
+- `GET /api/v1/chat/sessions/{sessionId}` — 会话详情
+- `POST /api/v1/chat/sessions/{sessionId}/messages` — 发送消息
+- `GET /api/v1/chat/sessions/{sessionId}/messages` — 消息列表
+- `GET /api/v1/chat/sessions/{sessionId}/messages/{messageId}/query-run` — 消息关联 QueryRun
+- `GET /api/v1/query-runs/{queryRunId}/evidence` — **规划**：独立证据查询（当前合并在 QueryRunResult）
 
 ### 11.4 知识智能体 API
 
-- `POST /api/v1/agents`
-- `GET /api/v1/agents`
-- `GET /api/v1/agents/{agentId}`
-- `POST /api/v1/agents/{agentId}/versions`
-- `POST /api/v1/agents/{agentId}/versions/{versionId}/publish`
-- `POST /api/v1/agents/{agentId}/retrieval-tests`
+- `POST /api/v1/agents` — 创建
+- `GET /api/v1/agents` — 列表
+- `GET /api/v1/agents/{agentId}` — 详情
+- `GET /api/v1/agents/{agentId}/versions` — 版本列表
+- `GET /api/v1/agents/{agentId}/versions/{agentVersionId}` — 版本详情
+- `POST /api/v1/agents/{agentId}/versions` — 创建版本
+- `POST /api/v1/agents/{agentId}/versions/{agentVersionId}/mark-testing` — 标记测试
+- `POST /api/v1/agents/{agentId}/versions/{agentVersionId}/publish` — 发布
+- `POST /api/v1/agents/{agentId}/versions/{agentVersionId}/disable` — 禁用
+- `POST /api/v1/agents/{agentId}/retrieval-tests` — 检索测试
 
-### 11.5 预设 API
+### 11.5 预设与 Tokenizer API
 
-- `GET /api/v1/presets/library-types`
-- `GET /api/v1/presets/scene-rules`
-- `POST /api/v1/presets/library-types`
-- `POST /api/v1/presets/scene-rules`
+- `GET/POST/DELETE /api/v1/presets/library-types` — 库类型预设（分页）
+- `GET/POST/DELETE /api/v1/presets/scene-rules` — 场景规则预设（分页）
+- `GET/POST /api/v1/tokenizer-profiles` — Tokenizer Profile
+
+### 11.6 ACL 与观测 API
+
+- `GET/POST/DELETE /api/v1/acls` — 资源 ACL
+- `GET /api/v1/observability/traces/{traceId}` — Trace Span
+- `GET /api/v1/observability/pipelines/{pipeline}/runs/{runId}` — Pipeline Run Span
+- `GET/POST /api/v1/observability/eval-runs` — 评测运行
 
 ## 12. 实施路线
 
@@ -1061,7 +1113,7 @@ Profile 必须版本化。索引版本引用创建该版本时使用的 Profile�
 - Token 窗口分块边界测试。
 - 使用确定性 Mock Model 的多知识库问答集成测试。
 - API 契约测试。
-- Flyway schema 校验。A
+- Flyway schema 校验。
 - 前端主流程组件测试。
 - 状态机转换测试。
 - 权限过滤测试。
@@ -1072,11 +1124,11 @@ Profile 必须版本化。索引版本引用创建该版本时使用的 Profile�
 
 ## 16. 第一实施里程碑
 
-第一个里程碑应交付一个最小但完整的纵向切片：
+第一个里程碑（一期最小纵向切片）**已交付**，验证脚本 `scripts/verify-postgres-rag.ps1` 与 `scripts/verify-sample-documents.ps1` 可重复跑通以下路径：
 
 1. 创建知识库。
 2. 选择库类型预设。
-3. 上传 text 或 markdown 文档。
+3. 上传 text 或 markdown 文档（URI 或文件上传）。
 4. 使用 Embedding tokenizer 执行 token 分块。
 5. 执行入库 Pipeline。
 6. 发布索引版本。
@@ -1087,4 +1139,4 @@ Profile 必须版本化。索引版本引用创建该版本时使用的 Profile�
 11. 对知识智能体提问。
 12. 返回答案、引用和检索轨迹。
 
-该里程碑优先保证边界清晰与流程正确，不追求功能广度。
+在此基础上，管理控制台、ACL、目录查询、分阶段 prepare、观测与评测等能力已作为一期增强合入；架构演进（文档一等、索引代次内化）见 [DESIGN_EVOLUTION_OUTLINE.md](./DESIGN_EVOLUTION_OUTLINE.md)。

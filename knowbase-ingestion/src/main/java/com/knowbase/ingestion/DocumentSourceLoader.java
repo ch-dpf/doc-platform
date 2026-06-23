@@ -23,6 +23,14 @@ public final class DocumentSourceLoader {
         this.parsers = List.copyOf(parsers);
     }
 
+    public SourceContent loadSourceContent(String sourceUri) {
+        LoadedContent loaded = resolveContent(sourceUri, Map.of());
+        return new SourceContent(loaded.filename(), loaded.mimeType(), loaded.content());
+    }
+
+    public record SourceContent(String filename, String mimeType, byte[] content) {
+    }
+
     public ParsedDocument load(String sourceUri, Map<String, Object> options) {
         LoadedContent loaded = resolveContent(sourceUri, options);
         Map<String, Object> effectiveOptions = options == null ? Map.of() : options;

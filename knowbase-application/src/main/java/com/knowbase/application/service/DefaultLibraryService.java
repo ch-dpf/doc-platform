@@ -30,15 +30,26 @@ public class DefaultLibraryService implements CreateLibraryUseCase, KnowbaseLibr
     private final KnowbaseRepository repository;
     private final PresetCatalog presetCatalog;
     private final AccessControlService accessControlService;
+    private final IndexGenerationService indexGenerationService;
+
+    public DefaultLibraryService(
+            KnowbaseRepository repository,
+            PresetCatalog presetCatalog,
+            AccessControlService accessControlService,
+            IndexGenerationService indexGenerationService
+    ) {
+        this.repository = repository;
+        this.presetCatalog = presetCatalog;
+        this.accessControlService = accessControlService;
+        this.indexGenerationService = indexGenerationService;
+    }
 
     public DefaultLibraryService(
             KnowbaseRepository repository,
             PresetCatalog presetCatalog,
             AccessControlService accessControlService
     ) {
-        this.repository = repository;
-        this.presetCatalog = presetCatalog;
-        this.accessControlService = accessControlService;
+        this(repository, presetCatalog, accessControlService, new IndexGenerationService(repository));
     }
 
     @Override
@@ -56,13 +67,15 @@ public class DefaultLibraryService implements CreateLibraryUseCase, KnowbaseLibr
                 LibraryStatus.ACTIVE,
                 command.libraryTypePresetCode(),
                 command.tags() == null ? List.of() : List.copyOf(command.tags()),
+                null,
                 now,
                 now
         );
         repository.saveLibrary(library);
-        repository.saveLibraryProfile(buildLibraryProfile(libraryId, command.profile(), preset.config(), now));
+        LibraryProfile libraryProfile = repository.saveLibraryProfile(buildLibraryProfile(libraryId, command.profile(), preset.config(), now));
         saveDocumentProfiles(libraryId, command.documentProfiles(), preset.config());
-        return ResultMapper.toLibraryResult(library);
+        indexGenerationService.createInitialGeneration(libraryId, libraryProfile.profileId());
+        return ResultMapper.toLibraryResult(repository.findLibrary(libraryId).orElse(library));
     }
 
     @Override

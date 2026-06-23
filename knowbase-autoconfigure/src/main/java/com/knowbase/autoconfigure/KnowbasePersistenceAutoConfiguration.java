@@ -8,6 +8,7 @@ import com.knowbase.persistence.mapper.AgentMapper;
 import com.knowbase.persistence.mapper.AgentVersionMapper;
 import com.knowbase.persistence.mapper.ChunkMapper;
 import com.knowbase.persistence.mapper.DocumentMapper;
+import com.knowbase.persistence.mapper.DocumentIndexJobMapper;
 import com.knowbase.persistence.mapper.DocumentProfileMapper;
 import com.knowbase.persistence.mapper.IndexVersionMapper;
 import com.knowbase.persistence.mapper.IngestionRunMapper;
@@ -81,6 +82,7 @@ public class KnowbasePersistenceAutoConfiguration {
             DocumentProfileMapper documentProfileMapper,
             IndexVersionMapper indexVersionMapper,
             IngestionRunMapper ingestionRunMapper,
+            DocumentIndexJobMapper documentIndexJobMapper,
             DocumentMapper documentMapper,
             ChunkMapper chunkMapper,
             AgentMapper agentMapper,
@@ -96,6 +98,7 @@ public class KnowbasePersistenceAutoConfiguration {
                 documentProfileMapper,
                 indexVersionMapper,
                 ingestionRunMapper,
+                documentIndexJobMapper,
                 documentMapper,
                 chunkMapper,
                 agentMapper,

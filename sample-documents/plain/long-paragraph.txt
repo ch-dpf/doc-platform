@@ -1,0 +1,5 @@
+KnowBase regression sample for token-window chunking. Each sentence adds predictable boundaries for snapshot tests. The platform uses tokenizer-driven segmentation instead of naive character splits. Repeating this paragraph ensures the chunker produces more than one indexable block when max tokens is small.
+
+KnowBase regression sample for token-window chunking. Each sentence adds predictable boundaries for snapshot tests. The platform uses tokenizer-driven segmentation instead of naive character splits. Repeating this paragraph ensures the chunker produces more than one indexable block when max tokens is small.
+
+KnowBase regression sample for token-window chunking. Each sentence adds predictable boundaries for snapshot tests. The platform uses tokenizer-driven segmentation instead of naive character splits. Repeating this paragraph ensures the chunker produces more than one indexable block when max tokens is small.

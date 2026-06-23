@@ -1,7 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from './views/HomeView.vue';
 import LibraryPage from './views/LibraryPage.vue';
-import IngestionPage from './views/IngestionPage.vue';
+import LibraryWorkspaceLayout from './layouts/LibraryWorkspaceLayout.vue';
+import LibraryDocumentsPage from './views/library/LibraryDocumentsPage.vue';
+import LibraryDocumentChunksPage from './views/library/LibraryDocumentChunksPage.vue';
+import LibraryRetrievalTestPage from './views/library/LibraryRetrievalTestPage.vue';
+import LibrarySettingsPage from './views/library/LibrarySettingsPage.vue';
+import LibraryAclPage from './views/library/LibraryAclPage.vue';
 import AgentPage from './views/AgentPage.vue';
 import ObservabilityPage from './views/ObservabilityPage.vue';
 import PresetPage from './views/PresetPage.vue';
@@ -16,17 +21,53 @@ const routes = [
     component: LibraryPage,
     meta: {
       title: '知识库管理',
-      subtitle: '创建知识库、选择库类型预设，管理异构文档 Profile 与索引版本。'
+      subtitle: '创建知识库、选择库类型预设；点击进入文档列表与召回评测。'
     }
   },
   {
-    path: '/ingestions',
-    name: 'ingestions',
-    component: IngestionPage,
-    meta: {
-      title: '入库任务',
-      subtitle: '执行 token 驱动的入库 Pipeline，发布可检索索引版本。'
-    }
+    path: '/libraries/:libraryId',
+    component: LibraryWorkspaceLayout,
+    meta: { hidePageHeader: true },
+    children: [
+      { path: '', redirect: { name: 'library-documents' } },
+      {
+        path: 'documents',
+        name: 'library-documents',
+        component: LibraryDocumentsPage,
+        meta: { title: '文档列表' }
+      },
+      {
+        path: 'documents/:documentId',
+        name: 'library-document-detail',
+        component: LibraryDocumentChunksPage,
+        meta: { title: '文档详情' }
+      },
+      {
+        path: 'documents/:documentId/chunks',
+        redirect: (to) => ({
+          name: 'library-document-detail',
+          params: { libraryId: to.params.libraryId, documentId: to.params.documentId }
+        })
+      },
+      {
+        path: 'retrieval-test',
+        name: 'library-retrieval-test',
+        component: LibraryRetrievalTestPage,
+        meta: { title: '召回与评测' }
+      },
+      {
+        path: 'settings',
+        name: 'library-settings',
+        component: LibrarySettingsPage,
+        meta: { title: '库配置' }
+      },
+      {
+        path: 'acl',
+        name: 'library-acl',
+        component: LibraryAclPage,
+        meta: { title: '权限 ACL' }
+      }
+    ]
   },
   {
     path: '/agents',
@@ -34,7 +75,7 @@ const routes = [
     component: AgentPage,
     meta: {
       title: '知识智能体',
-      subtitle: '绑定多知识库，管理版本生命周期，执行检索测试与评测。'
+      subtitle: '绑定多知识库，管理版本生命周期，执行召回预览与评测。'
     }
   },
   {

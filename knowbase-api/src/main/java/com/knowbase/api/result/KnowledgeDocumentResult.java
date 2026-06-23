@@ -10,6 +10,11 @@ public record KnowledgeDocumentResult(
         UUID indexVersionId,
         String sourceUri,
         String title,
-        Instant createdAt
+        String status,
+        int chunkCount,
+        Instant lastIndexedAt,
+        String lastError,
+        Instant createdAt,
+        Instant updatedAt
 ) {
 }

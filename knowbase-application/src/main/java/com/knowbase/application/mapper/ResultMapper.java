@@ -1,5 +1,6 @@
 package com.knowbase.application.mapper;
 
+import com.knowbase.application.service.RetrievalEvalDraftSupport;
 import com.knowbase.api.result.CitationResult;
 import com.knowbase.api.result.EvidenceResult;
 import com.knowbase.api.result.IngestionRunResult;
@@ -7,6 +8,10 @@ import com.knowbase.api.result.KnowledgeAgentResult;
 import com.knowbase.api.result.LibraryResult;
 import com.knowbase.api.result.PresetResult;
 import com.knowbase.api.result.QueryRunResult;
+import com.knowbase.api.result.RetrievalEvalResultItem;
+import com.knowbase.api.result.RetrievalEvalRunResult;
+import com.knowbase.api.result.RetrievalEvalSampleResult;
+import com.knowbase.api.result.RetrievalHitCheckResult;
 import com.knowbase.api.result.TokenUsageResult;
 import com.knowbase.api.result.TokenizerProfileResult;
 import com.knowbase.domain.model.AgentVersion;
@@ -18,8 +23,14 @@ import com.knowbase.domain.model.KnowledgeAgent;
 import com.knowbase.domain.model.KnowledgeLibrary;
 import com.knowbase.domain.model.LibraryTypePreset;
 import com.knowbase.domain.model.QueryRun;
+import com.knowbase.domain.model.RetrievalEvalResult;
+import com.knowbase.domain.model.RetrievalEvalRun;
+import com.knowbase.domain.model.RetrievalEvalSample;
 import com.knowbase.domain.model.SceneRulePreset;
 import com.knowbase.domain.model.TokenizerProfile;
+
+import java.util.List;
+import java.util.Map;
 
 public final class ResultMapper {
 
@@ -146,7 +157,8 @@ public final class ResultMapper {
                 citation.sourceTitle(),
                 citation.sourceUri(),
                 citation.snippet(),
-                citation.score()
+                citation.score(),
+                citation.metadata() == null ? Map.of() : citation.metadata()
         );
     }
 
@@ -160,6 +172,95 @@ public final class ResultMapper {
                 segment.content(),
                 segment.score(),
                 segment.metadata()
+        );
+    }
+
+    public static RetrievalEvalSampleResult toRetrievalEvalSampleResult(RetrievalEvalSample sample) {
+        return new RetrievalEvalSampleResult(
+                sample.sampleId(),
+                sample.libraryId(),
+                sample.question(),
+                sample.expectedDocumentIds(),
+                sample.expectedSourceUris(),
+                sample.groundTruthContexts(),
+                sample.hitRank(),
+                sample.notes(),
+                sample.enabled(),
+                RetrievalEvalDraftSupport.isAutoDraft(sample),
+                sample.createdAt(),
+                sample.updatedAt()
+        );
+    }
+
+    public static com.knowbase.api.result.DocumentProfileResult toDocumentProfileResult(
+            com.knowbase.domain.model.DocumentProfile profile
+    ) {
+        return new com.knowbase.api.result.DocumentProfileResult(
+                profile.documentProfileId(),
+                profile.libraryId(),
+                profile.code(),
+                profile.contentFamily().name(),
+                profile.parserCode(),
+                profile.chunkingStrategy(),
+                profile.tokenizerProfileId(),
+                profile.metadataSchema(),
+                profile.options(),
+                profile.enabled()
+        );
+    }
+
+    public static com.knowbase.api.result.RetrievalEvalBaselineResult toRetrievalEvalBaselineResult(
+            com.knowbase.domain.model.RetrievalEvalBaseline baseline
+    ) {
+        return new com.knowbase.api.result.RetrievalEvalBaselineResult(
+                baseline.libraryId(),
+                baseline.evalRunId(),
+                baseline.profileId(),
+                baseline.indexGenerationId(),
+                baseline.recallAtK(),
+                baseline.hitK(),
+                baseline.updatedAt()
+        );
+    }
+
+    public static RetrievalEvalResultItem toRetrievalEvalResultItem(RetrievalEvalResult result) {
+        return new RetrievalEvalResultItem(
+                result.resultId(),
+                result.sampleId(),
+                result.question(),
+                result.hit(),
+                result.hitRankUsed(),
+                result.firstHitRank(),
+                result.matchedDocumentId(),
+                result.matchedChunkId(),
+                result.matchType(),
+                result.retrievedCount(),
+                result.failureReason(),
+                result.trace(),
+                result.createdAt()
+        );
+    }
+
+    public static RetrievalEvalRunResult toRetrievalEvalRunResult(
+            RetrievalEvalRun run,
+            List<RetrievalEvalResultItem> results
+    ) {
+        return new RetrievalEvalRunResult(
+                run.evalRunId(),
+                run.libraryId(),
+                run.status().name(),
+                run.hitK(),
+                run.totalSamples(),
+                run.passedSamples(),
+                run.recallAtK(),
+                run.mrr(),
+                run.contextPrecisionAtK(),
+                run.stratifiedRecall() == null ? Map.of() : run.stratifiedRecall(),
+                run.retrievalPolicy(),
+                run.message(),
+                results,
+                run.createdAt(),
+                run.completedAt()
         );
     }
 }

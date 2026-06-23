@@ -89,7 +89,10 @@
                 <div v-if="queryResult?.citations?.length" class="evidence">
                   <div v-for="item in queryResult.citations" :key="item.citationId" class="evidence-item">
                     <div class="row-title">{{ item.sourceTitle || shortId(item.documentId, 12) }}</div>
-                    <div class="row-meta">{{ item.sourceUri || '无来源 URI' }}</div>
+                    <div class="row-meta">
+                      {{ item.sourceUri || '无来源 URI' }}
+                      <span v-if="formatLocationMeta(item.metadata)" class="meta-tag">{{ formatLocationMeta(item.metadata) }}</span>
+                    </div>
                     <p class="muted evidence-copy">{{ item.snippet || '暂无引用摘要' }}</p>
                   </div>
                 </div>
@@ -127,7 +130,7 @@ import { computed, ref } from 'vue';
 import PageCard from '../components/PageCard.vue';
 import { askQuestion, listAgents, listPipelineTrace } from '../api';
 import { requestContext } from '../context';
-import { formatDateTime, formatNumber, formatPercent, shortId } from '../format';
+import { formatDateTime, formatLocationMeta, formatNumber, formatPercent, shortId } from '../format';
 
 const debugLibraryIdsText = ref('');
 const agents = ref([]);

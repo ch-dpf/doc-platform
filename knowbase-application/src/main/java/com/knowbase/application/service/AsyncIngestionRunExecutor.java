@@ -18,6 +18,7 @@ public final class AsyncIngestionRunExecutor implements IngestionRunExecutor {
     private final IngestionPipeline ingestionPipeline;
     private final AuditSink auditSink;
     private final Executor executor;
+    private final IngestionEvalDraftService evalDraftService;
 
     public AsyncIngestionRunExecutor(
             KnowbaseRepository repository,
@@ -25,10 +26,21 @@ public final class AsyncIngestionRunExecutor implements IngestionRunExecutor {
             AuditSink auditSink,
             Executor executor
     ) {
+        this(repository, ingestionPipeline, auditSink, executor, null);
+    }
+
+    public AsyncIngestionRunExecutor(
+            KnowbaseRepository repository,
+            IngestionPipeline ingestionPipeline,
+            AuditSink auditSink,
+            Executor executor,
+            IngestionEvalDraftService evalDraftService
+    ) {
         this.repository = repository;
         this.ingestionPipeline = ingestionPipeline;
         this.auditSink = auditSink;
         this.executor = executor;
+        this.evalDraftService = evalDraftService;
     }
 
     @Override
@@ -42,6 +54,7 @@ public final class AsyncIngestionRunExecutor implements IngestionRunExecutor {
     private void runPipeline(IngestionRequest request) {
         try {
             IngestionRun completed = ingestionPipeline.run(request);
+            maybeGenerateEvalDrafts(completed);
             auditSink.record(AuditEvent.now(
                     null,
                     null,
@@ -82,6 +95,17 @@ public final class AsyncIngestionRunExecutor implements IngestionRunExecutor {
                     request.runId().toString(),
                     Map.of("error", failureMessage(exception))
             ));
+        }
+    }
+
+    private void maybeGenerateEvalDrafts(IngestionRun completed) {
+        if (evalDraftService == null) {
+            return;
+        }
+        try {
+            evalDraftService.onRunCompleted(completed);
+        } catch (RuntimeException ignored) {
+            // 评测草稿生成失败不应阻断入库主流程。
         }
     }
 

@@ -166,6 +166,7 @@ public class DefaultRetrievalTestService implements RunRetrievalTestUseCase {
                 Map.ofEntries(
                         Map.entry("retrievalPolicy", retrievalPolicy),
                         Map.entry("answerPolicy", answerPolicy),
+                        Map.entry("retrievalMode", stringValue(retrievalPolicy, "retrievalMode", "hybrid")),
                         Map.entry("fusion", stringValue(retrievalPolicy, "fusion", "score")),
                         Map.entry("rerank", stringValue(retrievalPolicy, "rerank", "none")),
                         Map.entry("balanceAcrossLibraries", booleanValue(retrievalPolicy, "balanceAcrossLibraries", false)),

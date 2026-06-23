@@ -9,10 +9,21 @@ import com.knowbase.application.observability.DefaultPipelineObserver;
 import com.knowbase.application.security.AccessControlService;
 import com.knowbase.application.service.DefaultAclService;
 import com.knowbase.application.service.DefaultChatService;
+import com.knowbase.application.service.DefaultDocumentChunkService;
+import com.knowbase.application.service.DefaultDocumentService;
+import com.knowbase.application.service.DefaultDocumentProfileService;
+import com.knowbase.application.service.DefaultIndexGenerationRebuildService;
 import com.knowbase.application.service.DefaultIndexVersionService;
+import com.knowbase.application.service.IndexGenerationService;
 import com.knowbase.application.service.DefaultAgentVersionService;
 import com.knowbase.application.service.DefaultEvalService;
 import com.knowbase.application.service.DefaultLibraryCatalogService;
+import com.knowbase.application.service.DefaultLibraryIndexHealthService;
+import com.knowbase.application.service.DefaultLibraryProfileService;
+import com.knowbase.application.service.DefaultLibraryRetrievalTestService;
+import com.knowbase.application.service.DefaultPromoteEvalGateService;
+import com.knowbase.application.service.DefaultRetrievalEvalService;
+import com.knowbase.application.service.RetrievalHitEvaluator;
 import com.knowbase.application.service.DefaultObjectUploadService;
 import com.knowbase.application.service.DefaultObservabilityService;
 import com.knowbase.application.service.InMemoryAccessControlRepository;
@@ -31,6 +42,7 @@ import com.knowbase.application.service.DefaultRetrievalTestService;
 import com.knowbase.application.service.DefaultTokenizerProfileService;
 import com.knowbase.application.service.InMemoryPresetRepository;
 import com.knowbase.application.service.InMemoryKnowbaseRepository;
+import com.knowbase.application.service.IngestionEvalDraftService;
 import com.knowbase.application.service.IngestionRunExecutor;
 import com.knowbase.application.service.SynchronousIngestionRunExecutor;
 import com.knowbase.domain.audit.AuditSink;
@@ -447,27 +459,41 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    IndexGenerationService indexGenerationService(KnowbaseRepository repository) {
+        return new IndexGenerationService(repository);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     IngestionPipeline ingestionPipeline(
             KnowbaseRepository repository,
             DocumentPreparationPipeline documentPreparationPipeline,
             EmbeddingModelClient embeddingModelClient,
             TokenizerRegistry tokenizerRegistry,
-            PipelineObserver pipelineObserver
+            PipelineObserver pipelineObserver,
+            IndexGenerationService indexGenerationService,
+            KnowbaseProperties properties
     ) {
         return new DefaultIngestionPipeline(
                 repository,
                 documentPreparationPipeline,
                 embeddingModelClient,
                 tokenizerRegistry,
-                pipelineObserver
+                pipelineObserver,
+                indexGenerationService::ensureActiveGeneration,
+                indexGenerationService::refreshGenerationStats,
+                properties.getIngestion().isDocumentUpsertEnabled()
         );
     }
 
     @Bean
     @ConditionalOnMissingBean(IngestionRunExecutor.class)
     @ConditionalOnProperty(prefix = "knowbase.ingestion", name = "async-enabled", havingValue = "false", matchIfMissing = true)
-    IngestionRunExecutor synchronousIngestionRunExecutor(IngestionPipeline ingestionPipeline) {
-        return new SynchronousIngestionRunExecutor(ingestionPipeline);
+    IngestionRunExecutor synchronousIngestionRunExecutor(
+            IngestionPipeline ingestionPipeline,
+            IngestionEvalDraftService evalDraftService
+    ) {
+        return new SynchronousIngestionRunExecutor(ingestionPipeline, evalDraftService);
     }
 
     @Bean
@@ -490,9 +516,10 @@ public class KnowbaseAutoConfiguration {
             KnowbaseRepository repository,
             IngestionPipeline ingestionPipeline,
             AuditSink auditSink,
-            @Qualifier("knowbaseIngestionExecutor") Executor knowbaseIngestionExecutor
+            @Qualifier("knowbaseIngestionExecutor") Executor knowbaseIngestionExecutor,
+            IngestionEvalDraftService evalDraftService
     ) {
-        return new AsyncIngestionRunExecutor(repository, ingestionPipeline, auditSink, knowbaseIngestionExecutor);
+        return new AsyncIngestionRunExecutor(repository, ingestionPipeline, auditSink, knowbaseIngestionExecutor, evalDraftService);
     }
 
     @Bean
@@ -578,9 +605,64 @@ public class KnowbaseAutoConfiguration {
     DefaultLibraryService defaultLibraryService(
             KnowbaseRepository repository,
             PresetCatalog presetCatalog,
-            AccessControlService accessControlService
+            AccessControlService accessControlService,
+            IndexGenerationService indexGenerationService
     ) {
-        return new DefaultLibraryService(repository, presetCatalog, accessControlService);
+        return new DefaultLibraryService(repository, presetCatalog, accessControlService, indexGenerationService);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultDocumentService.class)
+    DefaultDocumentService defaultDocumentService(
+            KnowbaseRepository repository,
+            AccessControlService accessControlService,
+            DefaultIngestionService ingestionService,
+            IndexGenerationService indexGenerationService,
+            DefaultObjectUploadService uploadService,
+            DocumentSourceLoader documentSourceLoader
+    ) {
+        return new DefaultDocumentService(
+                repository,
+                accessControlService,
+                ingestionService,
+                indexGenerationService,
+                uploadService,
+                documentSourceLoader
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultDocumentChunkService.class)
+    DefaultDocumentChunkService defaultDocumentChunkService(
+            KnowbaseRepository repository,
+            AccessControlService accessControlService,
+            EmbeddingModelClient embeddingModelClient,
+            TokenizerRegistry tokenizerRegistry
+    ) {
+        return new DefaultDocumentChunkService(
+                repository,
+                accessControlService,
+                embeddingModelClient,
+                tokenizerRegistry
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultIndexGenerationRebuildService.class)
+    DefaultIndexGenerationRebuildService defaultIndexGenerationRebuildService(
+            KnowbaseRepository repository,
+            AccessControlService accessControlService,
+            IndexGenerationService indexGenerationService,
+            DefaultIngestionService ingestionService,
+            DefaultIndexVersionService indexVersionService
+    ) {
+        return new DefaultIndexGenerationRebuildService(
+                repository,
+                accessControlService,
+                indexGenerationService,
+                ingestionService,
+                indexVersionService
+        );
     }
 
     @Bean
@@ -650,12 +732,115 @@ public class KnowbaseAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(DefaultIndexVersionService.class)
-    DefaultIndexVersionService defaultIndexVersionService(
+    @ConditionalOnMissingBean(DefaultLibraryIndexHealthService.class)
+    DefaultLibraryIndexHealthService defaultLibraryIndexHealthService(
+            KnowbaseRepository repository,
+            IndexGenerationService indexGenerationService,
+            DefaultPromoteEvalGateService promoteEvalGateService
+    ) {
+        return new DefaultLibraryIndexHealthService(repository, indexGenerationService, promoteEvalGateService);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultLibraryRetrievalTestService.class)
+    DefaultLibraryRetrievalTestService defaultLibraryRetrievalTestService(
+            KnowbaseRepository repository,
+            AccessControlService accessControlService,
+            QuestionAnalyzer questionAnalyzer,
+            RetrievalPlanner retrievalPlanner,
+            Retriever retriever,
+            RetrievalPostProcessor retrievalPostProcessor,
+            EvidenceBuilder evidenceBuilder,
+            ContextPacker contextPacker,
+            ChatModelClient chatModelClient,
+            TokenizerRegistry tokenizerRegistry
+    ) {
+        return new DefaultLibraryRetrievalTestService(
+                repository,
+                accessControlService,
+                questionAnalyzer,
+                retrievalPlanner,
+                retriever,
+                retrievalPostProcessor,
+                evidenceBuilder,
+                contextPacker,
+                chatModelClient,
+                tokenizerRegistry
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(RetrievalHitEvaluator.class)
+    RetrievalHitEvaluator retrievalHitEvaluator(KnowbaseRepository repository) {
+        return new RetrievalHitEvaluator(repository);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(IngestionEvalDraftService.class)
+    IngestionEvalDraftService ingestionEvalDraftService(KnowbaseRepository repository) {
+        return new IngestionEvalDraftService(repository);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultRetrievalEvalService.class)
+    DefaultRetrievalEvalService defaultRetrievalEvalService(
+            KnowbaseRepository repository,
+            AccessControlService accessControlService,
+            DefaultLibraryRetrievalTestService libraryRetrievalTestService,
+            RetrievalHitEvaluator hitEvaluator,
+            IngestionEvalDraftService evalDraftService
+    ) {
+        return new DefaultRetrievalEvalService(
+                repository,
+                accessControlService,
+                libraryRetrievalTestService,
+                hitEvaluator,
+                evalDraftService
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultPromoteEvalGateService.class)
+    DefaultPromoteEvalGateService defaultPromoteEvalGateService(
+            KnowbaseRepository repository,
+            DefaultRetrievalEvalService retrievalEvalService,
+            KnowbaseProperties properties
+    ) {
+        return new DefaultPromoteEvalGateService(
+                repository,
+                retrievalEvalService,
+                properties.getIngestion().isPromoteEvalGateEnabled()
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultDocumentProfileService.class)
+    DefaultDocumentProfileService defaultDocumentProfileService(
             KnowbaseRepository repository,
             AccessControlService accessControlService
     ) {
-        return new DefaultIndexVersionService(repository, accessControlService);
+        return new DefaultDocumentProfileService(repository, accessControlService);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultLibraryProfileService.class)
+    DefaultLibraryProfileService defaultLibraryProfileService(
+            KnowbaseRepository repository,
+            AccessControlService accessControlService,
+            DefaultLibraryIndexHealthService indexHealthService
+    ) {
+        return new DefaultLibraryProfileService(repository, accessControlService, indexHealthService);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DefaultIndexVersionService.class)
+    DefaultIndexVersionService defaultIndexVersionService(
+            KnowbaseRepository repository,
+            AccessControlService accessControlService,
+            IndexGenerationService indexGenerationService,
+            DefaultLibraryIndexHealthService indexHealthService
+    ) {
+        return new DefaultIndexVersionService(repository, accessControlService, indexGenerationService, indexHealthService);
     }
 
     @Bean

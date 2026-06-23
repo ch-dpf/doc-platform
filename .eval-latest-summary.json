@@ -1,0 +1,11 @@
+﻿{
+    "evalRunId":  "c0c0fa55-fc49-4f71-bea9-7f408d817ca3",
+    "totalSamples":  20,
+    "passedSamples":  15,
+    "recallAtK":  0.75,
+    "mrr":  0.4238095238095238,
+    "contextPrecisionAtK":  0.15,
+    "stratifiedRecall":  {
+                             "STRUCTURED_TABLE":  0.75
+                         }
+}

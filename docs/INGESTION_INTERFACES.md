@@ -68,6 +68,18 @@
 
 `PreparationStage` 支持 `PARSE`、`NORMALIZE`、`CHUNK`、`ALL`，用于预览、调试和分阶段验证。
 
+REST 层通过 `IngestionRunController` 暴露对应端点（详见 [API.md](./API.md) §3.10–3.11）：
+
+| HTTP | prepareStage |
+|------|----------------|
+| `POST .../ingestion/prepare/parse` | `parse` |
+| `POST .../ingestion/prepare/normalize` | `normalize` |
+| `POST .../ingestion/prepare/chunk` | `chunk` |
+| `POST .../ingestion/prepare` | `all` |
+| `POST .../ingestion/preview` | 预览切块，不写索引 |
+
+前端入库向导第二步调用 `prepare/chunk` 展示分段预览，确认后通过 `ingestion-runs/upload` 或 `ingestion-runs` 正式入库。
+
 ## 自动配置扩展
 
 `knowbase-autoconfigure` 默认注册：

@@ -87,8 +87,10 @@ public final class DefaultRetrievalPostProcessor implements RetrievalPostProcess
     private static List<RankedCandidate> reciprocalRankFusion(List<RankedCandidate> ranked, RetrievalPolicyView policy) {
         return ranked.stream()
                 .map(item -> {
-                    double score = (1.0d / (policy.rrfK() + item.globalRank()))
-                            + (1.0d / (policy.rrfK() + item.libraryRank()));
+                    int vectorRank = readInt(item.candidate().metadata(), "vectorRank", item.globalRank());
+                    int keywordRank = readInt(item.candidate().metadata(), "keywordRank", item.globalRank());
+                    double score = (1.0d / (policy.rrfK() + vectorRank))
+                            + (1.0d / (policy.rrfK() + keywordRank));
                     score += normalizedScore(item.candidate().score()) * policy.vectorScoreWeight();
                     score += readDouble(item.candidate().metadata(), "keywordScore", 0.0d) * policy.keywordScoreWeight();
                     return item.withScore(score);
@@ -187,6 +189,21 @@ public final class DefaultRetrievalPostProcessor implements RetrievalPostProcess
         }
         try {
             return Double.parseDouble(String.valueOf(value));
+        } catch (NumberFormatException exception) {
+            return defaultValue;
+        }
+    }
+
+    private static int readInt(Map<String, Object> metadata, String key, int defaultValue) {
+        if (metadata == null || metadata.get(key) == null) {
+            return defaultValue;
+        }
+        Object value = metadata.get(key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
         } catch (NumberFormatException exception) {
             return defaultValue;
         }

@@ -38,7 +38,7 @@
       <el-table v-if="libraries.length" :data="libraries" class="library-table data-table" stripe>
         <el-table-column prop="name" label="名称" min-width="160">
           <template #default="{ row }">
-            <span class="name-link">{{ row.name }}</span>
+            <span class="name-link" role="button" tabindex="0" @click="enterLibrary(row)" @keyup.enter="enterLibrary(row)">{{ row.name }}</span>
             <div class="row-meta">{{ row.description || '无描述' }}</div>
           </template>
         </el-table-column>
@@ -57,9 +57,10 @@
         <el-table-column label="更新时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.updatedAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDetail(row)">详情</el-button>
+            <el-button link type="primary" @click="enterLibrary(row)">进入</el-button>
+            <el-button link type="success" @click="enterLibrary(row, true)">上传</el-button>
             <el-button link type="danger" @click="confirmDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -129,29 +130,22 @@
         </el-table>
       </PageCard>
     </div>
-
-    <LibraryDetailDrawer
-      :visible="detailVisible"
-      :library="selectedLibrary"
-      @close="detailVisible = false"
-      @message="showMessage"
-    />
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
 import PageCard from '../components/PageCard.vue';
-import LibraryDetailDrawer from '../components/LibraryDetailDrawer.vue';
 import { createLibrary, deleteLibrary, pageLibraries, listLibraryTypePresets } from '../api';
 import { formatDateTime, formatNumber } from '../format';
+
+const router = useRouter();
 
 const libraries = ref([]);
 const total = ref(0);
 const pagination = ref({ page: 1, size: 10 });
-const detailVisible = ref(false);
-const selectedLibrary = ref(null);
 const libraryTypePresets = ref([
   { code: 'technical_docs', name: '技术文档库', description: '接口文档、部署文档、研发规范与配置说明', config: { chunkMaxTokens: 640, chunkOverlapTokens: 96 } },
   { code: 'general_docs', name: '通用文档库', description: '制度、说明、普通文本资料', config: { chunkMaxTokens: 512, chunkOverlapTokens: 64 } }
@@ -232,10 +226,6 @@ async function confirmDelete(library) {
   try {
     await deleteLibrary(library.libraryId);
     showMessage('知识库已删除', 'success');
-    if (detailVisible.value && selectedLibrary.value?.libraryId === library.libraryId) {
-      detailVisible.value = false;
-      selectedLibrary.value = null;
-    }
     if (libraries.value.length === 1 && pagination.value.page > 1) {
       pagination.value.page -= 1;
     }
@@ -273,9 +263,11 @@ function showMessage(text, type) {
   messageType.value = type;
 }
 
-function openDetail(library) {
-  selectedLibrary.value = library;
-  detailVisible.value = true;
+function enterLibrary(library, openUpload = false) {
+  router.push({
+    path: `/libraries/${library.libraryId}/documents`,
+    query: openUpload ? { upload: '1' } : {}
+  });
 }
 
 onMounted(async () => {
@@ -289,5 +281,10 @@ onMounted(async () => {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+}
+
+.name-link {
+  cursor: pointer;
+  color: var(--el-color-primary);
 }
 </style>

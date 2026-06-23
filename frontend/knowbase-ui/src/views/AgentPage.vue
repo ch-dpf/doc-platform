@@ -155,7 +155,7 @@
       </div>
     </PageCard>
 
-    <PageCard title="检索测试" subtitle="正式问答前验证多库路由、证据召回与上下文预算。">
+    <PageCard title="召回预览" subtitle="验证多库路由与证据召回；策略默认沿用智能体配置。">
       <el-form label-position="top" @submit.prevent="submitRetrievalTest">
         <div class="grid cols-2 compact-grid">
           <el-form-item label="智能体" required>
@@ -172,32 +172,33 @@
             <el-input-number v-model="retrievalTest.maxContextTokens" :min="256" class="full-width" />
           </el-form-item>
         </div>
-        <el-form-item label="问题">
+        <el-form-item label="问题" required>
           <el-input v-model="retrievalTest.question" type="textarea" :rows="2" />
         </el-form-item>
-        <el-form-item label="调试知识库 ID">
-          <el-input v-model="retrievalTest.debugLibraryIdsText" placeholder="可选，逗号分隔 UUID" />
-        </el-form-item>
-        <div class="grid cols-3 compact-grid">
-          <el-form-item label="融合策略">
-            <el-select v-model="retrievalTest.fusion" clearable class="full-width" placeholder="沿用智能体配置">
-              <el-option label="RRF 融合" value="rrf" />
-              <el-option label="分数排序" value="score" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="重排策略">
-            <el-select v-model="retrievalTest.rerank" clearable class="full-width" placeholder="沿用智能体配置">
-              <el-option label="MMR 多样性重排" value="mmr" />
-              <el-option label="不重排" value="none" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="候选上限">
-            <el-input-number v-model="retrievalTest.maxCandidates" :min="1" class="full-width" />
-          </el-form-item>
-        </div>
+        <el-collapse>
+          <el-collapse-item title="高级选项（临时覆盖智能体配置）" name="advanced">
+            <el-form-item label="限定调试知识库">
+              <el-input v-model="retrievalTest.debugLibraryIdsText" placeholder="可选，逗号分隔 UUID" />
+            </el-form-item>
+            <div class="grid cols-2 compact-grid">
+              <el-form-item label="融合策略">
+                <el-select v-model="retrievalTest.fusion" clearable class="full-width" placeholder="沿用智能体配置">
+                  <el-option label="RRF 融合" value="rrf" />
+                  <el-option label="分数排序" value="score" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="重排策略">
+                <el-select v-model="retrievalTest.rerank" clearable class="full-width" placeholder="沿用智能体配置">
+                  <el-option label="MMR 多样性重排" value="mmr" />
+                  <el-option label="不重排" value="none" />
+                </el-select>
+              </el-form-item>
+            </div>
+          </el-collapse-item>
+        </el-collapse>
         <el-form-item>
           <el-button type="primary" round :loading="retrievalTesting" native-type="submit">
-            {{ retrievalTesting ? '测试中...' : '运行检索测试' }}
+            {{ retrievalTesting ? '检索中…' : '运行召回预览' }}
           </el-button>
         </el-form-item>
       </el-form>
@@ -256,10 +257,8 @@ const retrievalTest = ref({
   question: '如何安装 PostgreSQL 和 pgvector？',
   debugLibraryIdsText: '',
   maxContextTokens: 4096,
-  fusion: 'rrf',
-  rerank: 'mmr',
-  maxCandidates: 24,
-  balanceAcrossLibraries: true
+  fusion: '',
+  rerank: ''
 });
 const form = ref({
   tenantId: 'default',
@@ -406,7 +405,7 @@ async function submitRetrievalTest() {
       retrievalPolicyOverride: buildRetrievalPolicyOverride(),
       answerPolicyOverride: { maxContextTokens: retrievalTest.value.maxContextTokens }
     });
-    showMessage('检索测试完成', 'success');
+    showMessage('召回预览完成', 'success');
   } catch (error) {
     showMessage(error.message, 'error');
   } finally {
@@ -423,11 +422,7 @@ function buildRetrievalPolicyOverride() {
   const policy = {};
   if (retrievalTest.value.fusion) policy.fusion = retrievalTest.value.fusion;
   if (retrievalTest.value.rerank) policy.rerank = retrievalTest.value.rerank;
-  if (retrievalTest.value.maxCandidates) policy.maxCandidates = retrievalTest.value.maxCandidates;
-  if (retrievalTest.value.balanceAcrossLibraries !== null) {
-    policy.balanceAcrossLibraries = retrievalTest.value.balanceAcrossLibraries;
-  }
-  return policy;
+  return Object.keys(policy).length ? policy : undefined;
 }
 
 onMounted(async () => {

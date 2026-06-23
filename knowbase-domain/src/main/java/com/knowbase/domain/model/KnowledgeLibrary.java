@@ -14,6 +14,7 @@ public record KnowledgeLibrary(
         LibraryStatus status,
         String libraryTypePresetCode,
         List<String> tags,
+        UUID activeIndexGenerationId,
         Instant createdAt,
         Instant updatedAt
 ) {
