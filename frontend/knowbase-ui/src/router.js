@@ -4,6 +4,7 @@ import LibraryPage from './views/LibraryPage.vue';
 import IngestionPage from './views/IngestionPage.vue';
 import AgentPage from './views/AgentPage.vue';
 import ObservabilityPage from './views/ObservabilityPage.vue';
+import PresetPage from './views/PresetPage.vue';
 import QaPage from './views/QaPage.vue';
 
 const routes = [
@@ -43,6 +44,15 @@ const routes = [
     meta: {
       title: '观测与评测',
       subtitle: '查看 Pipeline Trace、创建评测运行并追踪问答链路。'
+    }
+  },
+  {
+    path: '/presets',
+    name: 'presets',
+    component: PresetPage,
+    meta: {
+      title: '预设管理',
+      subtitle: '查看、创建与删除库类型预设和场景规则预设，浏览完整配置参数。'
     }
   },
   {

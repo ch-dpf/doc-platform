@@ -19,4 +19,8 @@ public interface PresetRepository {
     Optional<LibraryTypePreset> findLibraryTypePreset(String tenantId, String code);
 
     Optional<SceneRulePreset> findSceneRulePreset(String tenantId, String code);
+
+    void deleteLibraryTypePreset(String tenantId, String code);
+
+    void deleteSceneRulePreset(String tenantId, String code);
 }

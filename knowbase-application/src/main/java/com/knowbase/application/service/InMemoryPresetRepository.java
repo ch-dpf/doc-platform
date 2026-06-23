@@ -50,6 +50,16 @@ public final class InMemoryPresetRepository implements PresetRepository {
         return Optional.ofNullable(sceneRulePresets.get(key(tenantId, code)));
     }
 
+    @Override
+    public void deleteLibraryTypePreset(String tenantId, String code) {
+        libraryTypePresets.remove(key(tenantId, code));
+    }
+
+    @Override
+    public void deleteSceneRulePreset(String tenantId, String code) {
+        sceneRulePresets.remove(key(tenantId, code));
+    }
+
     private static String key(String tenantId, String code) {
         return (tenantId == null ? "" : tenantId) + ":" + code;
     }

@@ -49,14 +49,18 @@ KnowBase 对外提供两类稳定接口：
 
 用途：基于知识智能体执行一次问答运行，并查询问答运行结果。
 
-### 2.5 预设查询
+### 2.5 预设管理
 
 接口：`KnowbasePresetFacade`
 
+- `pageLibraryTypePresets(String tenantId, int page, int size)`
+- `getLibraryTypePreset(String tenantId, String code)`
 - `listLibraryTypePresets()`
+- `pageSceneRulePresets(String tenantId, int page, int size)`
+- `getSceneRulePreset(String tenantId, String code)`
 - `listSceneRulePresets()`
 
-用途：查询库类型预设与场景规则预设，供宿主服务或前端控制台在建库、创建智能体时选择默认策略模板。
+用途：分页查询、查看详情、创建与删除库类型预设和场景规则预设，供宿主服务或前端控制台在建库、创建智能体时选择或管理默认策略模板。
 
 ### 2.6 Tokenizer Profile
 
@@ -284,17 +288,19 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 
 响应 `data`：`QueryRunResult`
 
-### 3.12 查询库类型预设
+### 3.12 库类型预设
 
-`GET /api/v1/presets/library-types`
+- `GET /api/v1/presets/library-types?tenantId=&page=1&size=10` — 分页查询，响应 `data`：`PageResult<PresetResult>`
+- `GET /api/v1/presets/library-types/{code}?tenantId=` — 详情查询，响应 `data`：`PresetResult`
+- `POST /api/v1/presets/library-types` — 创建租户自定义预设，响应 `data`：`PresetResult`
+- `DELETE /api/v1/presets/library-types/{code}?tenantId=` — 删除租户自定义预设（系统内置不可删）
 
-响应 `data`：`PresetResult[]`
+### 3.13 场景规则预设
 
-### 3.13 查询场景规则预设
-
-`GET /api/v1/presets/scene-rules`
-
-响应 `data`：`PresetResult[]`
+- `GET /api/v1/presets/scene-rules?tenantId=&page=1&size=10` — 分页查询，响应 `data`：`PageResult<PresetResult>`
+- `GET /api/v1/presets/scene-rules/{code}?tenantId=` — 详情查询，响应 `data`：`PresetResult`
+- `POST /api/v1/presets/scene-rules` — 创建租户自定义预设，响应 `data`：`PresetResult`
+- `DELETE /api/v1/presets/scene-rules/{code}?tenantId=` — 删除租户自定义预设（系统内置不可删）
 
 ### 3.14 创建或更新 Tokenizer Profile
 

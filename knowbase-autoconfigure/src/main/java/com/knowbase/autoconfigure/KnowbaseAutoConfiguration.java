@@ -56,7 +56,7 @@ import com.knowbase.domain.observability.PipelineObserver;
 import com.knowbase.domain.repository.AccessControlRepository;
 import com.knowbase.domain.repository.ObservabilityRepository;
 import com.knowbase.application.service.DefaultIngestionService;
-import com.knowbase.application.usecase.ListPresetUseCase;
+import com.knowbase.application.usecase.ManagePresetUseCase;
 import com.knowbase.ingestion.QaDocumentParser;
 import com.knowbase.ingestion.ZipDocumentParser;
 import com.knowbase.ingestion.StructuredTableDocumentParser;
@@ -665,8 +665,8 @@ public class KnowbaseAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnMissingBean(ListPresetUseCase.class)
-    ListPresetUseCase listPresetUseCase(DefaultPresetService defaultPresetService) {
+    @ConditionalOnMissingBean(ManagePresetUseCase.class)
+    ManagePresetUseCase managePresetUseCase(DefaultPresetService defaultPresetService) {
         return defaultPresetService;
     }
 

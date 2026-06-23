@@ -182,4 +182,22 @@ public final class PostgresPresetRepository implements PresetRepository {
         );
         return presets.isEmpty() ? Optional.empty() : Optional.of(presets.getFirst());
     }
+
+    @Override
+    public void deleteLibraryTypePreset(String tenantId, String code) {
+        jdbcTemplate.update(
+                "DELETE FROM kb_library_type_preset WHERE tenant_id = ? AND code = ?",
+                tenantId,
+                code
+        );
+    }
+
+    @Override
+    public void deleteSceneRulePreset(String tenantId, String code) {
+        jdbcTemplate.update(
+                "DELETE FROM kb_scene_rule_preset WHERE tenant_id = ? AND code = ?",
+                tenantId,
+                code
+        );
+    }
 }

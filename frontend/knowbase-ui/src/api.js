@@ -32,12 +32,46 @@ export async function createLibrary(payload) {
   return unwrap(await http.post('/libraries', payload));
 }
 
-export async function listLibraryTypePresets() {
-  return unwrap(await http.get('/presets/library-types'));
+export async function pageLibraryTypePresets(params = {}) {
+  return unwrap(await http.get('/presets/library-types', { params }));
 }
 
-export async function listSceneRulePresets() {
-  return unwrap(await http.get('/presets/scene-rules'));
+export async function listLibraryTypePresets(params = {}) {
+  const data = await pageLibraryTypePresets({ page: 1, size: 200, ...params });
+  return data.items ?? [];
+}
+
+export async function getLibraryTypePreset(code, params = {}) {
+  return unwrap(await http.get(`/presets/library-types/${code}`, { params }));
+}
+
+export async function createLibraryTypePreset(payload) {
+  return unwrap(await http.post('/presets/library-types', payload));
+}
+
+export async function deleteLibraryTypePreset(code, tenantId) {
+  return unwrap(await http.delete(`/presets/library-types/${code}`, { params: { tenantId } }));
+}
+
+export async function pageSceneRulePresets(params = {}) {
+  return unwrap(await http.get('/presets/scene-rules', { params }));
+}
+
+export async function listSceneRulePresets(params = {}) {
+  const data = await pageSceneRulePresets({ page: 1, size: 200, ...params });
+  return data.items ?? [];
+}
+
+export async function getSceneRulePreset(code, params = {}) {
+  return unwrap(await http.get(`/presets/scene-rules/${code}`, { params }));
+}
+
+export async function createSceneRulePreset(payload) {
+  return unwrap(await http.post('/presets/scene-rules', payload));
+}
+
+export async function deleteSceneRulePreset(code, tenantId) {
+  return unwrap(await http.delete(`/presets/scene-rules/${code}`, { params: { tenantId } }));
 }
 
 export async function listTokenizerProfiles(params = {}) {
