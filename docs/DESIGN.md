@@ -745,9 +745,9 @@ Profile 必须版本化。索引版本引用创建该版本时使用的 Profile�
 12. 实现宿主 starter 自动配置。
 13. 实现独立应用打包与 Docker Compose。
 
-### 12.1 二期：复杂文档解析与分段质量增强
+### 12.1 二期：复杂文档解析、召回评测与知识库治理增强
 
-一期完成后，二期重点不替换现有 Java Pipeline，而是在 Parser、Normalizer、MetadataEnricher、Chunker SPI 上增强复杂文档质量。
+一期完成后，二期重点不替换现有 Java Pipeline，而是在 Parser、Normalizer、MetadataEnricher、Chunker SPI 上增强复杂文档质量，并补齐知识库配置、召回测试、评测治理和文档生命周期等产品化能力。
 
 二期范围：
 
@@ -757,6 +757,8 @@ Profile 必须版本化。索引版本引用创建该版本时使用的 Profile�
 4. 语义切分评测：建立 PDF、Excel、扫描件、Markdown 长文和代码配置文件的 chunk 边界回归集。
 5. 外部解析器适配：固化 Docling/Unstructured 风格 HTTP/JSON Schema，并允许按 Profile 启用。
 6. 管理与运维能力：补齐 Document Profile 管理、Library Profile 版本治理、入库任务运维、失败重试和 Pipeline 可观测。
+7. 召回测试与质量评测：增加知识库级召回沙盒、批量召回评测、recall@k/MRR/nDCG/citation 指标和发布质量门禁。
+8. 文档生命周期与同步：补齐文档删除、增量 upsert、单文档重建、数据源同步任务、索引清理和版本兼容策略。
 
 详细实施方案见 `docs/PHASE2_INGESTION_PLAN.md`。
 
