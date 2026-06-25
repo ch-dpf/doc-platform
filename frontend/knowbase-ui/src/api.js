@@ -8,6 +8,14 @@ const http = axios.create({
 
 http.interceptors.request.use(applyRequestHeaders);
 
+http.interceptors.response.use(
+  response => response,
+  error => {
+    const message = error.response?.data?.message || error.message || '请求失败';
+    return Promise.reject(new Error(message));
+  }
+);
+
 function unwrap(response) {
   if (!response.data?.success) {
     throw new Error(response.data?.message || '请求失败');
@@ -47,6 +55,14 @@ export async function listLibraryTypePresets(params = {}) {
 
 export async function getLibraryTypePreset(code, params = {}) {
   return unwrap(await http.get(`/presets/library-types/${code}`, { params }));
+}
+
+export async function getIngestionCatalog() {
+  return unwrap(await http.get('/presets/ingestion-catalog'));
+}
+
+export async function getLibraryTypePresetGuide(code, params = {}) {
+  return unwrap(await http.get(`/presets/library-types/${code}/product-guide`, { params }));
 }
 
 export async function createLibraryTypePreset(payload) {
@@ -91,7 +107,14 @@ export async function getIndexVersion(libraryId, indexVersionId) {
 }
 
 export async function listDocuments(libraryId, params = {}) {
-  return unwrap(await http.get(`/libraries/${libraryId}/documents`, { params }));
+  const data = await pageDocuments(libraryId, params);
+  return data.items ?? [];
+}
+
+export async function pageDocuments(libraryId, params = {}) {
+  return unwrap(await http.get(`/libraries/${libraryId}/documents`, {
+    params: { page: 1, size: 20, ...params }
+  }));
 }
 
 export async function getDocument(libraryId, documentId) {
@@ -107,6 +130,10 @@ export async function pageDocumentChunks(libraryId, documentId, params = {}) {
   return unwrap(await http.get(`/libraries/${libraryId}/documents/${documentId}/chunks`, {
     params: { page: 1, size: 20, ...params }
   }));
+}
+
+export async function getDocumentPipelineTrace(libraryId, documentId) {
+  return unwrap(await http.get(`/libraries/${libraryId}/documents/${documentId}/pipeline-trace`));
 }
 
 function parseContentDisposition(header) {
@@ -157,6 +184,10 @@ export async function updateDocumentChunk(libraryId, documentId, chunkId, payloa
 
 export async function deleteDocument(libraryId, documentId) {
   return unwrap(await http.delete(`/libraries/${libraryId}/documents/${documentId}`));
+}
+
+export async function batchDeleteDocuments(libraryId, documentIds) {
+  return unwrap(await http.post(`/libraries/${libraryId}/documents/batch-delete`, { documentIds }));
 }
 
 export async function reindexDocument(libraryId, documentId) {

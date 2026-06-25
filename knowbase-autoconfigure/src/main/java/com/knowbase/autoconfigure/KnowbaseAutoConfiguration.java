@@ -37,6 +37,7 @@ import com.knowbase.application.usecase.PrepareIngestionUseCase;
 import com.knowbase.application.usecase.PreviewIngestionUseCase;
 import com.knowbase.application.usecase.ManageTokenizerProfileUseCase;
 import com.knowbase.application.service.DefaultPresetService;
+import com.knowbase.application.service.IngestionCatalogService;
 import com.knowbase.application.service.DefaultQuestionService;
 import com.knowbase.application.service.DefaultRetrievalTestService;
 import com.knowbase.application.service.DefaultTokenizerProfileService;
@@ -48,6 +49,13 @@ import com.knowbase.application.service.SynchronousIngestionRunExecutor;
 import com.knowbase.domain.audit.AuditSink;
 import com.knowbase.domain.audit.NoopAuditSink;
 import com.knowbase.domain.repository.KnowbaseRepository;
+import com.knowbase.ingestion.ChunkPostProcessor;
+import com.knowbase.ingestion.CompositeChunkPostProcessor;
+import com.knowbase.ingestion.DocumentLlmSummaryGenerator;
+import com.knowbase.ingestion.summary.DocumentSummaryPromptCatalog;
+import com.knowbase.ingestion.summary.DocumentSummarySettings;
+import com.knowbase.ingestion.LlmDocumentSummaryPostProcessor;
+import com.knowbase.ingestion.StructuredTableChunkPostProcessor;
 import com.knowbase.ingestion.DocxStructureParser;
 import com.knowbase.ingestion.DefaultDocumentMetadataEnricher;
 import com.knowbase.ingestion.DocumentPreparationPipeline;
@@ -61,6 +69,7 @@ import com.knowbase.ingestion.OcrLayoutDocumentParser;
 import com.knowbase.ingestion.OcrDocumentParser;
 import com.knowbase.ingestion.PdfLayoutParser;
 import com.knowbase.ingestion.PdfStructureParser;
+import com.knowbase.ingestion.DocumentLlmSummaryRefresher;
 import com.knowbase.ingestion.DefaultIngestionPipeline;
 import com.knowbase.ingestion.DocumentSourceLoader;
 import com.knowbase.ingestion.IngestionPipeline;
@@ -91,6 +100,7 @@ import com.knowbase.retrieval.DefaultContextPacker;
 import com.knowbase.retrieval.DefaultEvidenceBuilder;
 import com.knowbase.retrieval.DefaultRetrievalPlanner;
 import com.knowbase.retrieval.DefaultRetrievalPostProcessor;
+import com.knowbase.retrieval.ParentChildRetrievalExpander;
 import com.knowbase.retrieval.EvidenceBuilder;
 import com.knowbase.retrieval.InMemoryVectorRetriever;
 import com.knowbase.agent.QuestionAnalyzer;
@@ -105,6 +115,7 @@ import com.knowbase.tokenizer.TokenWindowChunker;
 import com.knowbase.tokenizer.TokenizerGuard;
 import com.knowbase.tokenizer.TokenizerRegistry;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -339,17 +350,88 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    StructuredTableChunkPostProcessor structuredTableChunkPostProcessor() {
+        return new StructuredTableChunkPostProcessor();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    DocumentSummarySettings documentSummarySettings(KnowbaseProperties properties) {
+        KnowbaseProperties.Summary summary = properties.getIngestion().getSummary();
+        return new DocumentSummarySettings(
+                summary.getPromptId(),
+                summary.getLanguage(),
+                summary.getMaxInputChars(),
+                summary.getMaxOutputChars(),
+                summary.getMinInputChars(),
+                summary.getTemperature(),
+                summary.getMaxCompletionTokens()
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    DocumentLlmSummaryGenerator documentLlmSummaryGenerator(
+            ChatModelClient chatModelClient,
+            DocumentSummarySettings documentSummarySettings
+    ) {
+        return new DocumentLlmSummaryGenerator(
+                chatModelClient,
+                new DocumentSummaryPromptCatalog(),
+                documentSummarySettings
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    LlmDocumentSummaryPostProcessor llmDocumentSummaryPostProcessor(DocumentLlmSummaryGenerator documentLlmSummaryGenerator) {
+        return new LlmDocumentSummaryPostProcessor(documentLlmSummaryGenerator);
+    }
+
+    @Bean
+    @Primary
+    @ConditionalOnMissingBean(name = "chunkPostProcessor")
+    ChunkPostProcessor chunkPostProcessor(StructuredTableChunkPostProcessor structuredTableChunkPostProcessor) {
+        return CompositeChunkPostProcessor.of(structuredTableChunkPostProcessor);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    DocumentLlmSummaryRefresher documentLlmSummaryRefresher(
+            KnowbaseRepository repository,
+            DocumentLlmSummaryGenerator documentLlmSummaryGenerator,
+            LlmDocumentSummaryPostProcessor llmDocumentSummaryPostProcessor,
+            EmbeddingModelClient embeddingModelClient,
+            PipelineObserver pipelineObserver
+    ) {
+        return new DocumentLlmSummaryRefresher(
+                repository,
+                documentLlmSummaryGenerator,
+                llmDocumentSummaryPostProcessor,
+                embeddingModelClient,
+                pipelineObserver
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     DocumentPreparationPipeline documentPreparationPipeline(
             DocumentSourceLoader documentSourceLoader,
             DocumentNormalizer documentNormalizer,
             TokenBasedDocumentChunker tokenBasedDocumentChunker,
-            DocumentMetadataEnricher documentMetadataEnricher
+            DocumentMetadataEnricher documentMetadataEnricher,
+            ChunkPostProcessor chunkPostProcessor,
+            DocumentLlmSummaryGenerator documentLlmSummaryGenerator,
+            PipelineObserver pipelineObserver
     ) {
         return new DocumentPreparationPipeline(
                 documentSourceLoader,
                 documentNormalizer,
                 tokenBasedDocumentChunker,
-                documentMetadataEnricher
+                documentMetadataEnricher,
+                chunkPostProcessor,
+                documentLlmSummaryGenerator,
+                pipelineObserver
         );
     }
 
@@ -482,8 +564,21 @@ public class KnowbaseAutoConfiguration {
                 pipelineObserver,
                 indexGenerationService::ensureActiveGeneration,
                 indexGenerationService::refreshGenerationStats,
-                properties.getIngestion().isDocumentUpsertEnabled()
+                properties.getIngestion().isDocumentUpsertEnabled(),
+                null,
+                null
         );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(name = "knowbaseSummaryExecutor")
+    Executor knowbaseSummaryExecutor() {
+        return Executors.newFixedThreadPool(1, runnable -> {
+            Thread thread = new Thread(runnable);
+            thread.setName("knowbase-summary-" + thread.threadId());
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     @Bean
@@ -530,8 +625,14 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    RetrievalPostProcessor retrievalPostProcessor() {
-        return new DefaultRetrievalPostProcessor();
+    ParentChildRetrievalExpander parentChildRetrievalExpander(KnowbaseRepository repository) {
+        return new ParentChildRetrievalExpander(repository);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    RetrievalPostProcessor retrievalPostProcessor(ParentChildRetrievalExpander parentChildRetrievalExpander) {
+        return new DefaultRetrievalPostProcessor(parentChildRetrievalExpander);
     }
 
     @Bean
@@ -844,9 +945,19 @@ public class KnowbaseAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(IngestionCatalogService.class)
+    IngestionCatalogService ingestionCatalogService(CompositePresetCatalog presetCatalog) {
+        return new IngestionCatalogService(presetCatalog);
+    }
+
+    @Bean
     @ConditionalOnMissingBean(DefaultPresetService.class)
-    DefaultPresetService defaultPresetService(CompositePresetCatalog presetCatalog, PresetRepository presetRepository) {
-        return new DefaultPresetService(presetCatalog, presetRepository);
+    DefaultPresetService defaultPresetService(
+            CompositePresetCatalog presetCatalog,
+            PresetRepository presetRepository,
+            IngestionCatalogService ingestionCatalogService
+    ) {
+        return new DefaultPresetService(presetCatalog, presetRepository, ingestionCatalogService);
     }
 
     @Bean

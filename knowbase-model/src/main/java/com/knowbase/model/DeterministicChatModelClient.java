@@ -22,6 +22,9 @@ public final class DeterministicChatModelClient implements ChatModelClient {
 
     @Override
     public ChatCompletion complete(ChatRequest request) {
+        if ("document_summary".equals(ChatRequestSupport.purpose(request))) {
+            return new ChatCompletion("", 0, 0, "");
+        }
         String context = request.context() == null ? "" : request.context().trim();
         String question = request.userMessage() == null ? "" : request.userMessage().trim();
         if (context.isBlank()) {

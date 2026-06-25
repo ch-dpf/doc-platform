@@ -12,15 +12,7 @@
             <el-button type="primary" round :loading="loadingTrace" native-type="submit">查询 Trace</el-button>
           </el-form-item>
         </el-form>
-        <el-table v-if="traceSpans.length" :data="traceSpans" size="small" class="data-table">
-          <el-table-column prop="stage" label="阶段" width="120" />
-          <el-table-column prop="status" label="状态" width="100" />
-          <el-table-column label="耗时" width="90">
-            <template #default="{ row }">{{ row.durationMs ?? '--' }} ms</template>
-          </el-table-column>
-          <el-table-column prop="pipeline" label="Pipeline" width="100" />
-        </el-table>
-        <el-empty v-else description="输入 Trace ID 查询 Pipeline Span。" />
+        <PipelineTraceTimeline :spans="traceSpans" show-timestamps empty-text="输入 Trace ID 查询 Pipeline Span。" />
       </PageCard>
 
       <PageCard title="Pipeline Run 查询">
@@ -40,14 +32,7 @@
             <el-button type="primary" round :loading="loadingPipelineRun" native-type="submit">查询 Run</el-button>
           </el-form-item>
         </el-form>
-        <el-table v-if="runSpans.length" :data="runSpans" size="small" class="data-table">
-          <el-table-column prop="stage" label="阶段" width="120" />
-          <el-table-column prop="status" label="状态" width="100" />
-          <el-table-column label="耗时" width="90">
-            <template #default="{ row }">{{ row.durationMs ?? '--' }} ms</template>
-          </el-table-column>
-        </el-table>
-        <el-empty v-else description="按 pipeline + runId 查询 Span。" />
+        <PipelineTraceTimeline :spans="runSpans" show-timestamps empty-text="按 pipeline + runId 查询 Span。" />
       </PageCard>
     </div>
 
@@ -114,7 +99,9 @@
 
 <script setup>
 import { onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import PageCard from '../components/PageCard.vue';
+import PipelineTraceTimeline from '../components/PipelineTraceTimeline.vue';
 import {
   createEvalRun,
   getEvalRun,
@@ -125,6 +112,8 @@ import {
 } from '../api';
 import { requestContext } from '../context';
 import { formatPercent, shortId } from '../format';
+
+const route = useRoute();
 
 const message = ref('');
 const messageType = ref('success');
@@ -230,6 +219,23 @@ async function openEvalDetail(evalRunId) {
 }
 
 onMounted(async () => {
+  const queryTraceId = route.query.traceId;
+  const queryRunId = route.query.runId;
+  const queryPipeline = route.query.pipeline;
+  if (typeof queryTraceId === 'string' && queryTraceId.trim()) {
+    traceId.value = queryTraceId.trim();
+    await loadTrace();
+  }
+  if (typeof queryRunId === 'string' && queryRunId.trim()) {
+    pipelineRunId.value = queryRunId.trim();
+    if (typeof queryPipeline === 'string' && queryPipeline.trim()) {
+      pipelineName.value = queryPipeline.trim();
+    } else {
+      pipelineName.value = 'ingestion';
+    }
+    await loadPipelineRun();
+  }
+
   evalForm.value.tenantId = requestContext.tenantId;
   try {
     agents.value = await listAgents({ tenantId: requestContext.tenantId });

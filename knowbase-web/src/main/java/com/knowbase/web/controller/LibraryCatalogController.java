@@ -1,5 +1,6 @@
 package com.knowbase.web.controller;
 
+import com.knowbase.api.command.DeleteDocumentsCommand;
 import com.knowbase.api.command.CreateLibraryRetrievalTestCommand;
 import com.knowbase.api.command.CreateDocumentProfileCommand;
 import com.knowbase.api.command.GenerateRetrievalEvalDraftsCommand;
@@ -10,7 +11,9 @@ import com.knowbase.api.command.CreateRetrievalEvalRunCommand;
 import com.knowbase.api.command.CreateRetrievalEvalSampleCommand;
 import com.knowbase.api.command.UpdateDocumentChunkCommand;
 import com.knowbase.api.command.UpdateRetrievalEvalSampleCommand;
+import com.knowbase.api.result.BatchDeleteDocumentsResult;
 import com.knowbase.api.result.BatchReindexResult;
+import com.knowbase.api.result.DocumentPipelineTraceResult;
 import com.knowbase.api.result.DocumentChunkResult;
 import com.knowbase.api.result.DocumentDuplicateGroupResult;
 import com.knowbase.api.result.DocumentIndexJobResult;
@@ -461,13 +464,15 @@ public class LibraryCatalogController {
         ));
     }
 
-    @Operation(summary = "查询文档列表", description = "默认返回当前 active 索引代次下的文档，无需传 indexVersionId")
+    @Operation(summary = "查询文档列表", description = "分页返回当前 active 索引代次下的文档；默认 page=1、size=20，单页最多 100 条。可选 indexVersionId 指定代次")
     @GetMapping("/documents")
-    public ApiResponse<List<KnowledgeDocumentResult>> listDocuments(
+    public ApiResponse<PageResult<KnowledgeDocumentResult>> listDocuments(
             @PathVariable UUID libraryId,
-            @RequestParam(required = false) UUID indexVersionId
+            @RequestParam(required = false) UUID indexVersionId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
     ) {
-        return ApiResponse.ok(documentService.list(libraryId, indexVersionId));
+        return ApiResponse.ok(documentService.page(libraryId, indexVersionId, page, size));
     }
 
     @Operation(summary = "查询文档详情")
@@ -520,6 +525,15 @@ public class LibraryCatalogController {
         return ApiResponse.ok(null);
     }
 
+    @Operation(summary = "批量删除文档", description = "同步删除所选文档及其块与向量；跳过不属于当前知识库或已不存在的 ID")
+    @PostMapping("/documents/batch-delete")
+    public ApiResponse<BatchDeleteDocumentsResult> batchDeleteDocuments(
+            @PathVariable UUID libraryId,
+            @RequestBody DeleteDocumentsCommand command
+    ) {
+        return ApiResponse.ok(documentService.deleteBatch(libraryId, command.documentIds()));
+    }
+
     @Operation(summary = "重索引文档")
     @PostMapping("/documents/{documentId}/reindex")
     public ApiResponse<IngestionRunResult> reindexDocument(
@@ -550,7 +564,7 @@ public class LibraryCatalogController {
         return ApiResponse.ok(documentService.listDuplicateGroups(libraryId));
     }
 
-    @Operation(summary = "查询文档块列表", description = "分页返回文档块；默认 page=1、size=20，单页最多 100 条")
+    @Operation(summary = "查询文档块列表", description = "分页返回文档检索分块（不含 document_summary 摘要层）；默认 page=1、size=20，单页最多 100 条")
     @GetMapping("/documents/{documentId}/chunks")
     public ApiResponse<PageResult<DocumentChunkResult>> pageDocumentChunks(
             @PathVariable UUID libraryId,
@@ -559,6 +573,15 @@ public class LibraryCatalogController {
             @RequestParam(defaultValue = "20") int size
     ) {
         return ApiResponse.ok(catalogService.pageDocumentChunks(libraryId, documentId, page, size));
+    }
+
+    @Operation(summary = "查询文档入库 Pipeline Trace 定位信息", description = "返回最近一次入库 runId/traceId 与主线阶段 Span 查询入口；chunkCount 为当前检索分块数（不含 document_summary）")
+    @GetMapping("/documents/{documentId}/pipeline-trace")
+    public ApiResponse<DocumentPipelineTraceResult> getDocumentPipelineTrace(
+            @PathVariable UUID libraryId,
+            @PathVariable UUID documentId
+    ) {
+        return ApiResponse.ok(catalogService.getDocumentPipelineTrace(libraryId, documentId));
     }
 
     @Operation(summary = "更新文档块", description = "可编辑块内容（自动重向量化）或切换 retrievalEnabled 参与检索开关")

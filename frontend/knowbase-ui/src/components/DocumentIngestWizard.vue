@@ -332,6 +332,10 @@
           {{ latestRun.message || (polling ? '正在向量化并写入索引…' : '任务已提交') }}
         </p>
         <p class="row-meta">Run {{ shortId(latestRun.runId, 12) }} · {{ formatDateTime(latestRun.updatedAt) }}</p>
+        <p v-if="latestRun.traceId" class="row-meta">
+          Trace {{ shortId(latestRun.traceId, 12) }}
+          <el-button link type="primary" @click="openObservabilityTrace(latestRun.traceId)">在观测页查看</el-button>
+        </p>
         <p class="row-meta">入库策略：文档 INDEXED 后即可检索（active 代次 upsert）</p>
 
         <el-table v-if="ingestionErrors.length" :data="ingestionErrors" size="small" class="data-table" style="margin-top: 16px">
@@ -351,6 +355,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import PageCard from './PageCard.vue';
 import DocumentPickPanel from './DocumentPickPanel.vue';
 import {
@@ -369,6 +374,8 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['completed', 'message']);
+
+const router = useRouter();
 
 const MAX_FILES = 50;
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
@@ -572,6 +579,13 @@ function prepareDocumentTitle(document, stage) {
     return `${document.title || document.sourceUri} · ${document.chunk.chunkCount} 分段`;
   }
   return document.title || document.sourceUri;
+}
+
+function openObservabilityTrace(traceId) {
+  if (!traceId) {
+    return;
+  }
+  router.push({ path: '/observability', query: { traceId: String(traceId) } });
 }
 
 async function goToSegmentationStep() {

@@ -2,6 +2,8 @@ package com.knowbase.web.controller;
 
 import com.knowbase.api.command.CreateLibraryTypePresetCommand;
 import com.knowbase.api.command.CreateSceneRulePresetCommand;
+import com.knowbase.api.result.IngestionCatalogResult;
+import com.knowbase.api.result.LibraryTypePresetGuideResult;
 import com.knowbase.api.result.PageResult;
 import com.knowbase.api.result.PresetResult;
 import com.knowbase.application.usecase.ManagePresetUseCase;
@@ -47,6 +49,21 @@ public class PresetController {
             @Parameter(description = "租户 ID") @RequestParam(required = false) String tenantId
     ) {
         return ApiResponse.ok(managePresetUseCase.getLibraryTypePreset(tenantId, code));
+    }
+
+    @Operation(summary = "建仓入库产品目录", description = "解析器目录、文档 Profile 模板与三层配置说明")
+    @GetMapping("/ingestion-catalog")
+    public ApiResponse<IngestionCatalogResult> getIngestionCatalog() {
+        return ApiResponse.ok(managePresetUseCase.getIngestionCatalog());
+    }
+
+    @Operation(summary = "库类型预设产品说明", description = "中文场景说明、Profile 矩阵与变更影响提示")
+    @GetMapping("/library-types/{code}/product-guide")
+    public ApiResponse<LibraryTypePresetGuideResult> getLibraryTypePresetGuide(
+            @Parameter(description = "预设编码") @PathVariable String code,
+            @Parameter(description = "租户 ID") @RequestParam(required = false) String tenantId
+    ) {
+        return ApiResponse.ok(managePresetUseCase.getLibraryTypePresetGuide(tenantId, code));
     }
 
     @Operation(summary = "创建库类型预设")

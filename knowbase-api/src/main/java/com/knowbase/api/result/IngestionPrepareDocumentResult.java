@@ -11,12 +11,15 @@ public record IngestionPrepareDocumentResult(
         String title,
         String documentProfileCode,
         String contentFamily,
-        /** 实际执行阶段：parse | normalize | chunk | all */
+        /** 实际执行阶段：parse | normalize | document_summary | chunk | all */
         String prepareStage,
         /** 解析阶段结果；prepareStage 含 parse 时非空 */
         ParseStageResult parse,
         NormalizeStageResult normalize,
+        DocumentSummaryStageResult documentSummary,
         ChunkStageResult chunk,
+        /** 后处理阶段结果；prepareStage 含 post_process 时非空 */
+        PostProcessStageResult postProcess,
         String error
 ) {
 }

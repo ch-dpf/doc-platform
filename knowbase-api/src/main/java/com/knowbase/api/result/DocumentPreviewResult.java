@@ -20,6 +20,7 @@ public record DocumentPreviewResult(
         /** 解析阶段完整快照（含结构块预览） */
         ParseStageResult parse,
         NormalizeStageResult normalize,
+        PostProcessStageResult postProcess,
         String error
 ) {
 }

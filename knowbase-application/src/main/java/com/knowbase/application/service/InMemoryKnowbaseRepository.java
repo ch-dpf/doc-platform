@@ -326,6 +326,20 @@ public final class InMemoryKnowbaseRepository implements KnowbaseRepository {
 
     @Override
     public List<KnowledgeDocument> listDocuments(UUID libraryId, UUID indexVersionId) {
+        return filterDocuments(libraryId, indexVersionId);
+    }
+
+    @Override
+    public PagedList<KnowledgeDocument> pageDocuments(UUID libraryId, UUID indexVersionId, int page, int size) {
+        List<KnowledgeDocument> all = filterDocuments(libraryId, indexVersionId);
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.max(size, 1);
+        int fromIndex = Math.min((safePage - 1) * safeSize, all.size());
+        int toIndex = Math.min(fromIndex + safeSize, all.size());
+        return new PagedList<>(all.subList(fromIndex, toIndex), all.size(), safePage, safeSize);
+    }
+
+    private List<KnowledgeDocument> filterDocuments(UUID libraryId, UUID indexVersionId) {
         UUID generationFilter = indexVersionId;
         if (generationFilter == null) {
             generationFilter = findLibrary(libraryId)
@@ -501,6 +515,13 @@ public final class InMemoryKnowbaseRepository implements KnowbaseRepository {
                 .filter(job -> job.runId().equals(runId))
                 .sorted(java.util.Comparator.comparing(DocumentIndexJob::createdAt))
                 .toList();
+    }
+
+    @Override
+    public java.util.Optional<DocumentIndexJob> findLatestDocumentIndexJob(UUID documentId) {
+        return documentIndexJobs.values().stream()
+                .filter(job -> documentId.equals(job.documentId()))
+                .max(java.util.Comparator.comparing(DocumentIndexJob::updatedAt));
     }
 
     @Override

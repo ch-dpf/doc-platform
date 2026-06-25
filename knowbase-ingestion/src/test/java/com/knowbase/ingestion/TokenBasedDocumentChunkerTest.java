@@ -19,6 +19,68 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TokenBasedDocumentChunkerTest {
 
     @Test
+    void chunkEngineSmartUsesSentenceWindowChildren() {
+        UUID libraryId = UUID.randomUUID();
+        UUID documentId = UUID.randomUUID();
+        ParsedDocument document = new ParsedDocument(
+                "memory://guide.md",
+                "Guide",
+                "",
+                ContentFamily.RICH_TEXT,
+                Map.of(),
+                List.of(
+                        StructuralBlock.heading(1, "Overview", 0),
+                        StructuralBlock.paragraph("Alpha sentence one. Alpha sentence two.", 1),
+                        StructuralBlock.paragraph("Beta sentence three. Beta sentence four.", 2)
+                )
+        );
+        LibraryProfile libraryProfile = new LibraryProfile(
+                UUID.randomUUID(),
+                libraryId,
+                1,
+                "ollama",
+                "bge-m3",
+                1024,
+                null,
+                128,
+                16,
+                8,
+                Map.of(),
+                Instant.now()
+        );
+        DocumentProfile documentProfile = new DocumentProfile(
+                UUID.randomUUID(),
+                libraryId,
+                "default_markdown",
+                ContentFamily.RICH_TEXT,
+                "markdown-structure",
+                "structure_token_window",
+                null,
+                Map.of(),
+                Map.of("chunkEngine", "smart"),
+                true
+        );
+
+        List<DocumentChunk> chunks = new TokenBasedDocumentChunker(
+                new DefaultTokenizerRegistry(),
+                new DefaultTokenWindowChunker()
+        ).chunk(
+                libraryId,
+                documentId,
+                UUID.randomUUID(),
+                document,
+                libraryProfile,
+                documentProfile,
+                new ApproximateTokenizer("approx-test", "1"),
+                Map.of()
+        );
+
+        assertTrue(chunks.stream().anyMatch(chunk -> "smart".equals(chunk.metadata().get("chunkEngine"))));
+        assertTrue(chunks.stream().anyMatch(chunk -> "semantic+sentence-window".equals(chunk.metadata().get("strategy"))
+                || "pdf-page-section-hybrid".equals(chunk.metadata().get("strategy"))));
+    }
+
+    @Test
     void smartDefaultsUseTokenBudgetAfterCharacterFallback() {
         UUID libraryId = UUID.randomUUID();
         UUID documentId = UUID.randomUUID();
@@ -72,7 +134,11 @@ class TokenBasedDocumentChunkerTest {
         );
 
         assertTrue(chunks.size() > 1);
-        assertTrue(chunks.stream().allMatch(chunk -> chunk.tokenCount() <= 16));
-        assertTrue(chunks.stream().allMatch(chunk -> "flat".equals(chunk.metadata().get("chunkRole"))));
+        assertTrue(chunks.stream().anyMatch(chunk -> "parent".equals(chunk.metadata().get("chunkRole"))));
+        assertTrue(chunks.stream().anyMatch(chunk -> "child".equals(chunk.metadata().get("chunkRole"))));
+        assertTrue(chunks.stream().filter(chunk -> "child".equals(chunk.metadata().get("chunkRole")))
+                .allMatch(chunk -> chunk.tokenCount() <= 16));
+        assertTrue(chunks.stream().filter(chunk -> "parent".equals(chunk.metadata().get("chunkRole")))
+                .allMatch(chunk -> Boolean.FALSE.equals(chunk.metadata().get("indexable"))));
     }
 }

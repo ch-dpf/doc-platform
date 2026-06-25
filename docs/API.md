@@ -293,7 +293,7 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 
 响应 `data`：`PageResult<DocumentChunkResult>`（`items`、`total`、`page`、`size`）
 
-说明：按 `chunkId` 升序分页；单页最多 100 条。块结果包含 `content`、`tokenCount`、`tokenizerId`、`chunkBoundaryType` 与 `metadata`（含 `pageNumber`、`bbox`、`contentFamily`、`retrievalEnabled` 等）。
+说明：按 `chunkId` 升序分页；单页最多 100 条。返回的块列表与 `chunkCount` **不含** `document_summary` 摘要层（摘要仍参与检索，仅管理端文档详情不展示）。块结果包含 `content`、`tokenCount`、`tokenizerId`、`chunkBoundaryType` 与 `metadata`（含 `pageNumber`、`bbox`、`contentFamily`、`retrievalEnabled` 等）。
 
 #### 更新文档块
 
@@ -568,6 +568,8 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 
 - `GET /api/v1/presets/library-types?tenantId=&page=1&size=10` — 分页查询，响应 `data`：`PageResult<PresetResult>`
 - `GET /api/v1/presets/library-types/{code}?tenantId=` — 详情查询，响应 `data`：`PresetResult`
+- `GET /api/v1/presets/ingestion-catalog` — 建仓入库产品目录（解析器、文档 Profile 模板、三层配置说明）
+- `GET /api/v1/presets/library-types/{code}/product-guide?tenantId=` — 库类型预设中文产品说明（适合文件、Profile 矩阵、变更影响）
 - `POST /api/v1/presets/library-types` — 创建租户自定义预设，响应 `data`：`PresetResult`
 - `DELETE /api/v1/presets/library-types/{code}?tenantId=` — 删除租户自定义预设（系统内置不可删）
 

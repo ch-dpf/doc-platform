@@ -8,6 +8,8 @@ import com.knowbase.tokenizer.ModelTokenizer;
 import com.knowbase.tokenizer.TokenChunk;
 import com.knowbase.tokenizer.TokenWindowChunker;
 import com.knowbase.tokenizer.TokenizerGuard;
+import com.knowbase.ingestion.smart.SmartStructureDocumentChunker;
+import com.knowbase.ingestion.smart.SmartTableDocumentChunker;
 import com.knowbase.tokenizer.TokenizerRegistry;
 
 import java.util.ArrayList;
@@ -25,9 +27,11 @@ public final class TokenBasedDocumentChunker implements DocumentChunker {
     private final BoundaryAdjuster boundaryAdjuster = new BoundaryAdjuster();
     private final RecursiveCharacterSplitter recursiveCharacterSplitter = new RecursiveCharacterSplitter();
     private final CharacterWindowChunker characterWindowChunker = new CharacterWindowChunker();
+    private final SmartStructureDocumentChunker smartStructureDocumentChunker;
+    private final SmartTableDocumentChunker smartTableDocumentChunker;
 
     public TokenBasedDocumentChunker(TokenizerRegistry tokenizerRegistry, TokenWindowChunker tokenWindowChunker) {
-        this(tokenizerRegistry, tokenWindowChunker, new TokenizerGuard(true));
+        this(tokenizerRegistry, tokenWindowChunker, new TokenizerGuard(true), new SmartStructureDocumentChunker(), new SmartTableDocumentChunker());
     }
 
     public TokenBasedDocumentChunker(
@@ -35,9 +39,34 @@ public final class TokenBasedDocumentChunker implements DocumentChunker {
             TokenWindowChunker tokenWindowChunker,
             TokenizerGuard tokenizerGuard
     ) {
+        this(tokenizerRegistry, tokenWindowChunker, tokenizerGuard, new SmartStructureDocumentChunker(), new SmartTableDocumentChunker());
+    }
+
+    public TokenBasedDocumentChunker(
+            TokenizerRegistry tokenizerRegistry,
+            TokenWindowChunker tokenWindowChunker,
+            TokenizerGuard tokenizerGuard,
+            SmartStructureDocumentChunker smartStructureDocumentChunker
+    ) {
+        this(tokenizerRegistry, tokenWindowChunker, tokenizerGuard, smartStructureDocumentChunker, new SmartTableDocumentChunker());
+    }
+
+    public TokenBasedDocumentChunker(
+            TokenizerRegistry tokenizerRegistry,
+            TokenWindowChunker tokenWindowChunker,
+            TokenizerGuard tokenizerGuard,
+            SmartStructureDocumentChunker smartStructureDocumentChunker,
+            SmartTableDocumentChunker smartTableDocumentChunker
+    ) {
         this.tokenizerRegistry = tokenizerRegistry;
         this.tokenWindowChunker = tokenWindowChunker;
         this.tokenizerGuard = tokenizerGuard;
+        this.smartStructureDocumentChunker = smartStructureDocumentChunker == null
+                ? new SmartStructureDocumentChunker()
+                : smartStructureDocumentChunker;
+        this.smartTableDocumentChunker = smartTableDocumentChunker == null
+                ? new SmartTableDocumentChunker()
+                : smartTableDocumentChunker;
     }
 
     @Override
@@ -68,6 +97,30 @@ public final class TokenBasedDocumentChunker implements DocumentChunker {
             Map<String, Object> requestOptions
     ) {
         tokenizerGuard.validateForIndexing(tokenizer, profile.embeddingProvider(), profile.embeddingModel());
+        if (SmartTableDocumentChunker.shouldUse(document, documentProfile, requestOptions)) {
+            return smartTableDocumentChunker.chunk(
+                    libraryId,
+                    documentId,
+                    indexVersionId,
+                    document,
+                    profile,
+                    documentProfile,
+                    tokenizer,
+                    requestOptions
+            );
+        }
+        if (SmartStructureDocumentChunker.shouldUseSmartEngine(documentProfile, requestOptions)) {
+            return smartStructureDocumentChunker.chunk(
+                    libraryId,
+                    documentId,
+                    indexVersionId,
+                    document,
+                    profile,
+                    documentProfile,
+                    tokenizer,
+                    requestOptions
+            );
+        }
         SegmentationConfig config = SegmentationConfigResolver.resolve(profile, documentProfile, requestOptions);
         List<StructuralSegment> structuralSegments = structureSegmenter.segment(document, documentProfile);
         List<DocumentChunk> chunks = new ArrayList<>();

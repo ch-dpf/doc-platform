@@ -39,6 +39,14 @@ knowbase:
     async-enabled: false
     document-upsert-enabled: true
     promote-eval-gate-enabled: false
+    summary:
+      prompt-id: default_summary
+      language: the same language as the source content
+      max-input-chars: 16384
+      max-output-chars: 500
+      min-input-chars: 100
+      temperature: 0.3
+      max-completion-tokens: 2048
   storage:
 # 本地FS存储系统，默认本地文件系统对象存储根目录
 #    type: local

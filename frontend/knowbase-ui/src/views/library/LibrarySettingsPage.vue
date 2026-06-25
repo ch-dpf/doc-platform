@@ -1,5 +1,5 @@
 <template>
-  <PageCard title="库配置与运维" subtitle="Library Profile 版本治理、Document Profile、Promote 评测门禁与批量重索引。">
+  <PageCard title="库配置与运维" subtitle="管理本库实例的 L1 索引参数与 L2 文档路由；配置自建仓预设快照而来，修改预设模板不会自动同步。">
     <template #actions>
       <el-button round @click="$router.push({ name: 'library-retrieval-test' })">召回预览</el-button>
       <el-button round :loading="loading" @click="loadAll">刷新</el-button>
@@ -8,10 +8,21 @@
     <el-skeleton v-if="loading && !profile" :rows="8" animated />
 
     <template v-else-if="profile">
+      <el-alert
+        v-if="library?.libraryTypePresetCode"
+        type="info"
+        :closable="false"
+        show-icon
+        class="section-gap"
+        title="来源模板"
+        :description="`本库创建于「${presetGuide?.name || library.libraryTypePresetCode}」预设（${library.libraryTypePresetCode}）。下方为实例副本，与预设管理中的模板独立演化。`"
+      />
+
       <div class="section-head">
-        <h4 class="section-title">Library Profile · v{{ profile.version }}</h4>
+        <h4 class="section-title">L1 · Library Profile · v{{ profile.version }}</h4>
         <el-button type="primary" round @click="openProfileDialog">发布新版本</el-button>
       </div>
+      <p class="helper-text">索引不变量：Embedding 模型/维度、默认 chunk 上限。变更 Embedding 将触发索引漂移，需重建索引代次。</p>
       <el-descriptions :column="2" border size="small" class="profile-block">
         <el-descriptions-item label="Embedding">{{ profile.embeddingProvider }} / {{ profile.embeddingModel }}</el-descriptions-item>
         <el-descriptions-item label="维度">{{ profile.embeddingDimension }}</el-descriptions-item>
@@ -74,14 +85,32 @@
 
       <div class="section-gap">
         <div class="section-head">
-          <h4 class="section-title">Document Profile（L2）</h4>
+          <h4 class="section-title">L2 · Document Profile（文档类型路由）</h4>
           <el-button round @click="openDocProfileDialog()">新增</el-button>
         </div>
-        <el-table v-if="documentProfiles.length" :data="documentProfiles" size="small" stripe>
-          <el-table-column prop="code" label="Code" width="160" />
-          <el-table-column prop="contentFamily" label="族" width="100" />
-          <el-table-column prop="parserCode" label="Parser" width="140" />
-          <el-table-column prop="chunkingStrategy" label="分块" min-width="140" />
+        <p class="helper-text">按文件扩展名与内容族选择解析器与切块策略。修改 parser/切块后请对命中文档执行「重索引」。</p>
+        <el-table v-if="documentProfiles.length" :data="enrichedDocumentProfiles" size="small" stripe>
+          <el-table-column label="类型" min-width="120">
+            <template #default="{ row }">
+              <strong>{{ row.nameZh || row.code }}</strong>
+              <div class="row-meta">{{ row.code }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="contentFamily" label="族" width="110" />
+          <el-table-column label="解析器" min-width="130">
+            <template #default="{ row }">
+              {{ parserLabel(row.parserCode) }}
+              <el-tag v-if="findParser(row.parserCode)?.external" size="small" type="warning" class="mini-tag">外接</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="切块" min-width="130">
+            <template #default="{ row }">
+              {{ chunkingLabel(row.chunkingStrategy) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="扩展名" min-width="100" show-overflow-tooltip>
+            <template #default="{ row }">{{ (row.fileExtensions || []).join(', ') || '—' }}</template>
+          </el-table-column>
           <el-table-column label="启用" width="72">
             <template #default="{ row }">
               <el-tag size="small" :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '是' : '否' }}</el-tag>
@@ -96,6 +125,9 @@
           </el-table-column>
         </el-table>
         <el-empty v-else description="暂无 Document Profile" />
+        <ul v-if="presetGuide?.changeImpactHintsZh?.length" class="hint-list section-gap">
+          <li v-for="(hint, i) in presetGuide.changeImpactHintsZh" :key="i">{{ hint }}</li>
+        </ul>
       </div>
 
       <div class="section-gap">
@@ -134,13 +166,42 @@
     </template>
   </el-dialog>
 
-  <el-dialog v-model="docProfileDialogVisible" :title="editingDocProfile ? '编辑 Document Profile' : '新增 Document Profile'" width="560px">
+  <el-dialog v-model="docProfileDialogVisible" :title="editingDocProfile ? '编辑 Document Profile' : '新增 Document Profile'" width="620px">
     <el-form label-position="top">
-      <el-form-item label="Code"><el-input v-model="docProfileForm.code" :disabled="!!editingDocProfile" /></el-form-item>
-      <el-form-item label="Content Family"><el-input v-model="docProfileForm.contentFamily" placeholder="RICH_TEXT" /></el-form-item>
-      <el-form-item label="Parser"><el-input v-model="docProfileForm.parserCode" /></el-form-item>
-      <el-form-item label="Chunking"><el-input v-model="docProfileForm.chunkingStrategy" /></el-form-item>
-      <el-form-item label="启用"><el-switch v-model="docProfileForm.enabled" /></el-form-item>
+      <el-form-item label="Code（不可变）">
+        <el-input v-model="docProfileForm.code" :disabled="!!editingDocProfile" placeholder="如 default_docx" />
+      </el-form-item>
+      <el-form-item label="Content Family（不可变）">
+        <el-input v-model="docProfileForm.contentFamily" :disabled="!!editingDocProfile" placeholder="RICH_TEXT" />
+      </el-form-item>
+      <el-form-item label="解析器（可更换）">
+        <el-select v-model="docProfileForm.parserCode" filterable class="full-width">
+          <el-option
+            v-for="p in catalog?.parsers || []"
+            :key="p.code"
+            :label="`${p.nameZh}（${p.code}）`"
+            :value="p.code"
+          >
+            <span>{{ p.nameZh }}</span>
+            <el-tag size="small" :type="p.external ? 'warning' : 'info'" class="mini-tag">{{ p.external ? '外接' : '内置' }}</el-tag>
+          </el-option>
+        </el-select>
+        <p v-if="selectedParser" class="helper-text">{{ selectedParser.descriptionZh }}</p>
+      </el-form-item>
+      <el-form-item label="切块策略（可更换）">
+        <el-select v-model="docProfileForm.chunkingStrategy" filterable class="full-width">
+          <el-option
+            v-for="s in chunkingOptions"
+            :key="s.value"
+            :label="s.label"
+            :value="s.value"
+          />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="启用">
+        <el-switch v-model="docProfileForm.enabled" />
+      </el-form-item>
+      <el-alert type="warning" :closable="false" show-icon title="变更影响" description="保存后请对命中该 Profile 的文档执行「重索引」，新上传文件将使用新策略。" />
     </el-form>
     <template #footer>
       <el-button @click="docProfileDialogVisible = false">取消</el-button>
@@ -153,12 +214,14 @@
 import { computed, onMounted, ref } from 'vue';
 import PageCard from '../../components/PageCard.vue';
 import { useLibraryWorkspace } from '../../composables/libraryWorkspace';
+import { useIngestionCatalog } from '../../composables/useIngestionCatalog';
 import {
   bootstrapRetrievalEvalSamples,
   createDocumentProfile,
   createLibraryProfileVersion,
   deleteDocumentProfile,
   getLibraryProfile,
+  getLibraryTypePresetGuide,
   getPromoteEvalGate,
   getRetrievalEvalBaseline,
   listDocumentDuplicates,
@@ -170,9 +233,11 @@ import {
 } from '../../api';
 import { formatDateTime, percent } from '../../format';
 
-const { libraryId, reloadIndexHealth, showMessage } = useLibraryWorkspace();
+const { libraryId, library, reloadIndexHealth, showMessage } = useLibraryWorkspace();
+const { catalog, ensureCatalog, parserLabel, chunkingLabel, findParser, findProfileTemplate } = useIngestionCatalog();
 
 const profile = ref(null);
+const presetGuide = ref(null);
 const profileVersions = ref([]);
 const documentProfiles = ref([]);
 const evalGate = ref(null);
@@ -208,6 +273,38 @@ const gateDescription = computed(() => {
   return parts.join('；') || '请配置评测集并运行评测报告';
 });
 
+const enrichedDocumentProfiles = computed(() =>
+  documentProfiles.value.map((row) => {
+    const template = findProfileTemplate(row.code);
+    return {
+      ...row,
+      nameZh: template?.nameZh,
+      fileExtensions: template?.fileExtensions
+    };
+  })
+);
+
+const selectedParser = computed(() => findParser(docProfileForm.value.parserCode));
+
+const chunkingOptions = computed(() => {
+  const fromCatalog = (catalog.value?.documentProfiles || []).map((p) => ({
+    value: p.defaultChunkingStrategy,
+    label: p.chunkingStrategyLabelZh || p.defaultChunkingStrategy
+  }));
+  const seen = new Set();
+  const options = [];
+  for (const item of fromCatalog) {
+    if (!seen.has(item.value)) {
+      seen.add(item.value);
+      options.push(item);
+    }
+  }
+  if (docProfileForm.value.chunkingStrategy && !seen.has(docProfileForm.value.chunkingStrategy)) {
+    options.push({ value: docProfileForm.value.chunkingStrategy, label: docProfileForm.value.chunkingStrategy });
+  }
+  return options;
+});
+
 function emptyProfileForm() {
   return {
     embeddingProvider: 'ollama',
@@ -233,13 +330,19 @@ function formatOption(key, fallback) {
 async function loadAll() {
   loading.value = true;
   try {
-    const [profileData, versions, gateData, baselineData, docProfiles, dupData] = await Promise.all([
+    await ensureCatalog();
+    const presetCode = library.value?.libraryTypePresetCode;
+    const guidePromise = presetCode
+      ? getLibraryTypePresetGuide(presetCode).catch(() => null)
+      : Promise.resolve(null);
+    const [profileData, versions, gateData, baselineData, docProfiles, dupData, guideData] = await Promise.all([
       getLibraryProfile(libraryId.value),
       listLibraryProfileVersions(libraryId.value),
       getPromoteEvalGate(libraryId.value),
       getRetrievalEvalBaseline(libraryId.value).catch(() => null),
       listDocumentProfiles(libraryId.value),
-      listDocumentDuplicates(libraryId.value)
+      listDocumentDuplicates(libraryId.value),
+      guidePromise
     ]);
     profile.value = profileData;
     profileVersions.value = versions;
@@ -247,6 +350,7 @@ async function loadAll() {
     baseline.value = baselineData;
     documentProfiles.value = docProfiles;
     duplicates.value = dupData;
+    presetGuide.value = guideData;
   } catch (error) {
     showMessage(error.message, 'error');
   } finally {
@@ -385,4 +489,9 @@ onMounted(loadAll);
 .section-title { margin: 0; font-size: 14px; font-weight: 600; }
 .action-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .meta-bar { margin-top: 12px; color: var(--el-text-color-secondary); font-size: 13px; }
+.helper-text { margin: 0 0 8px; font-size: 13px; color: var(--el-text-color-secondary); }
+.row-meta { font-size: 12px; color: var(--el-text-color-secondary); }
+.hint-list { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--el-text-color-regular); line-height: 1.6; }
+.mini-tag { margin-left: 6px; }
+.full-width { width: 100%; }
 </style>

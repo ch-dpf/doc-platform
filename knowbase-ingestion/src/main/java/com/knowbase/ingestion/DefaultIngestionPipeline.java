@@ -22,11 +22,13 @@ import com.knowbase.tokenizer.TokenizerRegistry;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.concurrent.Executor;
 
 public final class DefaultIngestionPipeline implements IngestionPipeline {
 
@@ -38,6 +40,8 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
     private final Function<UUID, UUID> activeGenerationResolver;
     private final Consumer<UUID> generationStatsRefresher;
     private final boolean documentUpsertEnabled;
+    private final DocumentLlmSummaryRefresher documentLlmSummaryRefresher;
+    private final Executor summaryExecutor;
     private final DocumentSourceUriExpander sourceUriExpander = new DocumentSourceUriExpander();
     private final DocumentProfileResolver documentProfileResolver = new DocumentProfileResolver();
 
@@ -90,6 +94,32 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
             Consumer<UUID> generationStatsRefresher,
             boolean documentUpsertEnabled
     ) {
+        this(
+                repository,
+                documentPreparationPipeline,
+                embeddingModelClient,
+                tokenizerRegistry,
+                pipelineObserver,
+                activeGenerationResolver,
+                generationStatsRefresher,
+                documentUpsertEnabled,
+                null,
+                null
+        );
+    }
+
+    public DefaultIngestionPipeline(
+            KnowbaseRepository repository,
+            DocumentPreparationPipeline documentPreparationPipeline,
+            EmbeddingModelClient embeddingModelClient,
+            TokenizerRegistry tokenizerRegistry,
+            PipelineObserver pipelineObserver,
+            Function<UUID, UUID> activeGenerationResolver,
+            Consumer<UUID> generationStatsRefresher,
+            boolean documentUpsertEnabled,
+            DocumentLlmSummaryRefresher documentLlmSummaryRefresher,
+            Executor summaryExecutor
+    ) {
         this.repository = repository;
         this.documentPreparationPipeline = documentPreparationPipeline;
         this.embeddingModelClient = embeddingModelClient;
@@ -98,6 +128,8 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
         this.activeGenerationResolver = activeGenerationResolver;
         this.generationStatsRefresher = generationStatsRefresher;
         this.documentUpsertEnabled = documentUpsertEnabled;
+        this.documentLlmSummaryRefresher = documentLlmSummaryRefresher;
+        this.summaryExecutor = summaryExecutor;
     }
 
     @Override
@@ -143,7 +175,13 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 "正在执行入库 Pipeline，已展开 " + sourceUris.size() + " 个文档来源"
         );
         repository.saveIngestionRun(running);
-        UUID ingestSpan = pipelineObserver.startSpan("ingestion", request.runId(), "pipeline", Map.of("libraryId", request.libraryId().toString()));
+        UUID traceId = UUID.randomUUID();
+        UUID ingestSpan = pipelineObserver.startSpan(
+                "ingestion",
+                request.runId(),
+                "pipeline",
+                spanAttributes(traceId, Map.of("libraryId", request.libraryId().toString()))
+        );
 
         UUID targetGenerationId = resolveTargetGeneration(request.libraryId(), requestOptions);
         boolean deferDocumentGeneration = IngestionPipelineOptions.deferDocumentGenerationUpdate(requestOptions);
@@ -154,7 +192,12 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
         List<String> failureMessages = new ArrayList<>();
 
         for (String sourceUri : sourceUris) {
-            UUID documentSpan = pipelineObserver.startSpan("ingestion", request.runId(), "document", Map.of("sourceUri", sourceUri));
+            UUID documentSpan = pipelineObserver.startSpan(
+                    "ingestion",
+                    request.runId(),
+                    "document",
+                    spanAttributes(traceId, Map.of("sourceUri", sourceUri))
+            );
             DocumentIndexJob indexJob = DocumentIndexJobProgress.start(repository, request.runId(), request.libraryId(), sourceUri);
             KnowledgeDocument document = null;
             try {
@@ -203,6 +246,12 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 );
                 document = DocumentIndexJobProgress.advanceDocument(repository, document, DocumentStatus.NORMALIZING, "正在清洗与规范化");
 
+                IngestionTraceContext traceContext = new IngestionTraceContext(
+                        traceId,
+                        request.runId(),
+                        document.documentId(),
+                        sourceUri
+                );
                 DocumentPreparationResult prepared = documentPreparationPipeline.prepare(
                         sourceUri,
                         sourceOptions,
@@ -212,7 +261,8 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                         profile,
                         documentProfile,
                         tokenizer,
-                        PreparationStage.CHUNK
+                        PreparationStage.CHUNK,
+                        traceContext
                 );
                 List<DocumentChunk> chunks = prepared.chunks();
                 List<DocumentChunk> indexableChunks = chunks.stream()
@@ -237,7 +287,24 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 );
                 document = DocumentIndexJobProgress.advanceDocument(repository, document, DocumentStatus.EMBEDDING, "正在向量化");
 
-                List<float[]> embeddings = embedChunks(embeddingModelClient, profile, indexableChunks);
+                List<float[]> embeddings;
+                UUID embedSpan = pipelineObserver.startSpan(
+                        "ingestion",
+                        request.runId(),
+                        "embed_chunks",
+                        spanAttributes(traceId, Map.of(
+                                "sourceUri", sourceUri,
+                                "documentId", document.documentId().toString(),
+                                "indexableChunks", indexableChunks.size()
+                        ))
+                );
+                try {
+                    embeddings = embedChunks(embeddingModelClient, profile, indexableChunks);
+                    pipelineObserver.finishSpan(embedSpan, "SUCCEEDED", Map.of("vectors", indexableChunks.size()));
+                } catch (RuntimeException exception) {
+                    pipelineObserver.finishSpan(embedSpan, "FAILED", Map.of("error", exception.getMessage()));
+                    throw exception;
+                }
                 List<IndexedChunk> indexedChunks = new ArrayList<>();
                 for (int index = 0; index < indexableChunks.size(); index++) {
                     indexedChunks.add(new IndexedChunk(indexableChunks.get(index), embeddings.get(index)));
@@ -248,7 +315,23 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                     }
                 }
 
-                repository.replaceDocumentChunks(document.documentId(), indexedChunks);
+                UUID writeSpan = pipelineObserver.startSpan(
+                        "ingestion",
+                        request.runId(),
+                        "write_index",
+                        spanAttributes(traceId, Map.of(
+                                "sourceUri", sourceUri,
+                                "documentId", document.documentId().toString(),
+                                "chunksWritten", indexedChunks.size()
+                        ))
+                );
+                try {
+                    repository.replaceDocumentChunks(document.documentId(), indexedChunks);
+                    pipelineObserver.finishSpan(writeSpan, "SUCCEEDED", Map.of("chunksWritten", indexedChunks.size()));
+                } catch (RuntimeException exception) {
+                    pipelineObserver.finishSpan(writeSpan, "FAILED", Map.of("error", exception.getMessage()));
+                    throw exception;
+                }
                 Instant indexedAt = Instant.now();
                 String title = prepared.parsed().title();
                 UUID documentGenerationId = deferDocumentGeneration
@@ -308,7 +391,7 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                     0,
                     targetGenerationId,
                     "入库失败：没有成功生成任何文本块" + formatFailures(failureMessages),
-                    running.options(),
+                    withTraceId(running.options(), traceId),
                     running.createdAt(),
                     Instant.now()
             );
@@ -340,7 +423,7 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 finalStatus == IngestionRunStatus.SUCCEEDED
                         ? "入库完成，" + succeeded + " 个文档已写入当前索引代次"
                         : "入库部分成功，请检查失败文档" + formatFailures(failureMessages),
-                running.options(),
+                withTraceId(running.options(), traceId),
                 running.createdAt(),
                 Instant.now()
         );
@@ -427,7 +510,13 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 "正在执行入库 Pipeline（快照模式），已展开 " + sourceUris.size() + " 个文档来源"
         );
         repository.saveIngestionRun(running);
-        UUID ingestSpan = pipelineObserver.startSpan("ingestion", request.runId(), "pipeline", Map.of("libraryId", request.libraryId().toString()));
+        UUID traceId = UUID.randomUUID();
+        UUID ingestSpan = pipelineObserver.startSpan(
+                "ingestion",
+                request.runId(),
+                "pipeline",
+                spanAttributes(traceId, Map.of("libraryId", request.libraryId().toString()))
+        );
 
         UUID draftIndexVersionId = UUID.randomUUID();
         IndexVersion draftIndex = new IndexVersion(
@@ -450,7 +539,12 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
         List<String> failureMessages = new ArrayList<>();
 
         for (String sourceUri : sourceUris) {
-            UUID documentSpan = pipelineObserver.startSpan("ingestion", request.runId(), "document", Map.of("sourceUri", sourceUri));
+            UUID documentSpan = pipelineObserver.startSpan(
+                    "ingestion",
+                    request.runId(),
+                    "document",
+                    spanAttributes(traceId, Map.of("sourceUri", sourceUri))
+            );
             try {
                 DocumentProfile resolvedProfile = documentProfileResolver.resolve(
                         sourceUri,
@@ -471,6 +565,12 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 ModelTokenizer tokenizer = resolveTokenizer(profile, tokenizerProfile);
                 sourceOptions = withTokenizerMetadata(sourceOptions, tokenizerProfile, tokenizer);
                 UUID documentId = UUID.randomUUID();
+                IngestionTraceContext traceContext = new IngestionTraceContext(
+                        traceId,
+                        request.runId(),
+                        documentId,
+                        sourceUri
+                );
                 DocumentPreparationResult prepared = documentPreparationPipeline.prepare(
                         sourceUri,
                         sourceOptions,
@@ -480,7 +580,8 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                         profile,
                         documentProfile,
                         tokenizer,
-                        PreparationStage.CHUNK
+                        PreparationStage.CHUNK,
+                        traceContext
                 );
                 List<DocumentChunk> chunks = prepared.chunks();
                 List<DocumentChunk> indexableChunks = chunks.stream()
@@ -521,7 +622,7 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                     0,
                     null,
                     "入库失败：没有成功生成任何文本块" + formatFailures(failureMessages),
-                    running.options(),
+                    withTraceId(running.options(), traceId),
                     running.createdAt(),
                     Instant.now()
             );
@@ -581,7 +682,7 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 finalStatus == IngestionRunStatus.SUCCEEDED
                         ? "入库完成，已发布索引快照 v" + draftIndex.version()
                         : "入库部分成功，请检查失败文档" + formatFailures(failureMessages),
-                running.options(),
+                withTraceId(running.options(), traceId),
                 running.createdAt(),
                 Instant.now()
         );
@@ -625,6 +726,36 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 error,
                 document.createdAt(),
                 now
+        );
+    }
+
+    private void scheduleDocumentLlmSummary(
+            IngestionTraceContext traceContext,
+            UUID runId,
+            UUID documentId,
+            String sourceUri,
+            DocumentPreparationResult prepared,
+            LibraryProfile libraryProfile,
+            DocumentProfile documentProfile,
+            ModelTokenizer tokenizer,
+            Map<String, Object> sourceOptions
+    ) {
+        if (documentLlmSummaryRefresher == null || summaryExecutor == null) {
+            return;
+        }
+        documentLlmSummaryRefresher.scheduleAfterIndex(
+                summaryExecutor,
+                new DocumentLlmSummaryRefresher.DocumentLlmSummaryRefreshRequest(
+                        traceContext == null ? null : traceContext.traceId(),
+                        runId,
+                        documentId,
+                        sourceUri,
+                        prepared.parsed(),
+                        libraryProfile,
+                        documentProfile,
+                        tokenizer,
+                        sourceOptions
+                )
         );
     }
 
@@ -732,6 +863,18 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
             return "";
         }
         return "；失败样例：" + String.join("；", failureMessages.stream().limit(3).toList());
+    }
+
+    private static Map<String, Object> spanAttributes(UUID traceId, Map<String, Object> attributes) {
+        Map<String, Object> merged = new HashMap<>(attributes == null ? Map.of() : attributes);
+        merged.put("traceId", traceId.toString());
+        return Map.copyOf(merged);
+    }
+
+    private static Map<String, Object> withTraceId(Map<String, Object> options, UUID traceId) {
+        Map<String, Object> merged = new HashMap<>(options == null ? Map.of() : options);
+        merged.put("traceId", traceId.toString());
+        return Map.copyOf(merged);
     }
 
     private static IngestionRun updateStatus(

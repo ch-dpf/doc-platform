@@ -2,11 +2,13 @@ package com.knowbase.application.service;
 
 import com.knowbase.api.result.DocumentChunkResult;
 import com.knowbase.api.result.DocumentIndexJobResult;
+import com.knowbase.api.result.DocumentPipelineTraceResult;
 import com.knowbase.api.result.IndexVersionResult;
 import com.knowbase.api.result.IngestionDocumentErrorResult;
 import com.knowbase.api.result.IngestionRunResult;
 import com.knowbase.api.result.KnowledgeDocumentResult;
 import com.knowbase.api.result.PageResult;
+import com.knowbase.application.mapper.DocumentChunkPresentation;
 import com.knowbase.application.mapper.ResultMapper;
 import com.knowbase.application.security.AccessControlService;
 import com.knowbase.domain.model.DocumentChunk;
@@ -68,7 +70,7 @@ public final class DefaultLibraryCatalogService {
         repository.findDocument(documentId)
                 .filter(item -> item.libraryId().equals(libraryId))
                 .orElseThrow(() -> new ResourceNotFoundException("文档不存在: " + documentId));
-        return repository.listChunksByDocument(documentId).stream()
+        return DocumentChunkPresentation.excludeSummaryChunks(repository.listChunksByDocument(documentId)).stream()
                 .map(DefaultLibraryCatalogService::toChunkResult)
                 .toList();
     }
@@ -80,11 +82,13 @@ public final class DefaultLibraryCatalogService {
                 .orElseThrow(() -> new ResourceNotFoundException("文档不存在: " + documentId));
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), 100);
-        var paged = repository.pageChunksByDocument(documentId, safePage, safeSize);
-        List<DocumentChunkResult> items = paged.items().stream()
+        List<DocumentChunk> visibleChunks = DocumentChunkPresentation.excludeSummaryChunks(
+                repository.listChunksByDocument(documentId)
+        );
+        List<DocumentChunkResult> items = DocumentChunkPresentation.page(visibleChunks, safePage, safeSize).stream()
                 .map(DefaultLibraryCatalogService::toChunkResult)
                 .toList();
-        return new PageResult<>(items, paged.total(), safePage, safeSize);
+        return new PageResult<>(items, visibleChunks.size(), safePage, safeSize);
     }
 
     public List<IngestionDocumentErrorResult> listIngestionErrors(UUID runId) {
@@ -115,6 +119,29 @@ public final class DefaultLibraryCatalogService {
                 .toList();
     }
 
+    public DocumentPipelineTraceResult getDocumentPipelineTrace(UUID libraryId, UUID documentId) {
+        accessControlService.requireLibraryAccess(libraryId, AclPermission.READ);
+        repository.findLibrary(libraryId)
+                .orElseThrow(() -> new ResourceNotFoundException("知识库不存在: " + libraryId));
+        repository.findDocument(documentId)
+                .filter(document -> document.libraryId().equals(libraryId))
+                .orElseThrow(() -> new ResourceNotFoundException("文档不存在: " + documentId));
+        DocumentIndexJob job = repository.findLatestDocumentIndexJob(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("文档尚无入库 Trace 记录: " + documentId));
+        IngestionRun run = repository.findIngestionRun(job.runId())
+                .filter(item -> item.libraryId().equals(libraryId))
+                .orElseThrow(() -> new ResourceNotFoundException("入库运行不存在: " + job.runId()));
+        return new DocumentPipelineTraceResult(
+                job.runId(),
+                ResultMapper.traceIdFromRun(run),
+                job.status(),
+                job.stage(),
+                DocumentChunkPresentation.excludeSummaryChunks(
+                        repository.listChunksByDocument(documentId)
+                ).size()
+        );
+    }
+
     private static IndexVersionResult toIndexVersionResult(IndexVersion version) {
         return new IndexVersionResult(
                 version.indexVersionId(),
@@ -130,7 +157,9 @@ public final class DefaultLibraryCatalogService {
     }
 
     private KnowledgeDocumentResult toDocumentResult(KnowledgeDocument document) {
-        int chunkCount = repository.listChunksByDocument(document.documentId()).size();
+        int chunkCount = DocumentChunkPresentation.excludeSummaryChunks(
+                repository.listChunksByDocument(document.documentId())
+        ).size();
         return new KnowledgeDocumentResult(
                 document.documentId(),
                 document.libraryId(),

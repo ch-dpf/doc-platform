@@ -19,7 +19,8 @@ public final class SegmentationConfigResolver {
             DocumentProfile documentProfile,
             Map<String, Object> requestOptions
     ) {
-        Map<String, Object> merged = mergeOptions(documentProfile, requestOptions);
+        Map<String, Object> merged = new HashMap<>(mergeOptions(documentProfile, requestOptions));
+        applySmartChunkMode(merged, documentProfile, requestOptions);
         int chunkMaxTokens = readInt(merged, "chunkMaxTokens", libraryProfile.chunkMaxTokens());
         int chunkOverlapTokens = readInt(merged, "chunkOverlapTokens", libraryProfile.chunkOverlapTokens());
         String chunkingStrategy = stringOption(merged, "chunkingStrategy");
@@ -68,10 +69,19 @@ public final class SegmentationConfigResolver {
             merged.putAll(documentProfile.options());
         }
         if (requestOptions != null) {
-            merged.putAll(requestOptions);
+            for (Map.Entry<String, Object> entry : requestOptions.entrySet()) {
+                if ("documentProfileOptions".equals(entry.getKey()) && entry.getValue() instanceof Map<?, ?> nested) {
+                    for (Map.Entry<?, ?> nestedEntry : nested.entrySet()) {
+                        if (nestedEntry.getKey() != null && nestedEntry.getValue() != null) {
+                            merged.put(String.valueOf(nestedEntry.getKey()), nestedEntry.getValue());
+                        }
+                    }
+                    continue;
+                }
+                merged.put(entry.getKey(), entry.getValue());
+            }
         }
         if (SegmentationOptionsSupport.isSmartMode(requestOptions)) {
-            merged.put("chunkMode", "flat");
             merged.put("splitMode", "recursive");
             merged.put("chunkSizeUnit", "token");
             merged.putIfAbsent("fallbackSplitMode", "recursive");
@@ -82,6 +92,25 @@ public final class SegmentationConfigResolver {
             merged.putIfAbsent("preserveStructureBoundary", true);
         }
         return Map.copyOf(merged);
+    }
+
+    private static void applySmartChunkMode(
+            Map<String, Object> merged,
+            DocumentProfile documentProfile,
+            Map<String, Object> requestOptions
+    ) {
+        if (!SegmentationOptionsSupport.isSmartMode(requestOptions)) {
+            return;
+        }
+        String strategy = stringOption(merged, "chunkingStrategy");
+        if (strategy == null && documentProfile != null) {
+            strategy = documentProfile.chunkingStrategy();
+        }
+        if (strategy != null && strategy.toLowerCase(Locale.ROOT).contains("table_row")) {
+            merged.put("chunkMode", "flat");
+            return;
+        }
+        merged.put("chunkMode", "parent_child");
     }
 
     private static SegmentationConfig.SizeUnit parseSizeUnit(Map<String, Object> options, SegmentationConfig.SizeUnit defaultValue) {

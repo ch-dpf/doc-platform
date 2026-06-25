@@ -28,10 +28,11 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                     8,
                     List.of(
                             documentProfile("default_markdown", "RICH_TEXT", "markdown-structure", "structure_token_window"),
+                            documentProfile("default_docx", "RICH_TEXT", "docx-structure", "structure_token_window"),
                             documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                             documentProfile("default_faq", "PLAIN_TEXT", "qa", "qa_token_window"),
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
-                            documentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
+                            tableDocumentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                             documentProfile("default_presentation", "PRESENTATION", "tika", "slide_token_window"),
                             documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window")
                     )
@@ -44,11 +45,13 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                     96,
                     10,
                     List.of(
-                            documentProfile("default_markdown", "RICH_TEXT", "markdown-structure", "heading_code_token_window"),
+                            documentProfile("default_markdown", "RICH_TEXT", "markdown-structure", "structure_token_window"),
+                            documentProfile("default_docx", "RICH_TEXT", "docx-structure", "structure_token_window"),
+                            documentProfile("default_pdf", "RICH_TEXT", "pdf-layout", "page_token_window"),
                             documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                             documentProfile("default_code_or_config", "CODE_OR_CONFIG", "text", "code_token_window"),
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
-                            documentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
+                            tableDocumentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                             documentProfile("default_presentation", "PRESENTATION", "tika", "slide_token_window"),
                             documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window")
                     )
@@ -64,7 +67,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                             documentProfile("default_markdown", "RICH_TEXT", "markdown-structure", "structure_token_window"),
                             documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
-                            documentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
+                            tableDocumentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                             documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window"),
                             documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "ocr-layout", "page_token_window")
                     )
@@ -73,11 +76,11 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                     "table_report",
                     "表格报表库",
                     "Excel、周报、月报与统计表",
-                    384,
-                    48,
+                    512,
+                    64,
                     12,
                     List.of(
-                            documentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
+                            tableDocumentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                             documentProfile("default_markdown", "RICH_TEXT", "markdown-structure", "structure_token_window"),
                             documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
@@ -283,7 +286,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                 "options", Map.ofEntries(
                         Map.entry("preserveStructureBoundary", true),
                         Map.entry("fallbackSplitMode", "recursive"),
-                        Map.entry("chunkMode", "flat"),
+                        Map.entry("chunkMode", "parent_child"),
                         Map.entry("splitMode", "recursive"),
                         Map.entry("chunkSizeUnit", "token"),
                         Map.entry("chunkMaxChars", 2048),
@@ -292,7 +295,65 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                         Map.entry("prependHeadingContext", true),
                         Map.entry("unicodeNormalize", true),
                         Map.entry("dehyphenateLineBreaks", true),
-                        Map.entry("removePageFooters", true)
+                        Map.entry("removePageFooters", true),
+                        Map.entry("chunkEngine", "smart"),
+                        Map.entry("llmDocumentSummary", false),
+                        Map.entry("llmSummaryPromptId", "default_summary"),
+                        Map.entry("llmSummaryMaxInputChars", 16384),
+                        Map.entry("llmSummaryMaxChars", 500),
+                        Map.entry("llmSummaryTemperature", 0.3),
+                        Map.entry("llmSummaryMaxCompletionTokens", 2048)
+                )
+        );
+    }
+
+    private static Map<String, Object> tableDocumentProfile(
+            String code,
+            String contentFamily,
+            String parserCode,
+            String chunkingStrategy
+    ) {
+        return Map.of(
+                "code", code,
+                "contentFamily", contentFamily,
+                "parserCode", parserCode,
+                "chunkingStrategy", chunkingStrategy,
+                "metadataSchema", Map.of(
+                        "sourceUri", "string",
+                        "title", "string",
+                        "contentFamily", "string",
+                        "page", "integer",
+                        "section", "string"
+                ),
+                "options", Map.ofEntries(
+                        Map.entry("preserveStructureBoundary", true),
+                        Map.entry("fallbackSplitMode", "recursive"),
+                        Map.entry("chunkMode", "parent_child"),
+                        Map.entry("splitMode", "recursive"),
+                        Map.entry("chunkSizeUnit", "token"),
+                        Map.entry("chunkMaxChars", 2048),
+                        Map.entry("chunkOverlapChars", 256),
+                        Map.entry("minChunkChars", 80),
+                        Map.entry("prependHeadingContext", true),
+                        Map.entry("unicodeNormalize", true),
+                        Map.entry("dehyphenateLineBreaks", true),
+                        Map.entry("removePageFooters", true),
+                        Map.entry("chunkEngine", "smart"),
+                        Map.entry("tableChunkPostProcess", true),
+                        Map.entry("prependSheetContext", true),
+                        Map.entry("emitDocumentSummary", false),
+                        Map.entry("tableRowGroupMaxRows", 1),
+                        Map.entry("tableIndexMinFields", 4),
+                        Map.entry("mergeSmallRowChunks", false),
+                        Map.entry("deduplicateChunks", true),
+                        Map.entry("tableRowMergeBelowTokens", 64),
+                        Map.entry("llmDocumentSummary", false),
+                        Map.entry("llmSummaryPromptId", "default_summary"),
+                        Map.entry("llmSummaryMaxInputChars", 16384),
+                        Map.entry("llmSummaryMaxChars", 800),
+                        Map.entry("llmSummaryMinInputChars", 40),
+                        Map.entry("llmSummaryTemperature", 0.3),
+                        Map.entry("llmSummaryMaxCompletionTokens", 2048)
                 )
         );
     }
@@ -307,7 +368,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                 documentProfile("default_faq", "PLAIN_TEXT", "qa", "qa_token_window"),
                 documentProfile("default_zip_bundle", "RICH_TEXT", "zip", "structure_token_window"),
                 documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
-                documentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
+                tableDocumentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                 documentProfile("default_presentation", "PRESENTATION", "tika", "slide_token_window"),
                 documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window"),
                 documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "ocr-layout", "page_token_window"),
@@ -352,6 +413,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                                 Map.entry("keywordScoreWeight", 0.10),
                                 Map.entry("deduplicateByChunk", true),
                                 Map.entry("deduplicateByContent", true),
+                                Map.entry("expandParentChunks", true),
                                 Map.entry("contentFamilyWeights", Map.of(
                                         "STRUCTURED_TABLE", 1.08,
                                         "CODE_OR_CONFIG", 1.05,

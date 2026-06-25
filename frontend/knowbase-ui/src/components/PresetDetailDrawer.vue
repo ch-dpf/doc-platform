@@ -2,10 +2,10 @@
   <el-drawer
     :model-value="visible"
     :title="preset?.name || '预设详情'"
-    size="760px"
+    size="820px"
     @close="emit('close')"
   >
-    <div v-if="preset" v-loading="loading" class="drawer-stack">
+    <div v-if="preset" v-loading="loading || guideLoading" class="drawer-stack">
       <div class="meta-bar">
         {{ preset.code }}
         <el-tag size="small" :type="preset.builtIn ? 'info' : 'success'" effect="plain">
@@ -19,22 +19,82 @@
       <p class="helper-text">{{ preset.description || '无描述' }}</p>
 
       <template v-if="kind === 'library'">
-        <div class="section-head"><h4>入库与检索参数</h4></div>
+
+
+        <div class="section-head"><h4>入库与检索参数（L1 默认）</h4></div>
         <div class="kv-grid">
           <div class="kv-item"><span>Embedding</span><strong>{{ librarySummary.embedding }}</strong></div>
           <div class="kv-item"><span>分块上限</span><strong>{{ librarySummary.chunkMaxTokens }}</strong></div>
           <div class="kv-item"><span>重叠 token</span><strong>{{ librarySummary.chunkOverlapTokens }}</strong></div>
           <div class="kv-item"><span>检索 TopK</span><strong>{{ librarySummary.retrievalTopK }}</strong></div>
         </div>
+        <p class="helper-text">建仓后可在「库配置」发布新版 Library Profile 调整；换 Embedding 需重建索引。</p>
 
-        <div class="section-head"><h4>文档 Profile（{{ documentProfiles.length }}）</h4></div>
-        <el-table v-if="documentProfiles.length" :data="documentProfiles" size="small" class="data-table">
-          <el-table-column prop="code" label="编码" min-width="140" show-overflow-tooltip />
-          <el-table-column prop="contentFamily" label="内容族" width="130" />
-          <el-table-column prop="parserCode" label="解析器" width="130" />
-          <el-table-column prop="chunkingStrategy" label="切块策略" min-width="160" show-overflow-tooltip />
+        <div v-if="guide?.suitableFileTypesZh?.length" class="section-gap">
+          <div class="section-head"><h4>适合上传</h4></div>
+          <div class="tag-row">
+            <el-tag v-for="item in guide.suitableFileTypesZh" :key="item" size="small" type="success" effect="plain">{{ item }}</el-tag>
+          </div>
+        </div>
+        <div v-if="guide?.cautionFileTypesZh?.length" class="section-gap">
+          <div class="section-head"><h4>需谨慎</h4></div>
+          <div class="tag-row">
+            <el-tag v-for="item in guide.cautionFileTypesZh" :key="item" size="small" type="warning" effect="plain">{{ item }}</el-tag>
+          </div>
+        </div>
+
+        <div class="section-head section-gap"><h4>文档 Profile（L2）· {{ enrichedProfiles.length }} 项</h4></div>
+        <el-table v-if="enrichedProfiles.length" :data="enrichedProfiles" size="small" class="data-table" stripe>
+          <el-table-column label="类型" min-width="120">
+            <template #default="{ row }">
+              <strong>{{ row.nameZh || row.code }}</strong>
+              <div class="row-meta">{{ row.code }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="contentFamily" label="内容族" width="120" />
+          <el-table-column label="解析器" min-width="140">
+            <template #default="{ row }">
+              {{ row.parserNameZh || parserLabel(row.parserCode) }}
+              <el-tag v-if="row.parserExternal" size="small" type="warning" class="mini-tag">外接</el-tag>
+              <el-tag v-else size="small" type="info" class="mini-tag">内置</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="切块" min-width="140">
+            <template #default="{ row }">
+              {{ row.chunkingStrategyLabelZh || row.chunkingStrategy }}
+            </template>
+          </el-table-column>
+          <el-table-column label="扩展名" min-width="120">
+            <template #default="{ row }">
+              {{ (row.fileExtensions || []).join(', ') || '—' }}
+            </template>
+          </el-table-column>
         </el-table>
         <el-empty v-else description="未配置 documentProfiles" :image-size="56" />
+
+        <div class="section-head section-gap"><h4>解析器目录</h4></div>
+        <el-table v-if="catalog?.parsers?.length" :data="catalog.parsers" size="small" class="data-table" stripe max-height="280">
+          <el-table-column prop="nameZh" label="解析器" min-width="130" />
+          <el-table-column prop="code" label="编码" width="130" />
+          <el-table-column label="类型" width="72">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.external ? 'warning' : 'success'" effect="plain">
+                {{ row.external ? '外接' : '内置' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="descriptionZh" label="说明" min-width="160" show-overflow-tooltip />
+          <el-table-column label="扩展名" width="120" show-overflow-tooltip>
+            <template #default="{ row }">{{ (row.supportedExtensions || []).join(', ') }}</template>
+          </el-table-column>
+        </el-table>
+
+        <div v-if="guide?.changeImpactHintsZh?.length" class="section-gap">
+          <div class="section-head"><h4>库配置变更影响</h4></div>
+          <ul class="hint-list">
+            <li v-for="(hint, index) in guide.changeImpactHintsZh" :key="index">{{ hint }}</li>
+          </ul>
+        </div>
       </template>
 
       <template v-else>
@@ -54,7 +114,7 @@
         </div>
       </template>
 
-      <div class="section-head"><h4>完整配置 JSON</h4></div>
+      <div class="section-head section-gap"><h4>完整配置 JSON</h4></div>
       <pre class="json-block">{{ formattedConfig }}</pre>
     </div>
   </el-drawer>
@@ -62,7 +122,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue';
-import { getLibraryTypePreset, getSceneRulePreset } from '../api';
+import { getLibraryTypePreset, getLibraryTypePresetGuide, getSceneRulePreset, getIngestionCatalog } from '../api';
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -75,11 +135,17 @@ const props = defineProps({
 const emit = defineEmits(['close']);
 
 const loading = ref(false);
+const guideLoading = ref(false);
 const preset = ref(null);
+const guide = ref(null);
+const catalog = ref(null);
 
 const formattedConfig = computed(() => JSON.stringify(preset.value?.config ?? {}, null, 2));
 
-const documentProfiles = computed(() => {
+const enrichedProfiles = computed(() => {
+  if (guide.value?.documentProfiles?.length) {
+    return guide.value.documentProfiles;
+  }
   const profiles = preset.value?.config?.documentProfiles;
   return Array.isArray(profiles) ? profiles : [];
 });
@@ -111,6 +177,11 @@ const sceneSummary = computed(() => {
   };
 });
 
+function parserLabel(code) {
+  const item = catalog.value?.parsers?.find((p) => p.code === code);
+  return item?.nameZh || code;
+}
+
 async function loadPreset() {
   if (!props.presetCode) {
     preset.value = props.fallbackPreset;
@@ -129,11 +200,33 @@ async function loadPreset() {
   }
 }
 
+async function loadGuideAndCatalog() {
+  if (props.kind !== 'library' || !props.presetCode) {
+    guide.value = null;
+    return;
+  }
+  guideLoading.value = true;
+  try {
+    const params = props.tenantId ? { tenantId: props.tenantId } : {};
+    const [guideData, catalogData] = await Promise.all([
+      getLibraryTypePresetGuide(props.presetCode, params),
+      catalog.value ? Promise.resolve(catalog.value) : getIngestionCatalog()
+    ]);
+    guide.value = guideData;
+    catalog.value = catalogData;
+  } catch {
+    guide.value = null;
+  } finally {
+    guideLoading.value = false;
+  }
+}
+
 watch(
   () => [props.visible, props.presetCode, props.kind, props.tenantId],
   ([visible]) => {
     if (visible) {
       loadPreset();
+      loadGuideAndCatalog();
     }
   }
 );
@@ -149,49 +242,64 @@ watch(
 .section-head h4 {
   margin: 0 0 8px;
   font-size: 14px;
+  font-weight: 600;
+}
+
+.section-gap {
+  margin-top: 8px;
 }
 
 .kv-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .kv-item {
-  padding: 12px 14px;
-  border: 1px solid var(--dp-border);
-  border-radius: var(--dp-radius);
-  background: #f8fafc;
+  padding: 10px 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
 }
 
 .kv-item span {
   display: block;
-  margin-bottom: 4px;
   font-size: 12px;
-  color: var(--dp-text-secondary);
+  color: var(--el-text-color-secondary);
+  margin-bottom: 4px;
 }
 
-.kv-item strong {
-  font-size: 14px;
-  color: var(--dp-text);
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hint-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--el-text-color-regular);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mini-tag {
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.row-meta {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 .json-block {
   margin: 0;
-  padding: 14px;
-  border-radius: var(--dp-radius);
-  background: #0f172a;
-  color: #e2e8f0;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
   font-size: 12px;
-  line-height: 1.55;
   overflow: auto;
-  max-height: 360px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.prompt-panel {
-  margin-bottom: 16px;
+  max-height: 320px;
 }
 </style>

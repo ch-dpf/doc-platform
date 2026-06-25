@@ -21,7 +21,7 @@ class SegmentationConfigResolverTest {
                 sampleDocumentProfile(),
                 Map.of("segmentationMode", "smart")
         );
-        assertEquals(SegmentationConfig.ChunkMode.FLAT, config.chunkMode());
+        assertEquals(SegmentationConfig.ChunkMode.PARENT_CHILD, config.chunkMode());
         assertEquals(SegmentationConfig.SplitMode.RECURSIVE, config.splitMode());
         assertEquals(SegmentationConfig.SizeUnit.TOKEN, config.sizeUnit());
         assertEquals(512, config.chunkMaxTokens());
@@ -69,6 +69,28 @@ class SegmentationConfigResolverTest {
         assertEquals(SegmentationConfig.SizeUnit.TOKEN, config.sizeUnit());
         assertEquals(512, config.chunkMaxTokens());
         assertEquals(64, config.chunkOverlapTokens());
+    }
+
+    @Test
+    void smartModeKeepsFlatChunkingForTableRows() {
+        DocumentProfile tableProfile = new DocumentProfile(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                "default_table",
+                ContentFamily.STRUCTURED_TABLE,
+                "table-deep",
+                "table_row_token_window",
+                null,
+                Map.of(),
+                Map.of(),
+                true
+        );
+        SegmentationConfig config = SegmentationConfigResolver.resolve(
+                sampleLibraryProfile(),
+                tableProfile,
+                Map.of("segmentationMode", "smart")
+        );
+        assertEquals(SegmentationConfig.ChunkMode.FLAT, config.chunkMode());
     }
 
     private static LibraryProfile sampleLibraryProfile() {

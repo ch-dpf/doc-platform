@@ -31,6 +31,7 @@ import com.knowbase.domain.model.TokenizerProfile;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public final class ResultMapper {
 
@@ -51,6 +52,25 @@ public final class ResultMapper {
         );
     }
 
+    private static UUID traceIdFromOptions(Map<String, Object> options) {
+        if (options == null) {
+            return null;
+        }
+        Object traceId = options.get("traceId");
+        if (traceId == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(String.valueOf(traceId));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    public static UUID traceIdFromRun(IngestionRun run) {
+        return traceIdFromOptions(run == null ? null : run.options());
+    }
+
     public static IngestionRunResult toIngestionRunResult(IngestionRun run) {
         return new IngestionRunResult(
                 run.runId(),
@@ -61,6 +81,7 @@ public final class ResultMapper {
                 run.failedDocuments(),
                 run.chunkCount(),
                 run.indexVersionId(),
+                traceIdFromRun(run),
                 run.message(),
                 run.createdAt(),
                 run.updatedAt()

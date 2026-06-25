@@ -48,6 +48,21 @@
             :src="previewObjectUrl"
             :alt="preview.filename"
           />
+          <div v-else-if="previewMode === 'excel'" class="preview-excel-wrap">
+            <el-tabs
+              v-if="excelSheets.length > 1"
+              v-model="activeExcelSheet"
+              class="excel-sheet-tabs"
+            >
+              <el-tab-pane
+                v-for="(sheet, index) in excelSheets"
+                :key="sheet.name"
+                :label="sheet.name"
+                :name="String(index)"
+              />
+            </el-tabs>
+            <div class="preview-excel" v-html="currentExcelHtml" />
+          </div>
           <div v-else class="preview-fallback">
             <el-alert
               type="info"
@@ -83,6 +98,9 @@
             <div class="chunk-card__head">
               <span class="chunk-card__index">#{{ rowIndex(index) }}</span>
               <span class="chunk-card__id">{{ shortId(chunk.chunkId, 12) }}</span>
+              <el-tag size="small" :type="chunkRoleTagType(chunk.metadata, chunk.chunkBoundaryType)">
+                {{ formatChunkRoleLabel(chunk.metadata, chunk.chunkBoundaryType) }}
+              </el-tag>
               <span class="chunk-card__meta">{{ chunk.tokenCount }} tokens · {{ chunk.chunkBoundaryType || '—' }}</span>
               <el-tag
                 v-if="!isChunkRetrievalEnabled(chunk.metadata)"
@@ -102,9 +120,6 @@
               </el-tag>
             </div>
             <p class="chunk-card__content">{{ chunk.content }}</p>
-            <div v-if="extraMetadata(chunk.metadata)" class="chunk-card__metadata muted">
-              {{ extraMetadata(chunk.metadata) }}
-            </div>
             <div class="chunk-card__actions" @click.stop>
               <el-button link type="primary" @click="openEditDialog(chunk)">编辑</el-button>
               <el-button
@@ -118,7 +133,7 @@
             </div>
           </div>
         </div>
-        <el-empty v-else-if="!loading" description="该文档暂无分块" />
+        <el-empty v-else-if="!loading" description="该文档暂无检索分块" />
 
         <div v-if="total > 0" class="table-pagination">
           <el-pagination
@@ -132,6 +147,48 @@
             @size-change="handlePageSizeChange"
           />
         </div>
+      </el-tab-pane>
+
+      <el-tab-pane label="入库 Trace" name="trace">
+        <div v-if="pipelineTrace" class="trace-panel" v-loading="traceLoading">
+          <p class="trace-panel__hint muted">
+            展示该文档最近一次入库的主线阶段：加载 → 解析 → 清洗 → 分块 → 向量化 → 写索引。
+          </p>
+          <div class="trace-panel__header">
+            <div class="trace-panel__meta">
+              <div class="trace-panel__meta-item">
+                <span class="trace-panel__meta-label">入库任务</span>
+                <code class="trace-panel__meta-value">{{ shortId(pipelineTrace.runId, 12) }}</code>
+              </div>
+              <div v-if="pipelineTrace.traceId" class="trace-panel__meta-item">
+                <span class="trace-panel__meta-label">Trace</span>
+                <code class="trace-panel__meta-value">{{ shortId(pipelineTrace.traceId, 12) }}</code>
+              </div>
+              <div class="trace-panel__meta-item">
+                <span class="trace-panel__meta-label">作业状态</span>
+                <el-tag size="small" :type="statusTagType(pipelineTrace.jobStatus)">
+                  {{ pipelineTrace.jobStage || '—' }} / {{ pipelineTrace.jobStatus || '—' }}
+                </el-tag>
+              </div>
+              <div class="trace-panel__meta-item">
+                <span class="trace-panel__meta-label">索引分块</span>
+                <span class="trace-panel__meta-value">{{ pipelineTrace.chunkCount }}</span>
+              </div>
+            </div>
+            <el-button size="small" round :loading="traceLoading" @click="loadPipelineTrace(true)">
+              刷新
+            </el-button>
+          </div>
+          <PipelineTraceTimeline
+            variant="stepper"
+            :stages="documentPipelineStages"
+            :spans="documentTraceSpans"
+            show-timestamps
+            empty-text="暂无该文档的主线阶段 Span，请确认入库任务已完成"
+          />
+        </div>
+        <el-empty v-else-if="!traceLoading" description="该文档尚无入库 Trace 记录" />
+        <div v-else class="preview-state muted">加载 Trace…</div>
       </el-tab-pane>
     </el-tabs>
 
@@ -158,13 +215,20 @@ import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft } from '@element-plus/icons-vue';
 import mammoth from 'mammoth';
 import PageCard from '../../components/PageCard.vue';
+import PipelineTraceTimeline from '../../components/PipelineTraceTimeline.vue';
 import { useLibraryWorkspace } from '../../composables/libraryWorkspace';
-import { fetchDocumentPreview, getDocument, pageDocumentChunks, updateDocumentChunk } from '../../api';
+import { fetchDocumentPreview, getDocument, getDocumentPipelineTrace, listPipelineTrace, pageDocumentChunks, updateDocumentChunk } from '../../api';
 import {
   formatChunkLocationTags,
+  formatChunkRoleLabel,
+  chunkRoleTagType,
   isChunkRetrievalEnabled,
-  shortId
+  shortId,
+  DOCUMENT_PIPELINE_STAGES,
+  filterDocumentPipelineSpans
 } from '../../format';
+
+const documentPipelineStages = DOCUMENT_PIPELINE_STAGES;
 
 const route = useRoute();
 const router = useRouter();
@@ -174,6 +238,9 @@ const doc = ref(null);
 const chunks = ref([]);
 const total = ref(0);
 const loading = ref(false);
+const traceLoading = ref(false);
+const pipelineTrace = ref(null);
+const traceSpans = ref([]);
 const pagination = reactive({ page: 1, size: 20 });
 const activeTab = ref('preview');
 
@@ -181,6 +248,8 @@ const preview = ref(null);
 const previewText = ref('');
 const previewObjectUrl = ref('');
 const docxHtml = ref('');
+const excelSheets = ref([]);
+const activeExcelSheet = ref('0');
 const previewLoading = ref(false);
 const previewError = ref('');
 const pdfPage = ref(null);
@@ -204,6 +273,20 @@ const documentSubtitle = computed(() => {
   return `${doc.value.title || shortId(documentId.value, 12)} · 共 ${total.value} 块`;
 });
 
+const documentTraceSpans = computed(() =>
+  filterDocumentPipelineSpans(traceSpans.value, {
+    documentId: documentId.value,
+    sourceUri: doc.value?.sourceUri
+  })
+);
+
+function statusTagType(status) {
+  const value = String(status || '').toUpperCase();
+  if (value === 'SUCCEEDED') return 'success';
+  if (value === 'FAILED') return 'danger';
+  return 'info';
+}
+
 const previewMode = computed(() => {
   if (!preview.value) {
     return null;
@@ -221,6 +304,11 @@ const pdfPreviewUrl = computed(() => {
     return previewObjectUrl.value;
   }
   return `${previewObjectUrl.value}#page=${pdfPage.value}`;
+});
+
+const currentExcelHtml = computed(() => {
+  const index = Number(activeExcelSheet.value);
+  return excelSheets.value[index]?.html || '';
 });
 
 function classifyPreviewMode(contentType, filename) {
@@ -243,6 +331,14 @@ function classifyPreviewMode(contentType, filename) {
     return 'image';
   }
   if (
+    lower.endsWith('.xlsx')
+    || lower.endsWith('.xls')
+    || ((mime.includes('spreadsheet') || mime.includes('excel') || mime.includes('ms-excel'))
+      && !mime.includes('csv'))
+  ) {
+    return 'excel';
+  }
+  if (
     mime.includes('wordprocessingml')
     || mime.includes('word')
     || lower.endsWith('.docx')
@@ -257,26 +353,6 @@ function classifyPreviewMode(contentType, filename) {
 
 function rowIndex(index) {
   return (pagination.page - 1) * pagination.size + index + 1;
-}
-
-const LOCATION_KEYS = new Set([
-  'pageNumber',
-  'bbox',
-  'contentFamily',
-  'vectorRank',
-  'keywordRank',
-  'retrievalEnabled',
-  'chunkBoundaryType'
-]);
-
-function extraMetadata(metadata) {
-  if (!metadata || typeof metadata !== 'object') {
-    return '';
-  }
-  return Object.entries(metadata)
-    .filter(([key]) => !LOCATION_KEYS.has(key))
-    .map(([key, value]) => `${key}: ${value}`)
-    .join(' · ');
 }
 
 function chunkPageNumber(chunk) {
@@ -296,6 +372,8 @@ function resetPreviewState() {
   preview.value = null;
   previewText.value = '';
   docxHtml.value = '';
+  excelSheets.value = [];
+  activeExcelSheet.value = '0';
   previewError.value = '';
   pdfPage.value = null;
   selectedChunkId.value = null;
@@ -309,6 +387,17 @@ async function renderDocxPreview(blob) {
   const arrayBuffer = await blob.arrayBuffer();
   const result = await mammoth.convertToHtml({ arrayBuffer });
   docxHtml.value = result.value;
+}
+
+async function renderExcelPreview(blob) {
+  const XLSX = await import('xlsx');
+  const arrayBuffer = await blob.arrayBuffer();
+  const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+  excelSheets.value = workbook.SheetNames.map((name) => ({
+    name,
+    html: XLSX.utils.sheet_to_html(workbook.Sheets[name])
+  }));
+  activeExcelSheet.value = '0';
 }
 
 async function loadPreview() {
@@ -328,6 +417,8 @@ async function loadPreview() {
       previewObjectUrl.value = URL.createObjectURL(result.blob);
     } else if (mode === 'docx-html') {
       await renderDocxPreview(result.blob);
+    } else if (mode === 'excel') {
+      await renderExcelPreview(result.blob);
     }
   } catch (error) {
     previewError.value = error.message;
@@ -389,6 +480,11 @@ async function locateChunk(chunk) {
     showMessage('已在 Word 预览中滚动到匹配片段', 'success');
     return;
   }
+  if (previewMode.value === 'excel') {
+    activeTab.value = 'preview';
+    showMessage('Excel 预览暂不支持自动定位到分块', 'info');
+    return;
+  }
   if (page != null) {
     activeTab.value = 'preview';
     showMessage(`该块位于第 ${page} 页，当前格式暂不支持自动跳页`, 'info');
@@ -429,6 +525,28 @@ async function saveChunkEdit() {
   }
 }
 
+async function loadPipelineTrace(force = false) {
+  if (pipelineTrace.value && !force) {
+    return;
+  }
+  traceLoading.value = true;
+  try {
+    pipelineTrace.value = await getDocumentPipelineTrace(libraryId.value, documentId.value);
+    traceSpans.value = [];
+    if (pipelineTrace.value?.traceId) {
+      traceSpans.value = await listPipelineTrace(pipelineTrace.value.traceId);
+    }
+  } catch (error) {
+    pipelineTrace.value = null;
+    traceSpans.value = [];
+    if (force) {
+      showMessage(error.message, 'error');
+    }
+  } finally {
+    traceLoading.value = false;
+  }
+}
+
 async function loadChunks() {
   loading.value = true;
   try {
@@ -464,11 +582,18 @@ function handleTabChange(tabName) {
   if (tabName === 'chunks' && !chunks.value.length && !loading.value) {
     loadChunks();
   }
+  if (tabName === 'trace' && !pipelineTrace.value && !traceLoading.value) {
+    loadPipelineTrace();
+  }
 }
 
 function refreshActiveTab() {
   if (activeTab.value === 'preview') {
     loadPreview();
+    return;
+  }
+  if (activeTab.value === 'trace') {
+    loadPipelineTrace(true);
     return;
   }
   loadChunks();
@@ -480,6 +605,9 @@ function goBack() {
 
 watch(documentId, () => {
   doc.value = null;
+  chunks.value = [];
+  pipelineTrace.value = null;
+  traceSpans.value = [];
   pagination.page = 1;
   resetPreviewState();
   activeTab.value = 'preview';
@@ -554,6 +682,51 @@ onBeforeUnmount(revokePreviewUrl);
   max-width: 100%;
   border: 1px solid var(--dp-border);
   border-radius: var(--dp-radius);
+}
+
+.preview-excel-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.excel-sheet-tabs {
+  margin-bottom: 0;
+}
+
+.preview-excel {
+  max-height: 72vh;
+  overflow: auto;
+  border: 1px solid var(--dp-border);
+  border-radius: var(--dp-radius);
+  background: #fff;
+}
+
+.preview-excel :deep(table) {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 13px;
+}
+
+.preview-excel :deep(td),
+.preview-excel :deep(th) {
+  border: 1px solid #e2e8f0;
+  padding: 4px 10px;
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preview-excel :deep(tr:first-child td),
+.preview-excel :deep(th) {
+  background: #f1f5f9;
+  font-weight: 600;
+}
+
+.preview-excel :deep(tr:nth-child(even)) {
+  background: #f8fafc;
 }
 
 .preview-fallback,
@@ -631,11 +804,6 @@ onBeforeUnmount(revokePreviewUrl);
   color: var(--dp-text);
 }
 
-.chunk-card__metadata {
-  margin-top: 8px;
-  font-size: 12px;
-}
-
 .chunk-card__actions {
   display: flex;
   gap: 8px;
@@ -646,5 +814,51 @@ onBeforeUnmount(revokePreviewUrl);
   display: flex;
   justify-content: flex-end;
   margin-top: 20px;
+}
+
+.trace-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.trace-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--dp-border);
+  border-radius: var(--dp-radius);
+  background: #f8fafc;
+}
+
+.trace-panel__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+
+.trace-panel__meta-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.trace-panel__meta-label {
+  color: var(--dp-text-secondary);
+}
+
+.trace-panel__meta-value {
+  font-family: var(--dp-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--dp-text);
+}
+
+.trace-panel__hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
 }
 </style>

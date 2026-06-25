@@ -2,6 +2,7 @@ package com.knowbase.application.service;
 
 import com.knowbase.api.command.PreviewIngestionCommand;
 import com.knowbase.api.result.ChunkPreviewResult;
+import com.knowbase.application.mapper.PostProcessStageMapper;
 import com.knowbase.api.result.DocumentPreviewResult;
 import com.knowbase.api.result.IngestionPreviewResult;
 import com.knowbase.api.result.NormalizeStageResult;
@@ -36,7 +37,7 @@ import java.util.UUID;
 /**
  * 入库预览服务：完整执行 parse → normalize → chunk，返回含解析快照的预览结果。
  * <p>
- * 与 {@link DefaultIngestionPrepareService} 共用解析路由逻辑，但固定执行到 CHUNK 阶段，
+ * 与 {@link DefaultIngestionPrepareService} 共用解析路由逻辑，固定执行到 CHUNK 阶段（不含后处理/摘要），
  * 并将 {@link ParseStageResult} 嵌入 {@link com.knowbase.api.result.DocumentPreviewResult}。
  */
 public final class DefaultIngestionPreviewService implements PreviewIngestionUseCase {
@@ -154,6 +155,7 @@ public final class DefaultIngestionPreviewService implements PreviewIngestionUse
                         chunkPreviews,
                         toParseStage(rawParsed, maxPreviewBlocks, maxPreviewChars),
                         prepared.normalization() == null ? null : toNormalizeStage(prepared.normalization(), maxPreviewChars),
+                        PostProcessStageMapper.toStageResult(prepared.postProcess()),
                         null
                 ));
             } catch (RuntimeException exception) {
@@ -167,6 +169,7 @@ public final class DefaultIngestionPreviewService implements PreviewIngestionUse
                         0,
                         0,
                         List.of(),
+                        null,
                         null,
                         null,
                         failureMessage(exception)

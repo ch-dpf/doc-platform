@@ -1,6 +1,7 @@
 package com.knowbase.application.service;
 
 import com.knowbase.api.command.CreateIngestionRunCommand;
+import com.knowbase.api.result.BatchDeleteDocumentsResult;
 import com.knowbase.api.result.BatchObjectUploadResult;
 import com.knowbase.api.result.DocumentUploadResult;
 import com.knowbase.api.result.BatchReindexResult;
@@ -8,6 +9,8 @@ import com.knowbase.api.result.DocumentDuplicateGroupResult;
 import com.knowbase.api.result.IngestionRunResult;
 import com.knowbase.api.result.KnowledgeDocumentResult;
 import com.knowbase.api.result.ObjectUploadResult;
+import com.knowbase.api.result.PageResult;
+import com.knowbase.application.mapper.DocumentChunkPresentation;
 import com.knowbase.application.security.AccessControlService;
 import com.knowbase.domain.model.DocumentProfile;
 import com.knowbase.domain.model.KnowledgeDocument;
@@ -18,9 +21,11 @@ import com.knowbase.application.usecase.RunIngestionUseCase;
 import com.knowbase.ingestion.DocumentSourceLoader;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -58,6 +63,19 @@ public final class DefaultDocumentService {
                 .toList();
     }
 
+    public PageResult<KnowledgeDocumentResult> page(UUID libraryId, UUID indexVersionId, int page, int size) {
+        accessControlService.requireLibraryAccess(libraryId, AclPermission.READ);
+        repository.findLibrary(libraryId)
+                .orElseThrow(() -> new ResourceNotFoundException("知识库不存在: " + libraryId));
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), 100);
+        var paged = repository.pageDocuments(libraryId, indexVersionId, safePage, safeSize);
+        List<KnowledgeDocumentResult> items = paged.items().stream()
+                .map(this::toResult)
+                .toList();
+        return new PageResult<>(items, paged.total(), safePage, safeSize);
+    }
+
     public KnowledgeDocumentResult get(UUID libraryId, UUID documentId) {
         accessControlService.requireLibraryAccess(libraryId, AclPermission.READ);
         KnowledgeDocument document = requireDocument(libraryId, documentId);
@@ -83,6 +101,28 @@ public final class DefaultDocumentService {
         UUID generationId = document.indexVersionId();
         repository.deleteDocumentAndChunks(documentId);
         indexGenerationService.refreshGenerationStats(generationId);
+    }
+
+    public BatchDeleteDocumentsResult deleteBatch(UUID libraryId, List<UUID> documentIds) {
+        accessControlService.requireLibraryAccess(libraryId, AclPermission.WRITE);
+        repository.findLibrary(libraryId)
+                .orElseThrow(() -> new ResourceNotFoundException("知识库不存在: " + libraryId));
+        if (documentIds == null || documentIds.isEmpty()) {
+            throw new IllegalArgumentException("documentIds 不能为空");
+        }
+        Set<UUID> generationIds = new HashSet<>();
+        List<UUID> deleted = new ArrayList<>();
+        for (UUID documentId : documentIds) {
+            repository.findDocument(documentId)
+                    .filter(item -> item.libraryId().equals(libraryId))
+                    .ifPresent(document -> {
+                        repository.deleteDocumentAndChunks(documentId);
+                        generationIds.add(document.indexVersionId());
+                        deleted.add(documentId);
+                    });
+        }
+        generationIds.forEach(indexGenerationService::refreshGenerationStats);
+        return new BatchDeleteDocumentsResult(libraryId, deleted.size(), List.copyOf(deleted));
     }
 
     public IngestionRunResult reindex(UUID libraryId, UUID documentId) {
@@ -221,7 +261,9 @@ public final class DefaultDocumentService {
     }
 
     private KnowledgeDocumentResult toResult(KnowledgeDocument document) {
-        int chunkCount = repository.listChunksByDocument(document.documentId()).size();
+        int chunkCount = DocumentChunkPresentation.excludeSummaryChunks(
+                repository.listChunksByDocument(document.documentId())
+        ).size();
         return new KnowledgeDocumentResult(
                 document.documentId(),
                 document.libraryId(),

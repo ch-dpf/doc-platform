@@ -32,9 +32,7 @@ public final class DefaultPipelineObserver implements PipelineObserver {
     @Override
     public UUID startSpan(String pipeline, UUID runId, String stage, Map<String, Object> attributes) {
         UUID spanId = UUID.randomUUID();
-        UUID traceId = attributes != null && attributes.get("traceId") instanceof String traceText
-                ? UUID.fromString(traceText)
-                : UUID.randomUUID();
+        UUID traceId = resolveTraceId(attributes);
         Instant now = Instant.now();
         Map<String, Object> attrs = attributes == null ? new HashMap<>() : new HashMap<>(attributes);
         attrs.putIfAbsent("traceId", traceId.toString());
@@ -91,5 +89,23 @@ public final class DefaultPipelineObserver implements PipelineObserver {
                 message,
                 Instant.now()
         ));
+    }
+
+    private static UUID resolveTraceId(Map<String, Object> attributes) {
+        if (attributes == null) {
+            return UUID.randomUUID();
+        }
+        Object traceId = attributes.get("traceId");
+        if (traceId instanceof UUID uuid) {
+            return uuid;
+        }
+        if (traceId != null) {
+            try {
+                return UUID.fromString(String.valueOf(traceId));
+            } catch (IllegalArgumentException ignored) {
+                return UUID.randomUUID();
+            }
+        }
+        return UUID.randomUUID();
     }
 }

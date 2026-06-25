@@ -3,6 +3,8 @@ package com.knowbase.application.service;
 import com.knowbase.api.command.CreateLibraryTypePresetCommand;
 import com.knowbase.api.command.CreateSceneRulePresetCommand;
 import com.knowbase.api.facade.KnowbasePresetFacade;
+import com.knowbase.api.result.IngestionCatalogResult;
+import com.knowbase.api.result.LibraryTypePresetGuideResult;
 import com.knowbase.api.result.PageResult;
 import com.knowbase.api.result.PresetResult;
 import com.knowbase.application.mapper.ResultMapper;
@@ -20,10 +22,16 @@ public class DefaultPresetService implements ManagePresetUseCase, KnowbasePreset
 
     private final CompositePresetCatalog presetCatalog;
     private final PresetRepository presetRepository;
+    private final IngestionCatalogService ingestionCatalogService;
 
-    public DefaultPresetService(CompositePresetCatalog presetCatalog, PresetRepository presetRepository) {
+    public DefaultPresetService(
+            CompositePresetCatalog presetCatalog,
+            PresetRepository presetRepository,
+            IngestionCatalogService ingestionCatalogService
+    ) {
         this.presetCatalog = presetCatalog;
         this.presetRepository = presetRepository;
+        this.ingestionCatalogService = ingestionCatalogService;
     }
 
     @Override
@@ -37,6 +45,16 @@ public class DefaultPresetService implements ManagePresetUseCase, KnowbasePreset
         return findEnabledLibraryTypePreset(tenantId, code)
                 .map(ResultMapper::toPresetResult)
                 .orElseThrow(() -> new ResourceNotFoundException("库类型预设不存在: " + code));
+    }
+
+    @Override
+    public IngestionCatalogResult getIngestionCatalog() {
+        return ingestionCatalogService.getCatalog();
+    }
+
+    @Override
+    public LibraryTypePresetGuideResult getLibraryTypePresetGuide(String tenantId, String code) {
+        return ingestionCatalogService.getLibraryTypePresetGuide(tenantId, code);
     }
 
     @Override

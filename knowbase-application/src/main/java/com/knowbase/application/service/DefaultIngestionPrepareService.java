@@ -1,8 +1,11 @@
 package com.knowbase.application.service;
 
 import com.knowbase.api.command.PrepareIngestionCommand;
+import com.knowbase.api.result.DocumentSummaryStageResult;
+import com.knowbase.application.mapper.PostProcessStageMapper;
 import com.knowbase.api.result.ChunkPreviewResult;
 import com.knowbase.api.result.ChunkStageResult;
+import com.knowbase.api.result.PostProcessStageResult;
 import com.knowbase.api.result.IngestionPrepareDocumentResult;
 import com.knowbase.api.result.IngestionPrepareResult;
 import com.knowbase.api.result.NormalizeStageResult;
@@ -15,10 +18,12 @@ import com.knowbase.domain.model.LibraryProfile;
 import com.knowbase.domain.model.TokenizerProfile;
 import com.knowbase.domain.repository.KnowbaseRepository;
 import com.knowbase.ingestion.ParseOptionsSupport;
+import com.knowbase.ingestion.DocumentLlmSummaryGenerator;
 import com.knowbase.ingestion.DocumentPreparationPipeline;
 import com.knowbase.ingestion.DocumentPreparationResult;
 import com.knowbase.ingestion.DocumentProfileResolver;
 import com.knowbase.ingestion.DocumentSourceUriExpander;
+import com.knowbase.ingestion.DocumentSummaryStageOutcome;
 import com.knowbase.ingestion.NormalizationResult;
 import com.knowbase.ingestion.ParsedDocument;
 import com.knowbase.ingestion.PreparationStage;
@@ -143,7 +148,7 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
                         profile,
                         documentProfile,
                         tokenizer,
-                        stage == PreparationStage.ALL ? PreparationStage.CHUNK : stage,
+                        stage.executionStage(),
                         sourceOptions
                 );
 
@@ -151,9 +156,16 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
                 NormalizeStageResult normalizeStage = prepared.normalization() == null
                         ? null
                         : toNormalizeStage(prepared.normalization(), maxPreviewChars);
+                DocumentSummaryStageResult summaryStage = prepared.documentSummary() == null
+                        || !stage.runsDocumentSummary()
+                        ? null
+                        : toSummaryStage(prepared.documentSummary(), maxPreviewChars);
                 ChunkStageResult chunkStage = prepared.chunks().isEmpty()
                         ? null
-                        : toChunkStage(prepared.chunks(), maxPreviewChunks, maxPreviewChars);
+                        : toChunkStage(prepared.chunks(), prepared.postProcess(), maxPreviewChunks, maxPreviewChars);
+                PostProcessStageResult postProcessStage = stage.runsPostProcess()
+                        ? PostProcessStageMapper.toStageResult(prepared.postProcess())
+                        : null;
 
                 succeeded++;
                 documents.add(new IngestionPrepareDocumentResult(
@@ -164,7 +176,9 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
                         stage.name().toLowerCase(),
                         parseStage,
                         normalizeStage,
+                        summaryStage,
                         chunkStage,
+                        postProcessStage,
                         null
                 ));
             } catch (RuntimeException exception) {
@@ -175,6 +189,8 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
                         null,
                         null,
                         stage.name().toLowerCase(),
+                        null,
+                        null,
                         null,
                         null,
                         null,
@@ -239,8 +255,30 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
         );
     }
 
+    private static DocumentSummaryStageResult toSummaryStage(
+            DocumentSummaryStageOutcome outcome,
+            int maxPreviewChars
+    ) {
+        if (outcome == null || !outcome.enabled()) {
+            return new DocumentSummaryStageResult(false, false, false, null, null, null, null, 0, null);
+        }
+        DocumentLlmSummaryGenerator.LlmSummaryResult llm = outcome.llmResult().orElse(null);
+        return new DocumentSummaryStageResult(
+                true,
+                outcome.attempted(),
+                outcome.succeeded(),
+                llm == null ? null : llm.summaryText(),
+                llm == null ? null : llm.provider(),
+                llm == null ? null : llm.model(),
+                llm == null ? null : llm.promptId(),
+                outcome.inputCharCount(),
+                truncate(outcome.inputPreview(), maxPreviewChars)
+        );
+    }
+
     private static ChunkStageResult toChunkStage(
             List<DocumentChunk> chunks,
+            com.knowbase.ingestion.ChunkPostProcessMetrics postProcess,
             int maxPreviewChunks,
             int maxPreviewChars
     ) {
@@ -263,7 +301,12 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
             ));
         }
         int indexableCount = (int) chunks.stream().filter(DefaultIngestionPrepareService::isIndexableChunk).count();
-        return new ChunkStageResult(chunks.size(), indexableCount, List.copyOf(previews));
+        return new ChunkStageResult(
+                chunks.size(),
+                indexableCount,
+                List.copyOf(previews),
+                PostProcessStageMapper.toStageResult(postProcess)
+        );
     }
 
     private static boolean isIndexableChunk(DocumentChunk chunk) {

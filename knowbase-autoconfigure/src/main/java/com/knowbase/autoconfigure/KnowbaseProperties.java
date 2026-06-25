@@ -224,6 +224,7 @@ public class KnowbaseProperties {
         private int asyncPoolSize = 2;
         private boolean documentUpsertEnabled = true;
         private boolean promoteEvalGateEnabled = true;
+        private Summary summary = new Summary();
 
         public boolean isAsyncEnabled() {
             return asyncEnabled;
@@ -255,6 +256,80 @@ public class KnowbaseProperties {
 
         public void setPromoteEvalGateEnabled(boolean promoteEvalGateEnabled) {
             this.promoteEvalGateEnabled = promoteEvalGateEnabled;
+        }
+
+        public Summary getSummary() {
+            return summary;
+        }
+
+        public void setSummary(Summary summary) {
+            this.summary = summary == null ? new Summary() : summary;
+        }
+    }
+
+    public static class Summary {
+        private String promptId = "default_summary";
+        private String language = "the same language as the source content";
+        private int maxInputChars = 16_384;
+        private int maxOutputChars = 500;
+        private int minInputChars = 100;
+        private double temperature = 0.3;
+        private int maxCompletionTokens = 2048;
+
+        public String getPromptId() {
+            return promptId;
+        }
+
+        public void setPromptId(String promptId) {
+            this.promptId = promptId;
+        }
+
+        public String getLanguage() {
+            return language;
+        }
+
+        public void setLanguage(String language) {
+            this.language = language;
+        }
+
+        public int getMaxInputChars() {
+            return maxInputChars;
+        }
+
+        public void setMaxInputChars(int maxInputChars) {
+            this.maxInputChars = maxInputChars;
+        }
+
+        public int getMaxOutputChars() {
+            return maxOutputChars;
+        }
+
+        public void setMaxOutputChars(int maxOutputChars) {
+            this.maxOutputChars = maxOutputChars;
+        }
+
+        public int getMinInputChars() {
+            return minInputChars;
+        }
+
+        public void setMinInputChars(int minInputChars) {
+            this.minInputChars = minInputChars;
+        }
+
+        public double getTemperature() {
+            return temperature;
+        }
+
+        public void setTemperature(double temperature) {
+            this.temperature = temperature;
+        }
+
+        public int getMaxCompletionTokens() {
+            return maxCompletionTokens;
+        }
+
+        public void setMaxCompletionTokens(int maxCompletionTokens) {
+            this.maxCompletionTokens = maxCompletionTokens;
         }
     }
 

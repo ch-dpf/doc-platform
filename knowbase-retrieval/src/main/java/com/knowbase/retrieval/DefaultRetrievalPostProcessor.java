@@ -19,8 +19,19 @@ public final class DefaultRetrievalPostProcessor implements RetrievalPostProcess
     private static final int DEFAULT_RRF_K = 60;
     private static final double DEFAULT_MMR_LAMBDA = 0.72d;
 
+    private final ParentChildRetrievalExpander parentExpander;
+
+    public DefaultRetrievalPostProcessor() {
+        this(null);
+    }
+
+    public DefaultRetrievalPostProcessor(ParentChildRetrievalExpander parentExpander) {
+        this.parentExpander = parentExpander;
+    }
+
     @Override
     public List<RetrievalCandidate> fuse(List<RetrievalCandidate> candidates, Map<String, Object> retrievalPolicy) {
+        candidates = expandParentContext(candidates, retrievalPolicy);
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
@@ -36,6 +47,16 @@ public final class DefaultRetrievalPostProcessor implements RetrievalPostProcess
                 .limit(policy.maxCandidates())
                 .map(RankedCandidate::candidate)
                 .toList();
+    }
+
+    private List<RetrievalCandidate> expandParentContext(
+            List<RetrievalCandidate> candidates,
+            Map<String, Object> retrievalPolicy
+    ) {
+        if (parentExpander == null) {
+            return candidates;
+        }
+        return parentExpander.expand(candidates, retrievalPolicy);
     }
 
     @Override

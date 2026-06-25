@@ -106,6 +106,36 @@
             {{ selectedPreset.description }}。默认分块 {{ selectedPreset.config?.chunkMaxTokens ?? '--' }} token，
             重叠 {{ selectedPreset.config?.chunkOverlapTokens ?? '--' }} token。
           </p>
+
+          <div v-if="presetGuide" v-loading="guideLoading" class="preset-guide-panel">
+            <h4 class="preset-guide-title">本预设将启用的文档类型（建仓快照）</h4>
+            <p class="helper-text">{{ presetGuide.instanceBindingNoteZh }}</p>
+            <div v-if="presetGuide.suitableFileTypesZh?.length" class="tag-row">
+              <span class="tag-label">适合：</span>
+              <el-tag v-for="t in presetGuide.suitableFileTypesZh" :key="t" size="small" type="success" effect="plain">{{ t }}</el-tag>
+            </div>
+            <div v-if="presetGuide.cautionFileTypesZh?.length" class="tag-row">
+              <span class="tag-label">注意：</span>
+              <el-tag v-for="t in presetGuide.cautionFileTypesZh" :key="t" size="small" type="warning" effect="plain">{{ t }}</el-tag>
+            </div>
+            <el-table :data="presetGuide.documentProfiles || []" size="small" stripe class="data-table section-gap">
+              <el-table-column label="文档类型" min-width="110">
+                <template #default="{ row }">{{ row.nameZh || row.code }}</template>
+              </el-table-column>
+              <el-table-column label="解析器" min-width="120">
+                <template #default="{ row }">
+                  {{ row.parserNameZh || row.parserCode }}
+                  <el-tag v-if="row.parserExternal" size="small" type="warning" class="mini-tag">外接</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="切块" min-width="120">
+                <template #default="{ row }">{{ row.chunkingStrategyLabelZh || row.chunkingStrategy }}</template>
+              </el-table-column>
+              <el-table-column label="扩展名" min-width="100">
+                <template #default="{ row }">{{ (row.fileExtensions || []).join(', ') }}</template>
+              </el-table-column>
+            </el-table>
+          </div>
           <el-form-item>
             <el-button type="primary" round :loading="loading" native-type="submit">提交知识库</el-button>
           </el-form-item>
@@ -134,11 +164,11 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
 import PageCard from '../components/PageCard.vue';
-import { createLibrary, deleteLibrary, pageLibraries, listLibraryTypePresets } from '../api';
+import { createLibrary, deleteLibrary, pageLibraries, listLibraryTypePresets, getLibraryTypePresetGuide } from '../api';
 import { formatDateTime, formatNumber } from '../format';
 
 const router = useRouter();
@@ -158,11 +188,32 @@ const form = ref({
   tenantId: 'default',
   name: '研发知识中心',
   description: '用于技术文档、排障知识与研发规范的统一问答',
-  libraryTypePresetCode: 'technical_docs'
+  libraryTypePresetCode: 'table_report'
 });
 
 const selectedPreset = computed(() => libraryTypePresets.value.find(item => item.code === form.value.libraryTypePresetCode));
+const presetGuide = ref(null);
+const guideLoading = ref(false);
 const uniqueTagCount = computed(() => new Set(libraries.value.flatMap(item => item.tags || [])).size);
+
+async function loadPresetGuide(code) {
+  if (!code) {
+    presetGuide.value = null;
+    return;
+  }
+  guideLoading.value = true;
+  try {
+    presetGuide.value = await getLibraryTypePresetGuide(code);
+  } catch {
+    presetGuide.value = null;
+  } finally {
+    guideLoading.value = false;
+  }
+}
+
+watch(() => form.value.libraryTypePresetCode, (code) => {
+  loadPresetGuide(code);
+}, { immediate: true });
 
 async function loadPresets() {
   try {
@@ -254,7 +305,9 @@ async function submit() {
 }
 
 async function createSample() {
-  form.value.name = `样例知识库-${Date.now().toString().slice(-4)}`;
+  form.value.libraryTypePresetCode = 'table_report';
+  form.value.name = `报表样例库-${Date.now().toString().slice(-4)}`;
+  form.value.description = 'Excel/CSV 周报月报专用，Smart 表摘要 + 行组分块';
   await submit();
 }
 
@@ -286,5 +339,40 @@ onMounted(async () => {
 .name-link {
   cursor: pointer;
   color: var(--el-color-primary);
+}
+
+.preset-guide-panel {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+  background: var(--el-fill-color-blank);
+}
+
+.preset-guide-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tag-label {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.section-gap {
+  margin-top: 12px;
+}
+
+.mini-tag {
+  margin-left: 4px;
 }
 </style>

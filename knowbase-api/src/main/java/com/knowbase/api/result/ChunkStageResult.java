@@ -5,6 +5,7 @@ import java.util.List;
 public record ChunkStageResult(
         int chunkCount,
         int indexableChunkCount,
-        List<ChunkPreviewResult> chunks
+        List<ChunkPreviewResult> chunks,
+        PostProcessStageResult postProcess
 ) {
 }

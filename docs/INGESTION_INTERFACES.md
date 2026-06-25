@@ -29,7 +29,7 @@
 - `supports(String sourceUri, String mimeType)`：判断解析器是否支持当前来源。
 - `parse(DocumentSource source)`：将加载后的内容解析为 `ParsedDocument`。
 
-默认实现覆盖 Markdown/TXT、HTML、PDF、Word、Excel/CSV、PPT、OCR、QA、ZIP 和 Tika fallback；表格类默认使用 `table-deep`，将 CSV/Excel 行解析为 `table_row` 结构块。新增解析器只需实现该接口并加入 `DocumentSourceLoader` 的 parser 列表。
+默认实现覆盖 Markdown/TXT、HTML、PDF、Word、Excel/CSV、PPT、OCR、QA、ZIP 和 Tika fallback；表格类默认使用 `table-deep`（自适应三阶段：表头提升 / 表单元数据 / 坐标回退），将 Excel/CSV 行解析为带 `rowRole` 的 `table_row` 结构块。详见 `docs/EXCEL_ADAPTIVE_PARSE.md`。新增解析器只需实现该接口并加入 `DocumentSourceLoader` 的 parser 列表。
 
 ### `DocumentNormalizer`
 

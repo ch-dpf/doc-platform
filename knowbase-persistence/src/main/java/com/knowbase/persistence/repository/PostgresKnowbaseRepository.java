@@ -183,6 +183,10 @@ public final class PostgresKnowbaseRepository implements KnowbaseRepository {
                 .eq(ChunkEntity::getLibraryId, libraryId));
         documentMapper.delete(new LambdaQueryWrapper<DocumentEntity>()
                 .eq(DocumentEntity::getLibraryId, libraryId));
+        jdbcTemplate.update(
+                "UPDATE kb_library SET active_index_generation_id = NULL WHERE library_id = ?",
+                libraryId
+        );
         indexVersionMapper.delete(new LambdaQueryWrapper<IndexVersionEntity>()
                 .eq(IndexVersionEntity::getLibraryId, libraryId));
         documentProfileMapper.delete(new LambdaQueryWrapper<DocumentProfileEntity>()
@@ -471,6 +475,24 @@ public final class PostgresKnowbaseRepository implements KnowbaseRepository {
 
     @Override
     public List<KnowledgeDocument> listDocuments(UUID libraryId, UUID indexVersionId) {
+        return documentMapper.selectList(documentListWrapper(libraryId, indexVersionId)).stream()
+                .map(DomainMapper::toKnowledgeDocument)
+                .toList();
+    }
+
+    @Override
+    public PagedList<KnowledgeDocument> pageDocuments(UUID libraryId, UUID indexVersionId, int page, int size) {
+        Page<DocumentEntity> result = documentMapper.selectPage(
+                new Page<>(page, size),
+                documentListWrapper(libraryId, indexVersionId)
+        );
+        List<KnowledgeDocument> items = result.getRecords().stream()
+                .map(DomainMapper::toKnowledgeDocument)
+                .toList();
+        return new PagedList<>(items, result.getTotal(), page, size);
+    }
+
+    private LambdaQueryWrapper<DocumentEntity> documentListWrapper(UUID libraryId, UUID indexVersionId) {
         LambdaQueryWrapper<DocumentEntity> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(DocumentEntity::getLibraryId, libraryId);
         UUID generationFilter = indexVersionId;
@@ -483,7 +505,7 @@ public final class PostgresKnowbaseRepository implements KnowbaseRepository {
             wrapper.eq(DocumentEntity::getIndexVersionId, generationFilter);
         }
         wrapper.orderByDesc(DocumentEntity::getUpdatedAt);
-        return documentMapper.selectList(wrapper).stream().map(DomainMapper::toKnowledgeDocument).toList();
+        return wrapper;
     }
 
     @Override
@@ -701,6 +723,17 @@ public final class PostgresKnowbaseRepository implements KnowbaseRepository {
                 .stream()
                 .map(DomainMapper::toDocumentIndexJob)
                 .toList();
+    }
+
+    @Override
+    public java.util.Optional<DocumentIndexJob> findLatestDocumentIndexJob(UUID documentId) {
+        return documentIndexJobMapper.selectList(new LambdaQueryWrapper<DocumentIndexJobEntity>()
+                        .eq(DocumentIndexJobEntity::getDocumentId, documentId)
+                        .orderByDesc(DocumentIndexJobEntity::getUpdatedAt)
+                        .last("LIMIT 1"))
+                .stream()
+                .findFirst()
+                .map(DomainMapper::toDocumentIndexJob);
     }
 
     @Override

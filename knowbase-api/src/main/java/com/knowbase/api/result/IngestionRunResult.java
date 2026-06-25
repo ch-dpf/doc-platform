@@ -23,6 +23,8 @@ public record IngestionRunResult(
         int chunkCount,
         @Schema(description = "索引版本 ID")
         UUID indexVersionId,
+        @Schema(description = "Pipeline Trace ID，可用于观测页查询 Span")
+        UUID traceId,
         @Schema(description = "状态消息或错误信息")
         String message,
         @Schema(description = "创建时间")

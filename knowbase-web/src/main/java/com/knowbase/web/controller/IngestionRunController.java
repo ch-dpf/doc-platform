@@ -156,7 +156,16 @@ public class IngestionRunController {
         return ApiResponse.ok(prepareIngestionUseCase.prepare(normalizePrepareCommand(libraryId, command, "normalize")));
     }
 
-    @Operation(summary = "分段切块预览", description = "执行解析 + 清洗 + 分段，不写入索引")
+    @Operation(summary = "文档 LLM 摘要预览（已停用）", description = "摘要生成已关闭；该接口等价于 prepare/chunk，summaryStage 恒为 disabled")
+    @PostMapping("/libraries/{libraryId}/ingestion/prepare/summarize")
+    public ApiResponse<IngestionPrepareResult> prepareSummarize(
+            @Parameter(description = "知识库 ID") @PathVariable UUID libraryId,
+            @Valid @RequestBody PrepareIngestionCommand command
+    ) {
+        return ApiResponse.ok(prepareIngestionUseCase.prepare(normalizePrepareCommand(libraryId, command, "document_summary")));
+    }
+
+    @Operation(summary = "分段切块预览", description = "执行解析 + 清洗 + 分块，不写入索引（不含后处理/摘要）")
     @PostMapping("/libraries/{libraryId}/ingestion/prepare/chunk")
     public ApiResponse<IngestionPrepareResult> prepareChunk(
             @Parameter(description = "知识库 ID") @PathVariable UUID libraryId,

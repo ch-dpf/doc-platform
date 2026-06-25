@@ -82,6 +82,8 @@ public interface KnowbaseRepository {
 
     List<KnowledgeDocument> listDocuments(UUID libraryId, UUID indexVersionId);
 
+    PagedList<KnowledgeDocument> pageDocuments(UUID libraryId, UUID indexVersionId, int page, int size);
+
     Optional<KnowledgeDocument> findDocument(UUID documentId);
 
     Optional<KnowledgeDocument> findDocumentBySourceUri(UUID libraryId, String sourceUri);
@@ -117,6 +119,8 @@ public interface KnowbaseRepository {
     DocumentIndexJob saveDocumentIndexJob(DocumentIndexJob job);
 
     List<DocumentIndexJob> listDocumentIndexJobs(UUID runId);
+
+    java.util.Optional<DocumentIndexJob> findLatestDocumentIndexJob(UUID documentId);
 
     List<IndexedChunk> listChunksByIndexVersion(UUID indexVersionId);
 

@@ -14,8 +14,10 @@ public record DocumentPreparationResult(
         ParsedDocument parsed,
         NormalizationResult normalization,
         List<DocumentChunk> chunks,
+        ChunkPostProcessMetrics postProcess,
         DocumentProfile documentProfile,
-        Map<String, Object> options
+        Map<String, Object> options,
+        DocumentSummaryStageOutcome documentSummary
 ) {
 
     public boolean structureAware() {

@@ -3,6 +3,7 @@ package com.knowbase.model.ollama;
 import com.knowbase.model.ChatCompletion;
 import com.knowbase.model.ChatModelClient;
 import com.knowbase.model.ChatRequest;
+import com.knowbase.model.ChatRequestSupport;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,9 +37,9 @@ public final class OllamaChatModelClient implements ChatModelClient {
         if (request.systemPrompt() != null && !request.systemPrompt().isBlank()) {
             messages.add(new OllamaMessage("system", request.systemPrompt()));
         }
-        String userMessage = buildUserMessage(request);
+        String userMessage = ChatRequestSupport.buildUserMessage(request);
         messages.add(new OllamaMessage("user", userMessage));
-        Map<String, Object> options = request.parameters() == null ? Map.of() : request.parameters();
+        Map<String, Object> options = ChatRequestSupport.ollamaOptions(request);
         OllamaChatResponse response = ollamaClient.chat(modelName, messages, options);
         return new ChatCompletion(
                 response.answer(),
@@ -46,22 +47,5 @@ public final class OllamaChatModelClient implements ChatModelClient {
                 response.completionTokens(),
                 response.rawResponse()
         );
-    }
-
-    private static String buildUserMessage(ChatRequest request) {
-        String question = request.userMessage() == null ? "" : request.userMessage().trim();
-        String context = request.context() == null ? "" : request.context().trim();
-        if (context.isBlank()) {
-            return question;
-        }
-        return """
-                请基于以下证据回答问题。如果证据不足，请明确说明无法回答。
-
-                证据：
-                %s
-
-                问题：
-                %s
-                """.formatted(context, question).trim();
     }
 }
