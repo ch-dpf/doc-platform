@@ -31,6 +31,8 @@
 
 默认实现覆盖 Markdown/TXT、HTML、PDF、Word、Excel/CSV、PPT、OCR、QA、ZIP 和 Tika fallback；表格类默认使用 `table-deep`（自适应三阶段：表头提升 / 表单元数据 / 坐标回退），将 Excel/CSV 行解析为带 `rowRole` 的 `table_row` 结构块。详见 `docs/EXCEL_ADAPTIVE_PARSE.md`。新增解析器只需实现该接口并加入 `DocumentSourceLoader` 的 parser 列表。
 
+**PDF 视觉语言模型**：通过 `knowbase.vision-document` 接入官方 PaddleOCR-VL（`POST /layout-parsing`）或 vLLM（`POST /v1/chat/completions`）；`provider=ollama` 时回退 `knowbase.ollama.vision-language-model`。`PdfLayoutParser` 对扫描件或低置信度 layout 优先 VLM 逐页解析；未配置或调用失败时回退启发式 layout / Tesseract OCR。详见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)、`docs/PHASE2_INGESTION_PLAN.md` §4.2。
+
 ### `DocumentNormalizer`
 
 位置：`knowbase-ingestion/src/main/java/com/knowbase/ingestion/DocumentNormalizer.java`

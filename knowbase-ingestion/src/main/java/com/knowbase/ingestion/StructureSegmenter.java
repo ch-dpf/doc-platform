@@ -41,8 +41,68 @@ public final class StructureSegmenter {
         if (strategy.contains("qa")) {
             return segmentFromFlatText(document, documentProfile);
         }
+        if (strategy.contains("slide")) {
+            return segmentBySlideNumber(blocks, strategy);
+        }
 
         return segmentByHeadingSections(blocks, strategy);
+    }
+
+    private static List<StructuralSegment> segmentBySlideNumber(List<StructuralBlock> blocks, String strategy) {
+        Map<Integer, StringBuilder> slideBuffers = new java.util.LinkedHashMap<>();
+        Map<Integer, Map<String, Object>> slideMetadata = new java.util.HashMap<>();
+        for (StructuralBlock block : blocks) {
+            int slideNumber = resolveSlideNumber(block);
+            if (slideNumber <= 0) {
+                continue;
+            }
+            slideBuffers.computeIfAbsent(slideNumber, ignored -> new StringBuilder());
+            Map<String, Object> metadata = slideMetadata.computeIfAbsent(slideNumber, ignored -> new HashMap<>());
+            metadata.put("slideNumber", slideNumber);
+            metadata.putIfAbsent("pageNumber", slideNumber);
+            metadata.putIfAbsent("boundaryType", "slide");
+            if ("heading".equals(block.blockType())) {
+                metadata.putIfAbsent("slideTitle", block.content());
+            }
+            if (block.metadata().get("tableRegionId") != null) {
+                metadata.putIfAbsent("tableRegionId", block.metadata().get("tableRegionId"));
+            }
+            StringBuilder buffer = slideBuffers.get(slideNumber);
+            if (buffer.length() > 0) {
+                buffer.append("\n\n");
+            }
+            buffer.append(block.content());
+        }
+        List<StructuralSegment> segments = new ArrayList<>();
+        int ordinal = 0;
+        for (Map.Entry<Integer, StringBuilder> entry : slideBuffers.entrySet()) {
+            if (entry.getValue().length() == 0) {
+                continue;
+            }
+            segments.add(buildSegment(
+                    entry.getValue().toString(),
+                    "slide",
+                    strategy,
+                    ordinal++,
+                    slideMetadata.getOrDefault(entry.getKey(), Map.of())
+            ));
+        }
+        if (segments.isEmpty()) {
+            segments.add(buildSegment(StructureParsingSupport.blocksToText(blocks), "document", strategy, 0, Map.of()));
+        }
+        return segments;
+    }
+
+    private static int resolveSlideNumber(StructuralBlock block) {
+        Object slideNumber = block.metadata().get("slideNumber");
+        if (slideNumber instanceof Number number) {
+            return number.intValue();
+        }
+        Object pageNumber = block.metadata().get("pageNumber");
+        if (pageNumber instanceof Number number) {
+            return number.intValue();
+        }
+        return -1;
     }
 
     private static List<StructuralSegment> segmentByHeadingSections(List<StructuralBlock> blocks, String strategy) {

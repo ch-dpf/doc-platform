@@ -7,6 +7,8 @@ import com.knowbase.domain.observability.NoopPipelineObserver;
 import com.knowbase.domain.observability.PipelineObserver;
 import com.knowbase.tokenizer.ModelTokenizer;
 import com.knowbase.ingestion.DocumentMetadataEnricher.MetadataContext;
+import com.knowbase.ingestion.parse.ParsedDocumentParseEnricher;
+import com.knowbase.ingestion.parse.IngestionParseOptionsSupport;
 
 import java.util.List;
 import java.util.Map;
@@ -138,11 +140,12 @@ public final class DocumentPreparationPipeline {
         IngestionTraceContext context = traceContext == null
                 ? null
                 : traceContext;
+        Map<String, Object> effectiveOptions = IngestionParseOptionsSupport.mergeForLoad(documentProfile, sourceOptions);
         ParsedDocument loaded = stageTracer.trace(
                 context,
                 "load_source",
                 Map.of(),
-                () -> ensureExtractedText(sourceLoader.load(sourceUri, sourceOptions)),
+                () -> ensureExtractedText(sourceLoader.load(sourceUri, effectiveOptions)),
                 parsed -> Map.of(
                         "blockCount", parsed.blocks().size(),
                         "contentFamily", parsed.contentFamily().name()
@@ -152,7 +155,9 @@ public final class DocumentPreparationPipeline {
                 context,
                 "parse_document",
                 Map.of(),
-                () -> ParsedDocumentStructureEnricher.enrich(loaded, sourceUri),
+                () -> ParsedDocumentParseEnricher.enrich(
+                        ParsedDocumentStructureEnricher.enrich(loaded, sourceUri)
+                ),
                 enriched -> parseSpanAttributes(enriched)
         );
         return prepareFromParsed(
@@ -388,7 +393,8 @@ public final class DocumentPreparationPipeline {
     }
 
     public ParsedDocument parse(String sourceUri, Map<String, Object> sourceOptions) {
-        return ensureExtractedText(sourceLoader.load(sourceUri, sourceOptions));
+        ParsedDocument loaded = ensureExtractedText(sourceLoader.load(sourceUri, sourceOptions));
+        return ParsedDocumentParseEnricher.enrich(ParsedDocumentStructureEnricher.enrich(loaded, sourceUri));
     }
 
     private PostProcessOutcome applyPostProcess(List<DocumentChunk> chunks, ChunkPostProcessContext context) {
@@ -404,11 +410,22 @@ public final class DocumentPreparationPipeline {
 
     private static Map<String, Object> parseSpanAttributes(ParsedDocument parsed) {
         String parserCode = parsed.metadata() == null ? null : stringValue(parsed.metadata().get("parserCode"));
-        return Map.of(
-                "blockCount", parsed.blocks().size(),
-                "structureAware", parsed.structureAware(),
-                "parserCode", parserCode == null ? "" : parserCode
-        );
+        Map<String, Object> attributes = new java.util.HashMap<>();
+        attributes.put("blockCount", parsed.blocks().size());
+        attributes.put("structureAware", parsed.structureAware());
+        attributes.put("parserCode", parserCode == null ? "" : parserCode);
+        if (parsed.metadata() != null) {
+            if (parsed.metadata().get("parseConfidence") != null) {
+                attributes.put("parseConfidence", parsed.metadata().get("parseConfidence"));
+            }
+            if (parsed.metadata().get("indexableBlockCount") != null) {
+                attributes.put("indexableBlockCount", parsed.metadata().get("indexableBlockCount"));
+            }
+            if (parsed.metadata().get("tableRegionCount") != null) {
+                attributes.put("tableRegionCount", parsed.metadata().get("tableRegionCount"));
+            }
+        }
+        return Map.copyOf(attributes);
     }
 
     private static Map<String, Object> chunkSpanAttributes(List<DocumentChunk> chunks) {

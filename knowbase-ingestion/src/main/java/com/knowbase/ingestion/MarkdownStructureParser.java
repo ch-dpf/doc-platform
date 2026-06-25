@@ -31,7 +31,9 @@ public final class MarkdownStructureParser implements DocumentParser {
     @Override
     public ParsedDocument parse(DocumentSource source) {
         String text = readText(source);
-        List<StructuralBlock> blocks = StructureParsingSupport.parseMarkdown(text);
+        List<StructuralBlock> blocks = StructureParsingSupport.enrichHeadingPathsPublic(
+                StructureParsingSupport.parseMarkdown(text)
+        );
         Map<String, Object> metadata = new HashMap<>();
         if (source.metadata() != null) {
             metadata.putAll(source.metadata());

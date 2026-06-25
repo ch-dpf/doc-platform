@@ -15,6 +15,8 @@ public class KnowbaseProperties {
 
     private Ollama ollama = new Ollama();
 
+    private VisionDocument visionDocument = new VisionDocument();
+
     private Tokenizer tokenizer = new Tokenizer();
 
     private Ingestion ingestion = new Ingestion();
@@ -63,6 +65,14 @@ public class KnowbaseProperties {
 
     public void setOllama(Ollama ollama) {
         this.ollama = ollama;
+    }
+
+    public VisionDocument getVisionDocument() {
+        return visionDocument;
+    }
+
+    public void setVisionDocument(VisionDocument visionDocument) {
+        this.visionDocument = visionDocument == null ? new VisionDocument() : visionDocument;
     }
 
     public Tokenizer getTokenizer() {
@@ -147,8 +157,11 @@ public class KnowbaseProperties {
         private String baseUrl = "http://localhost:11434";
         private String embeddingModel = "bge-m3";
         private String chatModel = "llama3.2";
+        /** Vision-language model for document page parsing (e.g. PaddleOCR-VL via Ollama). Empty = disabled. */
+        private String visionLanguageModel = "MedAIBase/PaddleOCR-VL:0.9b";
         private int embeddingDimension = 1024;
         private java.time.Duration timeout = java.time.Duration.ofSeconds(60);
+        private java.time.Duration visionLanguageTimeout = java.time.Duration.ofSeconds(120);
 
         public boolean isEnabled() {
             return enabled;
@@ -190,6 +203,22 @@ public class KnowbaseProperties {
             this.chatModel = chatModel;
         }
 
+        public String getVisionLanguageModel() {
+            return visionLanguageModel;
+        }
+
+        public void setVisionLanguageModel(String visionLanguageModel) {
+            this.visionLanguageModel = visionLanguageModel;
+        }
+
+        public java.time.Duration getVisionLanguageTimeout() {
+            return visionLanguageTimeout;
+        }
+
+        public void setVisionLanguageTimeout(java.time.Duration visionLanguageTimeout) {
+            this.visionLanguageTimeout = visionLanguageTimeout;
+        }
+
         public int getEmbeddingDimension() {
             return embeddingDimension;
         }
@@ -204,6 +233,164 @@ public class KnowbaseProperties {
 
         public void setTimeout(java.time.Duration timeout) {
             this.timeout = timeout;
+        }
+    }
+
+    /**
+     * Official PaddleOCR-VL HTTP pipeline or vLLM OpenAI-compatible VLM for PDF page parsing.
+     * When {@code enabled=true}, takes precedence over {@link Ollama#visionLanguageModel}.
+     */
+    public static class VisionDocument {
+        private boolean enabled = false;
+        /** paddleocr-vl | vllm | ollama */
+        private String provider = "paddleocr-vl";
+        private java.time.Duration timeout = java.time.Duration.ofSeconds(600);
+        private PaddleOcrVl paddleocrVl = new PaddleOcrVl();
+        private Vllm vllm = new Vllm();
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getProvider() {
+            return provider;
+        }
+
+        public void setProvider(String provider) {
+            this.provider = provider;
+        }
+
+        public java.time.Duration getTimeout() {
+            return timeout;
+        }
+
+        public void setTimeout(java.time.Duration timeout) {
+            this.timeout = timeout;
+        }
+
+        public PaddleOcrVl getPaddleocrVl() {
+            return paddleocrVl;
+        }
+
+        public void setPaddleocrVl(PaddleOcrVl paddleocrVl) {
+            this.paddleocrVl = paddleocrVl == null ? new PaddleOcrVl() : paddleocrVl;
+        }
+
+        public Vllm getVllm() {
+            return vllm;
+        }
+
+        public void setVllm(Vllm vllm) {
+            this.vllm = vllm == null ? new Vllm() : vllm;
+        }
+
+        public static class PaddleOcrVl {
+            private String baseUrl = "http://localhost:8080";
+            private String layoutParsingPath = "/layout-parsing";
+            private String pipelineName = "PaddleOCR-VL-1.6";
+            private boolean prettifyMarkdown = true;
+            private boolean returnMarkdownImages = false;
+            private Boolean visualize = false;
+
+            public String getBaseUrl() {
+                return baseUrl;
+            }
+
+            public void setBaseUrl(String baseUrl) {
+                this.baseUrl = baseUrl;
+            }
+
+            public String getLayoutParsingPath() {
+                return layoutParsingPath;
+            }
+
+            public void setLayoutParsingPath(String layoutParsingPath) {
+                this.layoutParsingPath = layoutParsingPath;
+            }
+
+            public String getPipelineName() {
+                return pipelineName;
+            }
+
+            public void setPipelineName(String pipelineName) {
+                this.pipelineName = pipelineName;
+            }
+
+            public boolean isPrettifyMarkdown() {
+                return prettifyMarkdown;
+            }
+
+            public void setPrettifyMarkdown(boolean prettifyMarkdown) {
+                this.prettifyMarkdown = prettifyMarkdown;
+            }
+
+            public boolean isReturnMarkdownImages() {
+                return returnMarkdownImages;
+            }
+
+            public void setReturnMarkdownImages(boolean returnMarkdownImages) {
+                this.returnMarkdownImages = returnMarkdownImages;
+            }
+
+            public Boolean getVisualize() {
+                return visualize;
+            }
+
+            public void setVisualize(Boolean visualize) {
+                this.visualize = visualize;
+            }
+        }
+
+        public static class Vllm {
+            private String baseUrl = "http://localhost:8118";
+            private String chatCompletionsPath = "/v1/chat/completions";
+            private String model = "PaddleOCR-VL-1.6-0.9B";
+            private String apiKey = "";
+            private double temperature = 0.1d;
+
+            public String getBaseUrl() {
+                return baseUrl;
+            }
+
+            public void setBaseUrl(String baseUrl) {
+                this.baseUrl = baseUrl;
+            }
+
+            public String getChatCompletionsPath() {
+                return chatCompletionsPath;
+            }
+
+            public void setChatCompletionsPath(String chatCompletionsPath) {
+                this.chatCompletionsPath = chatCompletionsPath;
+            }
+
+            public String getModel() {
+                return model;
+            }
+
+            public void setModel(String model) {
+                this.model = model;
+            }
+
+            public String getApiKey() {
+                return apiKey;
+            }
+
+            public void setApiKey(String apiKey) {
+                this.apiKey = apiKey;
+            }
+
+            public double getTemperature() {
+                return temperature;
+            }
+
+            public void setTemperature(double temperature) {
+                this.temperature = temperature;
+            }
         }
     }
 
@@ -225,6 +412,7 @@ public class KnowbaseProperties {
         private boolean documentUpsertEnabled = true;
         private boolean promoteEvalGateEnabled = true;
         private Summary summary = new Summary();
+        private Pdf pdf = new Pdf();
 
         public boolean isAsyncEnabled() {
             return asyncEnabled;
@@ -264,6 +452,66 @@ public class KnowbaseProperties {
 
         public void setSummary(Summary summary) {
             this.summary = summary == null ? new Summary() : summary;
+        }
+
+        public Pdf getPdf() {
+            return pdf;
+        }
+
+        public void setPdf(Pdf pdf) {
+            this.pdf = pdf == null ? new Pdf() : pdf;
+        }
+    }
+
+    public static class Pdf {
+        /** Route scanned PDFs to vision-language model when configured. */
+        private boolean vlOnScanned = true;
+        /** Re-parse with VLM when layout confidence is below threshold. */
+        private boolean vlOnLowConfidence = true;
+        private double vlLowConfidenceThreshold = 0.55d;
+        /** Fall back to heuristic layout/OCR when VLM fails. */
+        private boolean vlFallbackToHeuristic = true;
+        /** Max pages to send to VLM per document; 0 = unlimited. */
+        private int vlMaxPages = 0;
+
+        public boolean isVlOnScanned() {
+            return vlOnScanned;
+        }
+
+        public void setVlOnScanned(boolean vlOnScanned) {
+            this.vlOnScanned = vlOnScanned;
+        }
+
+        public boolean isVlOnLowConfidence() {
+            return vlOnLowConfidence;
+        }
+
+        public void setVlOnLowConfidence(boolean vlOnLowConfidence) {
+            this.vlOnLowConfidence = vlOnLowConfidence;
+        }
+
+        public double getVlLowConfidenceThreshold() {
+            return vlLowConfidenceThreshold;
+        }
+
+        public void setVlLowConfidenceThreshold(double vlLowConfidenceThreshold) {
+            this.vlLowConfidenceThreshold = vlLowConfidenceThreshold;
+        }
+
+        public boolean isVlFallbackToHeuristic() {
+            return vlFallbackToHeuristic;
+        }
+
+        public void setVlFallbackToHeuristic(boolean vlFallbackToHeuristic) {
+            this.vlFallbackToHeuristic = vlFallbackToHeuristic;
+        }
+
+        public int getVlMaxPages() {
+            return vlMaxPages;
+        }
+
+        public void setVlMaxPages(int vlMaxPages) {
+            this.vlMaxPages = vlMaxPages;
         }
     }
 

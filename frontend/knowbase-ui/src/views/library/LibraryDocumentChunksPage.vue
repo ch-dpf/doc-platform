@@ -28,13 +28,13 @@
             当前定位：第 {{ pdfPage }} 页
             <el-button link type="primary" @click="pdfPage = null">清除</el-button>
           </div>
-          <iframe
-            v-if="previewMode === 'pdf'"
-            :key="pdfFrameKey"
-            class="preview-frame"
-            :src="pdfPreviewUrl"
-            title="PDF 预览"
-          />
+          <div v-if="previewMode === 'pdf'" class="pdf-preview-layout">
+            <PdfPreviewPanel
+              :source-url="previewObjectUrl"
+              :page-number="pdfPage || selectedChunkPage || 1"
+              :chunk-metadata="selectedChunkMetadata"
+            />
+          </div>
           <pre v-else-if="previewMode === 'text'" class="preview-text">{{ previewText }}</pre>
           <div
             v-else-if="previewMode === 'docx-html'"
@@ -215,6 +215,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft } from '@element-plus/icons-vue';
 import mammoth from 'mammoth';
 import PageCard from '../../components/PageCard.vue';
+import PdfPreviewPanel from '../../components/PdfPreviewPanel.vue';
 import PipelineTraceTimeline from '../../components/PipelineTraceTimeline.vue';
 import { useLibraryWorkspace } from '../../composables/libraryWorkspace';
 import { fetchDocumentPreview, getDocument, getDocumentPipelineTrace, listPipelineTrace, pageDocumentChunks, updateDocumentChunk } from '../../api';
@@ -294,16 +295,20 @@ const previewMode = computed(() => {
   return classifyPreviewMode(preview.value.contentType, preview.value.filename);
 });
 
-const pdfFrameKey = computed(() => `${previewObjectUrl.value || 'pdf'}-${pdfPage.value || 'all'}`);
+const selectedChunkMetadata = computed(() => {
+  if (!selectedChunkId.value) {
+    return null;
+  }
+  return chunks.value.find((item) => item.chunkId === selectedChunkId.value)?.metadata ?? null;
+});
 
-const pdfPreviewUrl = computed(() => {
-  if (!previewObjectUrl.value) {
-    return '';
+const selectedChunkPage = computed(() => {
+  if (!selectedChunkId.value) {
+    return null;
   }
-  if (pdfPage.value == null) {
-    return previewObjectUrl.value;
-  }
-  return `${previewObjectUrl.value}#page=${pdfPage.value}`;
+  const chunk = chunks.value.find((item) => item.chunkId === selectedChunkId.value);
+  const page = chunk?.metadata?.pageNumber;
+  return page == null ? null : Number(page);
 });
 
 const currentExcelHtml = computed(() => {
@@ -468,10 +473,22 @@ async function highlightDocxSnippet(content) {
 async function locateChunk(chunk) {
   selectedChunkId.value = chunk.chunkId;
   const page = chunkPageNumber(chunk);
+  const sheetName = chunk?.metadata?.sheetName;
+  if (previewMode.value === 'excel' && sheetName && excelSheets.value.length) {
+    activeTab.value = 'preview';
+    const index = excelSheets.value.findIndex((sheet) => sheet.name === String(sheetName));
+    if (index >= 0) {
+      activeExcelSheet.value = String(index);
+      showMessage(`已定位 Sheet：${sheetName}`, 'success');
+      return;
+    }
+    showMessage(`未找到 Sheet：${sheetName}`, 'info');
+    return;
+  }
   if (previewMode.value === 'pdf' && page != null) {
     activeTab.value = 'preview';
     pdfPage.value = page;
-    showMessage(`已跳转到第 ${page} 页`, 'success');
+    showMessage(`已跳转到第 ${page} 页并高亮引用区域`, 'success');
     return;
   }
   if (previewMode.value === 'docx-html') {
@@ -482,7 +499,7 @@ async function locateChunk(chunk) {
   }
   if (previewMode.value === 'excel') {
     activeTab.value = 'preview';
-    showMessage('Excel 预览暂不支持自动定位到分块', 'info');
+    showMessage('Excel 预览暂不支持按分块内容定位', 'info');
     return;
   }
   if (page != null) {
@@ -615,9 +632,34 @@ watch(documentId, () => {
   loadChunks();
 });
 
-onMounted(() => {
-  loadPreview();
-  loadChunks();
+async function applyRouteLocate() {
+  const page = route.query.page ? Number(route.query.page) : null;
+  const sheet = route.query.sheet ? String(route.query.sheet) : null;
+  const chunkId = route.query.chunkId ? String(route.query.chunkId) : null;
+  if (page != null && Number.isFinite(page)) {
+    activeTab.value = 'preview';
+    pdfPage.value = page;
+  }
+  if (sheet && excelSheets.value.length) {
+    activeTab.value = 'preview';
+    const index = excelSheets.value.findIndex((item) => item.name === sheet);
+    if (index >= 0) {
+      activeExcelSheet.value = String(index);
+    }
+  }
+  if (chunkId && chunks.value.length) {
+    const chunk = chunks.value.find((item) => item.chunkId === chunkId);
+    if (chunk) {
+      activeTab.value = 'chunks';
+      await locateChunk(chunk);
+    }
+  }
+}
+
+onMounted(async () => {
+  await loadPreview();
+  await loadChunks();
+  await applyRouteLocate();
 });
 
 onBeforeUnmount(revokePreviewUrl);
@@ -651,6 +693,59 @@ onBeforeUnmount(revokePreviewUrl);
   border: 1px solid var(--dp-border);
   border-radius: var(--dp-radius);
   background: #fff;
+}
+
+.pdf-preview-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 12px;
+  align-items: start;
+}
+
+.pdf-bbox-schematic {
+  border: 1px solid var(--dp-border);
+  border-radius: var(--dp-radius);
+  padding: 12px;
+  background: var(--dp-surface, #fafafa);
+}
+
+.pdf-bbox-schematic__title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.pdf-bbox-schematic__page {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 612 / 792;
+  background: #fff;
+  border: 1px dashed var(--dp-border);
+}
+
+.pdf-bbox-schematic__region {
+  position: absolute;
+  border: 2px solid #409eff;
+  background: rgba(64, 158, 255, 0.12);
+  box-sizing: border-box;
+}
+
+.pdf-bbox-schematic__word {
+  position: absolute;
+  border: 1px solid rgba(230, 162, 60, 0.9);
+  background: rgba(230, 162, 60, 0.18);
+  box-sizing: border-box;
+}
+
+.pdf-bbox-schematic__meta {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+@media (max-width: 960px) {
+  .pdf-preview-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .preview-text {

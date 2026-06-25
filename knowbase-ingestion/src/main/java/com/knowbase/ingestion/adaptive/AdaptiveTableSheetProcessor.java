@@ -1,11 +1,15 @@
 package com.knowbase.ingestion.adaptive;
 
 import com.knowbase.ingestion.StructuralBlock;
+import com.knowbase.ingestion.table.AdaptiveTableRegionContext;
+import com.knowbase.ingestion.table.AdaptiveTableRegionDetector;
+import com.knowbase.ingestion.table.MultiLevelHeaderStack;
+import com.knowbase.ingestion.table.TableCellMetadataBuilder;
+import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.FormulaEvaluator;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.util.CellRangeAddress;
-import org.apache.poi.ss.util.CellReference;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -41,7 +45,8 @@ public final class AdaptiveTableSheetProcessor {
                 sheetRows,
                 sheet,
                 mergedRegions,
-                startOrdinal
+                startOrdinal,
+                evaluator
         );
     }
 
@@ -56,7 +61,7 @@ public final class AdaptiveTableSheetProcessor {
             sheetRows.add(new SheetRow(rowIndex, values, countPopulated(values), null));
         }
         int columnCount = rowValues.stream().mapToInt(List::size).max().orElse(0);
-        return processRows(sheetLabel, 0, "csv", columnCount, sheetRows, null, List.of(), startOrdinal);
+        return processRows(sheetLabel, 0, "csv", columnCount, sheetRows, null, List.of(), startOrdinal, null);
     }
 
     private static SheetParseResult processRows(
@@ -67,11 +72,14 @@ public final class AdaptiveTableSheetProcessor {
             List<SheetRow> sheetRows,
             Sheet sheet,
             List<CellRangeAddress> mergedRegions,
-            int startOrdinal
+            int startOrdinal,
+            FormulaEvaluator evaluator
     ) {
         StringBuilder textBuilder = new StringBuilder();
         List<StructuralBlock> blocks = new ArrayList<>();
         String[] activeColumnHeaders = null;
+        MultiLevelHeaderStack headerStack = new MultiLevelHeaderStack();
+        AdaptiveTableRegionContext regionContext = new AdaptiveTableRegionContext();
         int ordinal = startOrdinal;
 
         textBuilder.append("# Sheet: ").append(sheetLabel).append('\n');
@@ -93,18 +101,26 @@ public final class AdaptiveTableSheetProcessor {
                     RowLayoutContext.of(columnCount, horizontalMergeSpan(mergedRegions, sheetRow.rowIndex()))
             );
 
+            if (AdaptiveTableRegionDetector.shouldStartRegion(role, sheetRow.values(), sheetRow.populatedCount())) {
+                regionContext.startRegion(sheetRow.rowIndex(), AdaptiveTableRegionDetector.regionLabel(role, sheetRow.values()));
+            }
+
             if (role == TableRowRole.LAYOUT || role == TableRowRole.SEPARATOR || role == TableRowRole.FORM_KV) {
                 activeColumnHeaders = null;
+                headerStack.reset();
             }
             if (role == TableRowRole.HEADER) {
-                activeColumnHeaders = AdaptiveTableLayoutAnalyzer.buildColumnHeaders(sheetRow.values());
+                headerStack.pushHeaderRow(sheetRow.values());
+                activeColumnHeaders = headerStack.activeFlatHeaders(columnCount);
             }
 
             String rowText = AdaptiveTableTextSerializer.serialize(
                     role,
                     sheetLabel,
                     sheetRow.values(),
-                    activeColumnHeaders
+                    activeColumnHeaders,
+                    headerStack,
+                    columnCount
             );
             if (rowText.isBlank()) {
                 continue;
@@ -121,7 +137,10 @@ public final class AdaptiveTableSheetProcessor {
                     columnCount,
                     mergedRegions,
                     role,
-                    activeColumnHeaders
+                    activeColumnHeaders,
+                    headerStack,
+                    regionContext,
+                    evaluator
             ));
         }
 
@@ -173,10 +192,13 @@ public final class AdaptiveTableSheetProcessor {
             int columnCount,
             List<CellRangeAddress> mergedRegions,
             TableRowRole role,
-            String[] columnHeaders
+            String[] columnHeaders,
+            MultiLevelHeaderStack headerStack,
+            AdaptiveTableRegionContext regionContext,
+            FormulaEvaluator evaluator
     ) {
         int rowIndex = sheetRow.rowIndex();
-        List<String> columnKeys = headerPath(columnHeaders, columnCount);
+        List<String> columnKeys = flatColumnKeys(columnHeaders, headerStack, columnCount);
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("tableFormat", tableFormat);
         metadata.put("sheetName", sheet == null ? "CSV" : sheet.getSheetName());
@@ -185,7 +207,11 @@ public final class AdaptiveTableSheetProcessor {
         metadata.put("serializationStrategy", strategyName(role));
         metadata.put("indexableHint", AdaptiveTableTextSerializer.defaultIndexable(role));
         metadata.put("columnKeys", columnKeys);
-        metadata.put("headerRowCount", role == TableRowRole.HEADER ? 1 : 0);
+        metadata.put("headerRowCount", headerStack.headerRowCount());
+        metadata.put("tableRegionId", regionContext.currentRegionId());
+        if (!regionContext.currentRegionLabel().isBlank()) {
+            metadata.put("tableRegionLabel", regionContext.currentRegionLabel());
+        }
         metadata.put("boundaryType", "table_row");
         metadata.put("rowIndex", rowIndex);
         metadata.put("rowStart", rowIndex);
@@ -195,20 +221,59 @@ public final class AdaptiveTableSheetProcessor {
         metadata.put("columnEnd", Math.max(0, columnCount - 1));
         metadata.put("columnRange", columnCount <= 1 ? "0" : "0:" + (columnCount - 1));
         metadata.put("headerPath", columnKeys);
+        Map<Integer, String> formulas = Map.of();
+        Map<Integer, String> computedValues = Map.of();
+        List<Map<String, Object>> mergedCells = List.of();
         if (sheetRow.row() != null && sheet != null) {
             metadata.put("hiddenRow", sheetRow.row().getZeroHeight());
             metadata.put("hiddenColumns", hiddenColumns(sheet, columnCount));
-            Map<Integer, String> formulas = formulasForRow(sheetRow.row());
+            formulas = formulasForRow(sheetRow.row());
+            computedValues = computedValuesForRow(sheetRow.row(), evaluator);
             metadata.put("formulaCells", formulas);
             metadata.put("crossSheetReferences", crossSheetReferences(formulas));
-            metadata.put("mergedCells", mergedCellsForRow(mergedRegions, rowIndex));
-            metadata.put("hasMergedCells", !((List<?>) metadata.get("mergedCells")).isEmpty());
+            mergedCells = mergedCellsForRow(mergedRegions, rowIndex);
+            metadata.put("mergedCells", mergedCells);
+            metadata.put("hasMergedCells", !mergedCells.isEmpty());
         } else {
             metadata.put("mergedCells", List.of());
             metadata.put("hasMergedCells", false);
         }
-        metadata.put("cellCoordinates", cellCoordinates(rowIndex, columnKeys, sheetRow.values(), metadata.get("mergedCells")));
+        metadata.put(
+                "cellCoordinates",
+                TableCellMetadataBuilder.buildWithHeaderPaths(
+                        rowIndex,
+                        sheetRow.values(),
+                        headerStack,
+                        columnCount,
+                        mergedCells,
+                        formulas,
+                        computedValues
+                )
+        );
         return new StructuralBlock("table_row", 0, content, ordinal, Map.copyOf(metadata));
+    }
+
+    private static List<String> flatColumnKeys(String[] columnHeaders, MultiLevelHeaderStack headerStack, int columnCount) {
+        if (headerStack.headerRowCount() > 0) {
+            String[] flat = headerStack.activeFlatHeaders(columnCount);
+            List<String> keys = new ArrayList<>(flat.length);
+            for (String key : flat) {
+                keys.add(key);
+            }
+            return keys;
+        }
+        if (columnHeaders != null && columnHeaders.length > 0) {
+            List<String> headers = new ArrayList<>();
+            for (String header : columnHeaders) {
+                if (header != null && !header.isBlank()) {
+                    headers.add(header.trim());
+                }
+            }
+            if (!headers.isEmpty()) {
+                return headers;
+            }
+        }
+        return headerStack.columnKeys(columnCount);
     }
 
     private static String strategyName(TableRowRole role) {
@@ -222,27 +287,21 @@ public final class AdaptiveTableSheetProcessor {
         };
     }
 
-    private static List<String> headerPath(String[] columnHeaders, int columnCount) {
-        if (columnHeaders != null && columnHeaders.length > 0) {
-            List<String> headers = new ArrayList<>();
-            for (String header : columnHeaders) {
-                if (header != null && !header.isBlank()) {
-                    headers.add(header.trim());
-                }
+    private static Map<Integer, String> computedValuesForRow(Row row, FormulaEvaluator evaluator) {
+        Map<Integer, String> computed = new HashMap<>();
+        if (row == null) {
+            return computed;
+        }
+        for (int index = row.getFirstCellNum(); index < row.getLastCellNum(); index++) {
+            Cell cell = row.getCell(index);
+            if (cell == null) {
+                continue;
             }
-            if (!headers.isEmpty()) {
-                return headers;
+            if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.FORMULA && evaluator != null) {
+                computed.put(index, new org.apache.poi.ss.usermodel.DataFormatter().formatCellValue(cell, evaluator).trim());
             }
         }
-        return columnKeys(columnCount);
-    }
-
-    private static List<String> columnKeys(int columnCount) {
-        List<String> keys = new ArrayList<>(columnCount);
-        for (int index = 0; index < columnCount; index++) {
-            keys.add(CellReference.convertNumToColString(index));
-        }
-        return keys;
+        return computed;
     }
 
     private static int countPopulated(List<String> values) {
@@ -329,77 +388,5 @@ public final class AdaptiveTableSheetProcessor {
             ranges.add(Map.copyOf(metadata));
         }
         return ranges;
-    }
-
-    private static List<Map<String, Object>> cellCoordinates(
-            int rowIndex,
-            List<String> columnKeys,
-            List<String> values,
-            Object mergedCells
-    ) {
-        List<Map<String, Object>> cells = new ArrayList<>();
-        int size = Math.max(columnKeys.size(), values.size());
-        for (int columnIndex = 0; columnIndex < size; columnIndex++) {
-            String columnKey = columnIndex < columnKeys.size() && columnKeys.get(columnIndex) != null
-                    && !columnKeys.get(columnIndex).isBlank()
-                    ? columnKeys.get(columnIndex)
-                    : CellReference.convertNumToColString(columnIndex);
-            String value = columnIndex < values.size() ? values.get(columnIndex) : "";
-            Map<String, Object> cell = new HashMap<>();
-            cell.put("rowIndex", rowIndex);
-            cell.put("columnIndex", columnIndex);
-            cell.put("coordinate", "R" + (rowIndex + 1) + "C" + (columnIndex + 1));
-            cell.put("columnKey", columnKey);
-            cell.put("headerPath", List.of(columnKey));
-            cell.put("value", value == null ? "" : value);
-            Map<String, Object> merged = mergedMetadataForCell(mergedCells, rowIndex, columnIndex);
-            if (!merged.isEmpty()) {
-                cell.put("merged", true);
-                cell.put("mergedRange", merged.get("range"));
-                cell.put("rowSpan", merged.get("rowSpan"));
-                cell.put("columnSpan", merged.get("columnSpan"));
-            } else {
-                cell.put("merged", false);
-            }
-            cells.add(Map.copyOf(cell));
-        }
-        return cells;
-    }
-
-    private static Map<String, Object> mergedMetadataForCell(Object mergedCells, int rowIndex, int columnIndex) {
-        if (!(mergedCells instanceof List<?> ranges)) {
-            return Map.of();
-        }
-        for (Object item : ranges) {
-            if (!(item instanceof Map<?, ?> range)) {
-                continue;
-            }
-            int rowStart = intValue(range.get("rowStart"), -1);
-            int rowEnd = intValue(range.get("rowEnd"), -1);
-            int columnStart = intValue(range.get("columnStart"), -1);
-            int columnEnd = intValue(range.get("columnEnd"), -1);
-            if (rowStart <= rowIndex && rowIndex <= rowEnd && columnStart <= columnIndex && columnIndex <= columnEnd) {
-                Map<String, Object> metadata = new HashMap<>();
-                for (Map.Entry<?, ?> entry : range.entrySet()) {
-                    metadata.put(String.valueOf(entry.getKey()), entry.getValue());
-                }
-                return metadata;
-            }
-        }
-        return Map.of();
-    }
-
-    private static int intValue(Object value, int fallback) {
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value != null) {
-            try {
-                return Integer.parseInt(String.valueOf(value));
-            } catch (NumberFormatException ignored) {
-                return fallback;
-            }
-        }
-        return fallback;
     }
 }

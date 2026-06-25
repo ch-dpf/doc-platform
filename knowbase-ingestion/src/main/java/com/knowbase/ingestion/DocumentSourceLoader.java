@@ -125,6 +125,7 @@ public final class DocumentSourceLoader {
                 .filter(candidate -> candidate instanceof MarkdownStructureParser
                         || candidate instanceof HtmlStructureParser
                         || candidate instanceof DocxStructureParser
+                        || candidate instanceof PptxStructureParser
                         || candidate instanceof PdfLayoutParser
                         || candidate instanceof PdfStructureParser
                         || candidate instanceof TextStructureParser
@@ -299,6 +300,9 @@ public final class DocumentSourceLoader {
         }
         if ("docx-structure".equals(normalized)) {
             return parser instanceof DocxStructureParser;
+        }
+        if ("pptx-structure".equals(normalized)) {
+            return parser instanceof PptxStructureParser;
         }
         if ("pdf-structure".equals(normalized)) {
             return parser instanceof PdfStructureParser;

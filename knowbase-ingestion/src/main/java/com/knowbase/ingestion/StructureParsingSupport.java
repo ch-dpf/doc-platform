@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-final class StructureParsingSupport {
+public final class StructureParsingSupport {
 
     private static final Pattern MARKDOWN_HEADING = Pattern.compile("^(#{1,6})\\s+(.+)$");
     private static final Pattern MARKDOWN_LIST = Pattern.compile("^(\\s*)[-*+]\\s+(.+)$");
@@ -26,8 +26,11 @@ final class StructureParsingSupport {
         StringBuilder codeBlock = new StringBuilder();
         boolean inCodeFence = false;
         int ordinal = 0;
+        int tableRegionId = 0;
+        int lineIndex = 0;
 
-        for (String rawLine : lines) {
+        while (lineIndex < lines.length) {
+            String rawLine = lines[lineIndex];
             String line = rawLine == null ? "" : rawLine;
             if (line.trim().startsWith("```")) {
                 if (inCodeFence) {
@@ -41,6 +44,7 @@ final class StructureParsingSupport {
                     }
                     inCodeFence = true;
                 }
+                lineIndex++;
                 continue;
             }
             if (inCodeFence) {
@@ -48,7 +52,23 @@ final class StructureParsingSupport {
                     codeBlock.append('\n');
                 }
                 codeBlock.append(line);
+                lineIndex++;
                 continue;
+            }
+
+            if (isMarkdownPipeRow(line.trim())) {
+                MarkdownTableSlice tableSlice = tryParseMarkdownPipeTable(lines, lineIndex, tableRegionId, ordinal);
+                if (!tableSlice.blocks().isEmpty()) {
+                    if (paragraph.length() > 0) {
+                        blocks.add(StructuralBlock.paragraph(paragraph.toString().trim(), ordinal++));
+                        paragraph.setLength(0);
+                    }
+                    blocks.addAll(tableSlice.blocks());
+                    ordinal = tableSlice.nextOrdinal();
+                    tableRegionId++;
+                    lineIndex = tableSlice.nextLineIndex();
+                    continue;
+                }
             }
 
             Matcher headingMatcher = MARKDOWN_HEADING.matcher(line.trim());
@@ -62,6 +82,7 @@ final class StructureParsingSupport {
                         headingMatcher.group(2).trim(),
                         ordinal++
                 ));
+                lineIndex++;
                 continue;
             }
 
@@ -73,6 +94,7 @@ final class StructureParsingSupport {
                 }
                 int level = Math.max(1, listMatcher.group(1).length() / 2 + 1);
                 blocks.add(StructuralBlock.listItem(listMatcher.group(2).trim(), ordinal++, level));
+                lineIndex++;
                 continue;
             }
 
@@ -84,6 +106,7 @@ final class StructureParsingSupport {
                 }
                 int level = Math.max(1, orderedMatcher.group(1).length() / 2 + 1);
                 blocks.add(StructuralBlock.listItem(orderedMatcher.group(2).trim(), ordinal++, level));
+                lineIndex++;
                 continue;
             }
 
@@ -92,6 +115,7 @@ final class StructureParsingSupport {
                     blocks.add(StructuralBlock.paragraph(paragraph.toString().trim(), ordinal++));
                     paragraph.setLength(0);
                 }
+                lineIndex++;
                 continue;
             }
 
@@ -99,6 +123,7 @@ final class StructureParsingSupport {
                 paragraph.append('\n');
             }
             paragraph.append(line.trim());
+            lineIndex++;
         }
 
         if (inCodeFence && codeBlock.length() > 0) {
@@ -107,6 +132,94 @@ final class StructureParsingSupport {
             blocks.add(StructuralBlock.paragraph(paragraph.toString().trim(), ordinal++));
         }
         return enrichHeadingPaths(blocks);
+    }
+
+    private record MarkdownTableSlice(List<StructuralBlock> blocks, int nextLineIndex, int nextOrdinal) {
+    }
+
+    private static boolean isMarkdownPipeRow(String line) {
+        if (line == null || line.isBlank()) {
+            return false;
+        }
+        String trimmed = line.trim();
+        return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.length() > 2;
+    }
+
+    private static boolean isMarkdownPipeSeparator(String line) {
+        if (!isMarkdownPipeRow(line)) {
+            return false;
+        }
+        return line.trim().replace("|", "").replace(":", "").replace("-", "").trim().isEmpty();
+    }
+
+    private static String[] splitPipeCells(String line) {
+        String trimmed = line.trim();
+        if (trimmed.startsWith("|")) {
+            trimmed = trimmed.substring(1);
+        }
+        if (trimmed.endsWith("|")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        String[] parts = trimmed.split("\\|", -1);
+        for (int index = 0; index < parts.length; index++) {
+            parts[index] = parts[index].trim();
+        }
+        return parts;
+    }
+
+    private static String joinPipeCells(String[] cells) {
+        return String.join(" | ", cells);
+    }
+
+    private static MarkdownTableSlice tryParseMarkdownPipeTable(
+            String[] lines,
+            int start,
+            int tableRegionId,
+            int ordinal
+    ) {
+        if (start >= lines.length || !isMarkdownPipeRow(lines[start].trim())) {
+            return new MarkdownTableSlice(List.of(), start + 1, ordinal);
+        }
+        boolean hasSeparator = start + 1 < lines.length && isMarkdownPipeSeparator(lines[start + 1].trim());
+        List<String[]> rows = new ArrayList<>();
+        int index = start;
+        if (hasSeparator) {
+            rows.add(splitPipeCells(lines[index]));
+            index += 2;
+        }
+        while (index < lines.length && isMarkdownPipeRow(lines[index].trim()) && !isMarkdownPipeSeparator(lines[index].trim())) {
+            rows.add(splitPipeCells(lines[index]));
+            index++;
+        }
+        if (rows.isEmpty()) {
+            return new MarkdownTableSlice(List.of(), start + 1, ordinal);
+        }
+        if (!hasSeparator && rows.size() < 2) {
+            return new MarkdownTableSlice(List.of(), start + 1, ordinal);
+        }
+        String tableRegionLabel = "md-table-" + tableRegionId;
+        List<StructuralBlock> blocks = new ArrayList<>(rows.size());
+        int rowOrdinal = ordinal;
+        for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
+            boolean headerRow = hasSeparator && rowIndex == 0;
+            Map<String, Object> metadata = new java.util.HashMap<>();
+            metadata.put("boundaryType", "table_row");
+            metadata.put("layoutRole", "table");
+            metadata.put("tableRegionId", tableRegionId);
+            metadata.put("tableRegionLabel", tableRegionLabel);
+            metadata.put("tableFormat", "markdown");
+            metadata.put("rowRole", headerRow ? "HEADER" : "DATA");
+            metadata.put("rowIndex", rowIndex);
+            metadata.put("indexableHint", !headerRow);
+            blocks.add(new StructuralBlock(
+                    "table_row",
+                    0,
+                    joinPipeCells(rows.get(rowIndex)),
+                    rowOrdinal++,
+                    Map.copyOf(metadata)
+            ));
+        }
+        return new MarkdownTableSlice(List.copyOf(blocks), index, rowOrdinal);
     }
 
     static List<StructuralBlock> parsePlainText(String text) {
@@ -136,12 +249,27 @@ final class StructureParsingSupport {
         org.jsoup.nodes.Document document = org.jsoup.Jsoup.parse(html);
         document.select("script, style, nav, footer, header, noscript").remove();
         org.jsoup.select.Elements elements = document.body() == null
-                ? document.select("h1,h2,h3,h4,h5,h6,p,li,tr,table")
-                : document.body().select("h1,h2,h3,h4,h5,h6,p,li,tr,table");
+                ? document.select("h1,h2,h3,h4,h5,h6,p,li,table:not(table table)")
+                : document.body().select("h1,h2,h3,h4,h5,h6,p,li,table:not(table table)");
         int ordinal = 0;
+        int tableIndex = 0;
         for (org.jsoup.nodes.Element element : elements) {
             String tag = element.tagName().toLowerCase();
             String text = element.text().trim();
+            if ("table".equals(tag)) {
+                List<com.knowbase.ingestion.office.HtmlTableStructureExtractor.HtmlTableModel> models =
+                        List.of(com.knowbase.ingestion.office.HtmlTableStructureExtractor.parseTable(
+                                element,
+                                tableIndex++,
+                                false
+                        ));
+                for (com.knowbase.ingestion.office.HtmlTableStructureExtractor.HtmlTableModel model : models) {
+                    List<StructuralBlock> tableBlocks = com.knowbase.ingestion.office.OfficeTableBlockMapper.fromHtmlTable(model, ordinal);
+                    blocks.addAll(tableBlocks);
+                    ordinal += tableBlocks.size();
+                }
+                continue;
+            }
             if (text.isBlank()) {
                 continue;
             }
@@ -153,8 +281,6 @@ final class StructureParsingSupport {
                 ));
                 case "p" -> blocks.add(StructuralBlock.paragraph(text, ordinal++));
                 case "li" -> blocks.add(StructuralBlock.listItem(text, ordinal++, 1));
-                case "tr" -> blocks.add(StructuralBlock.tableRow(text, ordinal++, ordinal));
-                case "table" -> blocks.add(StructuralBlock.domBlock("table", text, ordinal++));
                 default -> blocks.add(StructuralBlock.domBlock(tag, text, ordinal++));
             }
         }
@@ -297,15 +423,23 @@ final class StructureParsingSupport {
         return blocks;
     }
 
-    static List<StructuralBlock> enrichHeadingPathsPublic(List<StructuralBlock> blocks) {
+    public static List<StructuralBlock> enrichHeadingPathsPublic(List<StructuralBlock> blocks) {
         return enrichHeadingPaths(blocks);
+    }
+
+    public static List<StructuralBlock> parseMarkdownPublic(String text) {
+        return parseMarkdown(text);
+    }
+
+    public static String blocksToTextPublic(List<StructuralBlock> blocks) {
+        return blocksToText(blocks);
     }
 
     static List<StructuralBlock> parseOcrLayout(String text) {
         return parseOcrLayout(text, Map.of());
     }
 
-    static List<StructuralBlock> parseOcrLayout(String text, Map<String, Object> ocrMetadata) {
+    public static List<StructuralBlock> parseOcrLayout(String text, Map<String, Object> ocrMetadata) {
         List<StructuralBlock> blocks = new ArrayList<>();
         if (text == null || text.isBlank()) {
             return blocks;

@@ -79,7 +79,21 @@
                 <div v-if="queryResult?.evidence?.length" class="evidence">
                   <div v-for="item in queryResult.evidence" :key="item.evidenceId" class="evidence-item">
                     <div class="row-title">{{ shortId(item.documentId, 12) }} · chunk {{ shortId(item.chunkId, 8) }}</div>
-                    <div class="row-meta">score {{ formatPercent(item.score, 0) }} · 库 {{ shortId(item.libraryId, 10) }}</div>
+                    <div class="row-meta">
+                      score {{ formatPercent(item.score, 0) }} · 库 {{ shortId(item.libraryId, 10) }}
+                      <span v-if="formatLocationMeta(item.metadata)" class="meta-tag">{{ formatLocationMeta(item.metadata) }}</span>
+                    </div>
+                    <div v-if="formatCitationLocationTags(item.metadata).length" class="citation-tags">
+                      <el-tag
+                        v-for="tag in formatCitationLocationTags(item.metadata)"
+                        :key="`${item.evidenceId}-${tag.key}`"
+                        size="small"
+                        type="warning"
+                        effect="plain"
+                      >
+                        {{ tag.label }}
+                      </el-tag>
+                    </div>
                     <p class="muted evidence-copy">{{ item.content }}</p>
                   </div>
                 </div>
@@ -92,6 +106,25 @@
                     <div class="row-meta">
                       {{ item.sourceUri || '无来源 URI' }}
                       <span v-if="formatLocationMeta(item.metadata)" class="meta-tag">{{ formatLocationMeta(item.metadata) }}</span>
+                    </div>
+                    <div v-if="formatCitationLocationTags(item.metadata).length" class="citation-tags">
+                      <el-tag
+                        v-for="tag in formatCitationLocationTags(item.metadata)"
+                        :key="`${item.citationId}-${tag.key}`"
+                        size="small"
+                        type="warning"
+                        effect="plain"
+                      >
+                        {{ tag.label }}
+                      </el-tag>
+                      <el-button
+                        v-if="item.libraryId && item.documentId && canLocateCitation(item.metadata)"
+                        link
+                        type="primary"
+                        @click="openCitationDocument(item)"
+                      >
+                        查看原文定位
+                      </el-button>
                     </div>
                     <p class="muted evidence-copy">{{ item.snippet || '暂无引用摘要' }}</p>
                   </div>
@@ -127,10 +160,22 @@
 
 <script setup>
 import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import PageCard from '../components/PageCard.vue';
 import { askQuestion, listAgents, listPipelineTrace } from '../api';
 import { requestContext } from '../context';
-import { formatDateTime, formatLocationMeta, formatNumber, formatPercent, shortId } from '../format';
+import {
+  buildLibraryDocumentLocateRoute,
+  canLocateCitation,
+  formatCitationLocationTags,
+  formatDateTime,
+  formatLocationMeta,
+  formatNumber,
+  formatPercent,
+  shortId
+} from '../format';
+
+const router = useRouter();
 
 const debugLibraryIdsText = ref('');
 const agents = ref([]);
@@ -200,6 +245,17 @@ async function loadAgents() {
 }
 
 loadAgents();
+
+function openCitationDocument(citation) {
+  const routeLocation = buildLibraryDocumentLocateRoute(
+    citation.libraryId,
+    citation.documentId,
+    { ...citation.metadata, chunkId: citation.chunkId }
+  );
+  if (routeLocation) {
+    router.push(routeLocation);
+  }
+}
 
 function showMessage(text, type) {
   message.value = text || '操作失败';

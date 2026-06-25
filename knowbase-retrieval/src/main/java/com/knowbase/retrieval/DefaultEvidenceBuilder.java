@@ -45,7 +45,7 @@ public final class DefaultEvidenceBuilder implements EvidenceBuilder {
                     sourceUri,
                     candidate.content(),
                     candidate.score(),
-                    locationMetadata(metadata)
+                    CitationLocationSupport.copyLocationFields(metadata)
             ));
         }
         return new EvidencePack(
@@ -69,26 +69,5 @@ public final class DefaultEvidenceBuilder implements EvidenceBuilder {
         metadata.put("indexVersionId", candidate.indexVersionId().toString());
         metadata.put("score", candidate.score());
         return Map.copyOf(metadata);
-    }
-
-    private static Map<String, Object> locationMetadata(Map<String, Object> metadata) {
-        java.util.HashMap<String, Object> location = new java.util.HashMap<>();
-        copyIfPresent(metadata, location, "pageNumber");
-        copyIfPresent(metadata, location, "bbox");
-        copyIfPresent(metadata, location, "contentFamily");
-        copyIfPresent(metadata, location, "sourceUri");
-        copyIfPresent(metadata, location, "title");
-        copyIfPresent(metadata, location, "vectorScore");
-        copyIfPresent(metadata, location, "keywordScore");
-        copyIfPresent(metadata, location, "vectorRank");
-        copyIfPresent(metadata, location, "keywordRank");
-        copyIfPresent(metadata, location, "retrievalBackend");
-        return Map.copyOf(location);
-    }
-
-    private static void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
-        if (source != null && source.get(key) != null) {
-            target.put(key, source.get(key));
-        }
     }
 }

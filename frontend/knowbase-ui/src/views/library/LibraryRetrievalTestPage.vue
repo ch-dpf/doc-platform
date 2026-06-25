@@ -58,6 +58,25 @@
               score {{ percent(evidence.score, 0) }} · 库 {{ shortId(evidence.libraryId, 10) }}
               <span v-if="formatLocationMeta(evidence.metadata)" class="meta-tag">{{ formatLocationMeta(evidence.metadata) }}</span>
             </div>
+            <div v-if="formatCitationLocationTags(evidence.metadata).length" class="citation-tags">
+              <el-tag
+                v-for="tag in formatCitationLocationTags(evidence.metadata)"
+                :key="`${evidence.evidenceId}-${tag.key}`"
+                size="small"
+                type="warning"
+                effect="plain"
+              >
+                {{ tag.label }}
+              </el-tag>
+              <el-button
+                v-if="evidence.libraryId && evidence.documentId && canLocateCitation(evidence.metadata)"
+                link
+                type="primary"
+                @click="openEvidenceDocument(evidence)"
+              >
+                查看原文定位
+              </el-button>
+            </div>
             <p class="muted evidence-copy">{{ evidence.content }}</p>
           </div>
           <template v-if="result.trace?.explain?.length">
@@ -273,7 +292,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import PageCard from '../../components/PageCard.vue';
 import { useLibraryWorkspace } from '../../composables/libraryWorkspace';
 import {
@@ -287,9 +306,18 @@ import {
   runRetrievalEvaluation,
   updateRetrievalEvalSample
 } from '../../api';
-import { formatDateTime, formatLocationMeta, percent, shortId } from '../../format';
+import {
+  buildLibraryDocumentLocateRoute,
+  canLocateCitation,
+  formatCitationLocationTags,
+  formatDateTime,
+  formatLocationMeta,
+  percent,
+  shortId
+} from '../../format';
 
 const route = useRoute();
+const router = useRouter();
 const { libraryId, showMessage } = useLibraryWorkspace();
 
 function resolveInitialTab() {
@@ -395,6 +423,17 @@ function batchSummary(run) {
   const mrr = run.mrr == null ? '' : ` · MRR ${percent(run.mrr, 1)}`;
   const cp = run.contextPrecisionAtK == null ? '' : ` · CP@${run.hitK} ${percent(run.contextPrecisionAtK, 1)}`;
   return `Recall@${run.hitK} = ${recall}（${run.passedSamples}/${run.totalSamples}）${mrr}${cp}`;
+}
+
+function openEvidenceDocument(evidence) {
+  const routeLocation = buildLibraryDocumentLocateRoute(
+    evidence.libraryId,
+    evidence.documentId,
+    { ...evidence.metadata, chunkId: evidence.chunkId }
+  );
+  if (routeLocation) {
+    router.push(routeLocation);
+  }
 }
 
 function formatExpectations(row) {

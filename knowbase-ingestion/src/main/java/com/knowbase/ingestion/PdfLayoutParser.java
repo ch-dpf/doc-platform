@@ -1,6 +1,14 @@
 package com.knowbase.ingestion;
 
+import com.knowbase.ingestion.pdf.PdfParseConfidenceAggregator;
+import com.knowbase.ingestion.pdf.PdfScannedDocumentRouter;
+import com.knowbase.ingestion.pdf.PdfTextExtractabilityAnalyzer;
+import com.knowbase.ingestion.pdf.PdfVisionDocumentRouter;
+import com.knowbase.ingestion.pdf.VisionDocumentParseSettings;
 import com.knowbase.domain.status.ContentFamily;
+
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,6 +20,16 @@ import java.util.Map;
 public final class PdfLayoutParser implements DocumentParser {
 
     public static final String PARSER_CODE = "pdf-layout";
+
+    private final VisionDocumentParseSettings visionSettings;
+
+    public PdfLayoutParser() {
+        this(VisionDocumentParseSettings.disabled());
+    }
+
+    public PdfLayoutParser(VisionDocumentParseSettings visionSettings) {
+        this.visionSettings = visionSettings == null ? VisionDocumentParseSettings.disabled() : visionSettings;
+    }
 
     @Override
     public boolean supports(String sourceUri, String mimeType) {
@@ -25,10 +43,43 @@ public final class PdfLayoutParser implements DocumentParser {
     public ParsedDocument parse(DocumentSource source) {
         try (InputStream inputStream = source.inputStream()) {
             byte[] bytes = inputStream.readAllBytes();
+            PdfTextExtractabilityAnalyzer.Analysis extractability = PdfTextExtractabilityAnalyzer.analyze(bytes);
+
+            ParsedDocument visionParsed = tryVisionParse(source, bytes, extractability, null, false);
+            if (visionParsed != null) {
+                return visionParsed;
+            }
+
+            if (PdfScannedDocumentRouter.shouldRouteToOcr(extractability, source.metadata(), false)) {
+                try {
+                    return PdfScannedDocumentRouter.parseWithOcr(source, bytes, extractability);
+                } catch (RuntimeException ocrFailure) {
+                    if (extractability.totalChars() == 0) {
+                        throw ocrFailure;
+                    }
+                }
+            }
+
             List<StructuralBlock> blocks = LayoutPdfTextExtractor.extract(bytes);
+            PdfParseConfidenceAggregator.PdfParseConfidence layoutConfidence =
+                    PdfParseConfidenceAggregator.aggregate(blocks);
+
+            visionParsed = tryVisionParse(source, bytes, extractability, layoutConfidence, blocks.isEmpty());
+            if (visionParsed != null) {
+                return visionParsed;
+            }
+
             if (blocks.isEmpty()) {
+                if (PdfScannedDocumentRouter.shouldRouteToOcr(extractability, source.metadata(), true)) {
+                    try {
+                        return PdfScannedDocumentRouter.parseWithOcr(source, bytes, extractability);
+                    } catch (RuntimeException ocrFailure) {
+                        return fallbackStructureParse(source, bytes);
+                    }
+                }
                 return fallbackStructureParse(source, bytes);
             }
+
             Map<String, Object> metadata = new HashMap<>();
             if (source.metadata() != null) {
                 metadata.putAll(source.metadata());
@@ -36,8 +87,15 @@ public final class PdfLayoutParser implements DocumentParser {
             metadata.put("parserCode", PARSER_CODE);
             metadata.put("structureAware", true);
             metadata.put("layoutParsing", true);
+            metadata.put("pdfExtractableChars", extractability.totalChars());
+            metadata.put("pdfCharsPerPage", extractability.charsPerPage());
+            metadata.put("pdfScannedLikely", extractability.scannedLikely());
+            metadata.put("pdfLowTextDensity", extractability.lowTextDensity());
+            metadata.put("pdfParseRoute", "layout");
             metadata.put("blockCount", blocks.size());
             metadata.put("pageCount", countPages(blocks));
+            collectPageDimensions(bytes, blocks, metadata);
+            metadata.putAll(PdfParseConfidenceAggregator.toDocumentMetadata(layoutConfidence));
             String flatText = StructureParsingSupport.blocksToText(blocks);
             return new ParsedDocument(
                     source.sourceUri(),
@@ -49,6 +107,32 @@ public final class PdfLayoutParser implements DocumentParser {
             );
         } catch (IOException exception) {
             throw new IllegalStateException("Layout 解析 PDF 失败: " + source.sourceUri(), exception);
+        }
+    }
+
+    private ParsedDocument tryVisionParse(
+            DocumentSource source,
+            byte[] bytes,
+            PdfTextExtractabilityAnalyzer.Analysis extractability,
+            PdfParseConfidenceAggregator.PdfParseConfidence layoutConfidence,
+            boolean layoutBlocksEmpty
+    ) {
+        if (!PdfVisionDocumentRouter.shouldRouteToVision(
+                extractability,
+                source.metadata(),
+                layoutBlocksEmpty,
+                layoutConfidence,
+                visionSettings
+        )) {
+            return null;
+        }
+        try {
+            return PdfVisionDocumentRouter.parseWithVision(source, bytes, extractability, visionSettings);
+        } catch (RuntimeException visionFailure) {
+            if (!visionSettings.vlFallbackToHeuristic()) {
+                throw visionFailure;
+            }
+            return null;
         }
     }
 
@@ -70,5 +154,44 @@ public final class PdfLayoutParser implements DocumentParser {
                 .mapToInt(value -> ((Number) value).intValue())
                 .max()
                 .orElse(0);
+    }
+
+    private static void collectPageDimensions(byte[] pdfBytes, List<StructuralBlock> blocks, Map<String, Object> metadata) {
+        Map<Integer, Double> pageWidths = new HashMap<>();
+        Map<Integer, Double> pageHeights = new HashMap<>();
+        for (StructuralBlock block : blocks) {
+            Map<String, Object> blockMetadata = block.metadata();
+            Object pageNumber = blockMetadata.get("pageNumber");
+            if (!(pageNumber instanceof Number page)) {
+                continue;
+            }
+            int pageIndex = page.intValue();
+            Object width = blockMetadata.get("pageWidth");
+            if (width instanceof Number widthNumber) {
+                pageWidths.putIfAbsent(pageIndex, widthNumber.doubleValue());
+            }
+            Object height = blockMetadata.get("pageHeight");
+            if (height instanceof Number heightNumber) {
+                pageHeights.putIfAbsent(pageIndex, heightNumber.doubleValue());
+            }
+        }
+        if (pageWidths.isEmpty() || pageHeights.isEmpty()) {
+            try (PDDocument document = PDDocument.load(pdfBytes)) {
+                for (int index = 0; index < document.getNumberOfPages(); index++) {
+                    PDPage page = document.getPage(index);
+                    int pageNumber = index + 1;
+                    pageWidths.putIfAbsent(pageNumber, (double) page.getMediaBox().getWidth());
+                    pageHeights.putIfAbsent(pageNumber, (double) page.getMediaBox().getHeight());
+                }
+            } catch (IOException ignored) {
+                // keep block-derived dimensions only
+            }
+        }
+        if (!pageWidths.isEmpty()) {
+            metadata.put("pageWidths", Map.copyOf(pageWidths));
+        }
+        if (!pageHeights.isEmpty()) {
+            metadata.put("pageHeights", Map.copyOf(pageHeights));
+        }
     }
 }

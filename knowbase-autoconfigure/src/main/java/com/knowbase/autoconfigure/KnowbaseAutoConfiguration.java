@@ -57,11 +57,13 @@ import com.knowbase.ingestion.summary.DocumentSummarySettings;
 import com.knowbase.ingestion.LlmDocumentSummaryPostProcessor;
 import com.knowbase.ingestion.StructuredTableChunkPostProcessor;
 import com.knowbase.ingestion.DocxStructureParser;
+import com.knowbase.ingestion.PptxStructureParser;
 import com.knowbase.ingestion.DefaultDocumentMetadataEnricher;
 import com.knowbase.ingestion.DocumentPreparationPipeline;
 import com.knowbase.ingestion.DocumentMetadataEnricher;
 import com.knowbase.ingestion.DocumentNormalizer;
 import com.knowbase.ingestion.DocumentTextNormalizer;
+import com.knowbase.ingestion.CodeConfigStructureParser;
 import com.knowbase.ingestion.ExternalDocumentParser;
 import com.knowbase.ingestion.HtmlStructureParser;
 import com.knowbase.ingestion.MarkdownStructureParser;
@@ -69,6 +71,12 @@ import com.knowbase.ingestion.OcrLayoutDocumentParser;
 import com.knowbase.ingestion.OcrDocumentParser;
 import com.knowbase.ingestion.PdfLayoutParser;
 import com.knowbase.ingestion.PdfStructureParser;
+import com.knowbase.ingestion.layout.LayoutAnalysisProvider;
+import com.knowbase.ingestion.layout.LayoutAnalysisService;
+import com.knowbase.ingestion.layout.OcrRasterLayoutProvider;
+import com.knowbase.ingestion.layout.PaddleOcrVlLayoutProvider;
+import com.knowbase.ingestion.layout.VisionMarkdownLayoutProvider;
+import com.knowbase.ingestion.pdf.VisionDocumentParseSettings;
 import com.knowbase.ingestion.DocumentLlmSummaryRefresher;
 import com.knowbase.ingestion.DefaultIngestionPipeline;
 import com.knowbase.ingestion.DocumentSourceLoader;
@@ -88,6 +96,10 @@ import com.knowbase.ingestion.TextDocumentParser;
 import com.knowbase.ingestion.TextStructureParser;
 import com.knowbase.ingestion.TokenBasedDocumentChunker;
 import com.knowbase.model.ChatModelClient;
+import com.knowbase.model.ollama.OllamaClient;
+import com.knowbase.model.ollama.OllamaVisionDocumentModelClient;
+import com.knowbase.model.vision.VisionDocumentModelClient;
+import com.knowbase.model.vision.vllm.VllmVisionDocumentModelClient;
 import com.knowbase.model.DeterministicChatModelClient;
 import com.knowbase.model.DeterministicEmbeddingModelClient;
 import com.knowbase.model.EmbeddingModelClient;
@@ -123,6 +135,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
@@ -326,8 +340,107 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    PdfLayoutParser pdfLayoutParser() {
-        return new PdfLayoutParser();
+    PptxStructureParser pptxStructureParser() {
+        return new PptxStructureParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    LayoutAnalysisService layoutAnalysisService(KnowbaseProperties properties) {
+        List<LayoutAnalysisProvider> providers = new ArrayList<>();
+        KnowbaseProperties.VisionDocument visionDocument = properties.getVisionDocument();
+        if (visionDocument != null && visionDocument.isEnabled()) {
+            String provider = normalizeVisionProvider(visionDocument.getProvider());
+            if ("paddleocr-vl".equals(provider)) {
+                KnowbaseProperties.VisionDocument.PaddleOcrVl paddle = visionDocument.getPaddleocrVl();
+                providers.add(new PaddleOcrVlLayoutProvider(
+                        paddle.getBaseUrl(),
+                        paddle.getLayoutParsingPath(),
+                        visionDocument.getTimeout(),
+                        paddle.getPipelineName(),
+                        paddle.isPrettifyMarkdown(),
+                        paddle.isReturnMarkdownImages(),
+                        paddle.getVisualize()
+                ));
+            }
+        }
+        VisionDocumentModelClient visionClient = resolveVisionDocumentClient(properties);
+        if (visionClient != null
+                && (visionDocument == null
+                || !visionDocument.isEnabled()
+                || !"paddleocr-vl".equals(normalizeVisionProvider(visionDocument.getProvider())))) {
+            providers.add(new VisionMarkdownLayoutProvider(visionClient));
+        }
+        providers.add(new OcrRasterLayoutProvider());
+        return new LayoutAnalysisService(providers, properties.getIngestion().getPdf().isVlFallbackToHeuristic());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    VisionDocumentParseSettings visionDocumentParseSettings(
+            KnowbaseProperties properties,
+            LayoutAnalysisService layoutAnalysisService
+    ) {
+        KnowbaseProperties.Pdf pdf = properties.getIngestion().getPdf();
+        return new VisionDocumentParseSettings(
+                layoutAnalysisService,
+                pdf.isVlOnScanned(),
+                pdf.isVlOnLowConfidence(),
+                pdf.getVlLowConfidenceThreshold(),
+                pdf.isVlFallbackToHeuristic(),
+                pdf.getVlMaxPages()
+        );
+    }
+
+    private static VisionDocumentModelClient resolveVisionDocumentClient(KnowbaseProperties properties) {
+        KnowbaseProperties.VisionDocument visionDocument = properties.getVisionDocument();
+        if (visionDocument != null && visionDocument.isEnabled()) {
+            String provider = normalizeVisionProvider(visionDocument.getProvider());
+            return switch (provider) {
+                case "paddleocr-vl" -> null;
+                case "vllm" -> buildVllmClient(visionDocument);
+                case "ollama" -> buildOllamaVisionClient(properties.getOllama());
+                default -> null;
+            };
+        }
+        return buildOllamaVisionClient(properties.getOllama());
+    }
+
+    private static VisionDocumentModelClient buildVllmClient(KnowbaseProperties.VisionDocument visionDocument) {
+        KnowbaseProperties.VisionDocument.Vllm vllm = visionDocument.getVllm();
+        return new VllmVisionDocumentModelClient(
+                vllm.getBaseUrl(),
+                vllm.getChatCompletionsPath(),
+                visionDocument.getTimeout(),
+                vllm.getModel(),
+                vllm.getApiKey(),
+                vllm.getTemperature()
+        );
+    }
+
+    private static VisionDocumentModelClient buildOllamaVisionClient(KnowbaseProperties.Ollama ollama) {
+        if (ollama == null || !ollama.isEnabled()) {
+            return null;
+        }
+        String visionModel = ollama.getVisionLanguageModel();
+        if (visionModel == null || visionModel.isBlank()) {
+            return null;
+        }
+        OllamaClient visionOllamaClient = new OllamaClient(ollama.getBaseUrl(), ollama.getVisionLanguageTimeout());
+        return new OllamaVisionDocumentModelClient(visionOllamaClient, visionModel);
+    }
+
+    private static String normalizeVisionProvider(String provider) {
+        if (provider == null || provider.isBlank()) {
+            return "paddleocr-vl";
+        }
+        return provider.trim().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    PdfLayoutParser pdfLayoutParser(VisionDocumentParseSettings visionDocumentParseSettings) {
+        return new PdfLayoutParser(visionDocumentParseSettings);
     }
 
     @Bean
@@ -443,8 +556,8 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    OcrLayoutDocumentParser ocrLayoutDocumentParser() {
-        return new OcrLayoutDocumentParser();
+    OcrLayoutDocumentParser ocrLayoutDocumentParser(LayoutAnalysisService layoutAnalysisService) {
+        return new OcrLayoutDocumentParser(layoutAnalysisService);
     }
 
     @Bean
@@ -473,14 +586,36 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    ExternalDocumentParser externalDocumentParser() {
-        return new ExternalDocumentParser();
+    ExternalDocumentParser externalDocumentParser(
+            MarkdownStructureParser markdownStructureParser,
+            HtmlStructureParser htmlStructureParser,
+            PdfLayoutParser pdfLayoutParser,
+            PdfStructureParser pdfStructureParser,
+            TextStructureParser textStructureParser,
+            StructuredTableDocumentParser structuredTableDocumentParser,
+            TikaDocumentParser tikaDocumentParser
+    ) {
+        return new ExternalDocumentParser(java.util.List.of(
+                markdownStructureParser,
+                htmlStructureParser,
+                pdfLayoutParser,
+                pdfStructureParser,
+                textStructureParser,
+                structuredTableDocumentParser,
+                tikaDocumentParser
+        ));
     }
 
     @Bean
     @ConditionalOnMissingBean
     QaDocumentParser qaDocumentParser() {
         return new QaDocumentParser();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    CodeConfigStructureParser codeConfigStructureParser() {
+        return new CodeConfigStructureParser();
     }
 
     @Bean
@@ -496,9 +631,11 @@ public class KnowbaseAutoConfiguration {
             MarkdownStructureParser markdownStructureParser,
             HtmlStructureParser htmlStructureParser,
             DocxStructureParser docxStructureParser,
+            PptxStructureParser pptxStructureParser,
             PdfLayoutParser pdfLayoutParser,
             PdfStructureParser pdfStructureParser,
             TextStructureParser textStructureParser,
+            CodeConfigStructureParser codeConfigStructureParser,
             TextDocumentParser textDocumentParser,
             QaDocumentParser qaDocumentParser,
             ZipDocumentParser zipDocumentParser,
@@ -514,9 +651,11 @@ public class KnowbaseAutoConfiguration {
                         markdownStructureParser,
                         htmlStructureParser,
                         docxStructureParser,
+                        pptxStructureParser,
                         pdfLayoutParser,
                         pdfStructureParser,
                         textStructureParser,
+                        codeConfigStructureParser,
                         qaDocumentParser,
                         zipDocumentParser,
                         textDocumentParser,

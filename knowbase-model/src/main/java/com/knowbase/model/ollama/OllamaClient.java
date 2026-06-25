@@ -106,6 +106,12 @@ public final class OllamaClient {
             ObjectNode messageNode = messageArray.addObject();
             messageNode.put("role", message.role());
             messageNode.put("content", message.content());
+            if (!message.images().isEmpty()) {
+                ArrayNode imagesNode = messageNode.putArray("images");
+                for (String image : message.images()) {
+                    imagesNode.add(image);
+                }
+            }
         }
         if (options != null && !options.isEmpty()) {
             ObjectNode optionsNode = body.putObject("options");

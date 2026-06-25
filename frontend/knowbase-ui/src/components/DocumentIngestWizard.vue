@@ -80,9 +80,9 @@
         <div v-if="segmentationMode === 'smart'" class="segment-panel segment-panel--smart">
           <p>语义/结构边界优先 → 模型 tokenizer 预算约束 → 递归字符切分兜底，默认适合多数生产入库场景。</p>
           <div class="capability-strip">
-            <span><b>PDF</b> 页码 / bbox / 阅读顺序 / 多栏</span>
-            <span><b>OCR</b> confidence / bbox / 低置信度元数据</span>
-            <span><b>表格</b> sheet / 表头路径 / 单元格坐标</span>
+            <span><b>表格</b> 多表区 / 多级表头 / 行角色 / 解析置信度</span>
+            <span><b>PDF</b> 单元格级 table_row + bbox</span>
+            <span><b>OCR</b> 块级 confidence / 低置信过滤</span>
           </div>
         </div>
 
@@ -175,6 +175,18 @@
       </div>
 
       <div v-if="prepareResult" class="preview-panel">
+        <el-alert
+          v-if="hasLowParseConfidence"
+          type="warning"
+          :closable="false"
+          show-icon
+          class="parse-confidence-banner"
+          title="解析置信度偏低，建议检查「分段」预览后再确认入库。"
+        >
+          <template v-if="lowConfidenceReasons.length" #default>
+            <span>{{ lowConfidenceReasons.join('；') }}</span>
+          </template>
+        </el-alert>
         <div class="ingestion-insight-grid">
           <div class="insight-card">
             <span class="insight-card__label">命中文档 Profile</span>
@@ -187,6 +199,11 @@
           <div class="insight-card">
             <span class="insight-card__label">解析能力</span>
             <strong>{{ parserCapabilitySummary }}</strong>
+          </div>
+          <div class="insight-card" :class="{ 'insight-card--warning': hasLowParseConfidence }">
+            <span class="insight-card__label">解析质量</span>
+            <strong>{{ parseQualitySummary }}</strong>
+            <span v-if="hasLowParseConfidence" class="insight-card__hint">建议复核分段预览</span>
           </div>
         </div>
         <el-tabs v-model="prepareTab" class="pipeline-tabs">
@@ -214,8 +231,23 @@
                   <el-table :data="document.parse.blocks" size="small" class="data-table">
                     <el-table-column prop="ordinal" label="#" width="50" />
                     <el-table-column prop="blockType" label="类型" width="90" />
+                    <el-table-column label="行角色" width="90">
+                      <template #default="{ row }">{{ row.metadata?.rowRole || '—' }}</template>
+                    </el-table-column>
                     <el-table-column label="版面" width="90">
                       <template #default="{ row }">{{ row.metadata?.layoutRole || '—' }}</template>
+                    </el-table-column>
+                    <el-table-column label="可索引" width="88">
+                      <template #default="{ row }">
+                        <el-tag
+                          v-if="row.metadata?.indexableHint != null"
+                          size="small"
+                          :type="indexableHintTagType(row.metadata?.indexableHint)"
+                        >
+                          {{ formatIndexableHint(row.metadata?.indexableHint) }}
+                        </el-tag>
+                        <span v-else>—</span>
+                      </template>
                     </el-table-column>
                     <el-table-column label="页码" width="70">
                       <template #default="{ row }">{{ row.metadata?.pageNumber ?? '—' }}</template>
@@ -273,7 +305,12 @@
                   <p class="helper-text">
                     {{ document.documentProfileCode }} · {{ document.chunk.indexableChunkCount }}/{{ document.chunk.chunkCount }} 可索引
                   </p>
-                  <el-table :data="document.chunk.chunks" size="small" class="data-table">
+                  <el-table
+                    :data="document.chunk.chunks"
+                    size="small"
+                    class="data-table"
+                    :row-class-name="chunkPreviewRowClass"
+                  >
                     <el-table-column prop="ordinal" label="#" width="50" />
                     <el-table-column prop="boundaryType" label="边界" width="100" />
                     <el-table-column prop="tokenCount" label="Tokens" width="90" />
@@ -366,7 +403,20 @@ import {
   uploadDocuments,
   uploadFiles
 } from '../api';
-import { formatDateTime, formatNumber, shortId } from '../format';
+import {
+  BLOCK_METADATA_TAG_KEYS,
+  CHUNK_METADATA_TAG_KEYS,
+  DOCUMENT_METADATA_DISPLAY_KEYS,
+  buildMetadataTags,
+  collectLowConfidenceReasons,
+  formatDateTime,
+  formatIndexableHint,
+  formatMetadataValue,
+  formatNumber,
+  hasAnyLowParseConfidence,
+  shortId,
+  summarizeParseQuality
+} from '../format';
 
 const props = defineProps({
   libraryId: { type: String, required: true },
@@ -406,23 +456,7 @@ const documentProfileOptions = [
   { value: 'default_rich_text', label: '通用富文本 · Tika fallback' }
 ];
 
-const metadataDisplayKeys = [
-  ['pageNumber', '页'],
-  ['bbox', 'bbox'],
-  ['readingOrder', '序'],
-  ['columnIndex', '列'],
-  ['columnCount', '列数'],
-  ['tableRegionId', '表区'],
-  ['sheetName', 'Sheet'],
-  ['rowRange', '行'],
-  ['columnRange', '列域'],
-  ['headerPath', '表头'],
-  ['ocrConfidence', '置信度'],
-  ['bboxSource', 'bbox源'],
-  ['parser', 'Parser'],
-  ['tableFormat', '表格'],
-  ['rowGroupCount', '行组']
-];
+const metadataDisplayKeys = DOCUMENT_METADATA_DISPLAY_KEYS;
 
 const currentStep = ref(0);
 const selectedFiles = ref([]);
@@ -484,9 +518,19 @@ const parserCapabilitySummary = computed(() => {
   for (const doc of prepareResult.value?.documents || []) {
     if (doc.parse?.parserCode) parsers.add(doc.parse.parserCode);
     if (doc.parse?.metadata?.parser) parsers.add(doc.parse.metadata.parser);
+    if (doc.parse?.metadata?.parserEngine) parsers.add(doc.parse.metadata.parserEngine);
   }
   return [...parsers].join(' / ') || '—';
 });
+const parseQualitySummary = computed(() =>
+  summarizeParseQuality(prepareResult.value?.documents)
+);
+const hasLowParseConfidence = computed(() =>
+  hasAnyLowParseConfidence(prepareResult.value?.documents)
+);
+const lowConfidenceReasons = computed(() =>
+  collectLowConfidenceReasons(prepareResult.value?.documents)
+);
 const parsePanelClass = computed(() => ({
   'segment-panel--smart': parseMode.value === 'standard',
   'segment-panel--layout': parseMode.value === 'layout',
@@ -764,63 +808,23 @@ function documentMetadataTags(document) {
       tags.push({ key, label, value: formatMetadataValue(metadata[key]) });
     }
   }
-  return tags.slice(0, 10);
+  return tags.slice(0, 12);
 }
 
 function blockMetadataTags(row) {
-  return metadataTags(row?.metadata || {}, [
-    ['pageNumber', 'P'],
-    ['bbox', 'bbox'],
-    ['readingOrder', '#'],
-    ['columnIndex', 'col'],
-    ['tableRegionId', 'table'],
-    ['sheetName', 'sheet'],
-    ['rowRange', 'row'],
-    ['columnRange', 'col'],
-    ['ocrConfidence', 'conf'],
-    ['headerPath', 'head']
-  ]);
+  return buildMetadataTags(row?.metadata || {}, BLOCK_METADATA_TAG_KEYS);
 }
 
 function chunkMetadataTags(row) {
-  return metadataTags(row?.metadata || {}, [
-    ['chunkRole', 'role'],
-    ['sourceStructure', 'structure'],
-    ['pageNumber', 'P'],
-    ['bbox', 'bbox'],
-    ['tableRegionId', 'table'],
-    ['sheetName', 'sheet'],
-    ['rowRange', 'row'],
-    ['columnRange', 'col'],
-    ['ocrConfidence', 'conf'],
-    ['fallback', 'fallback']
-  ]);
+  return buildMetadataTags(row?.metadata || {}, CHUNK_METADATA_TAG_KEYS);
 }
 
-function metadataTags(metadata, keys) {
-  return keys
-    .filter(([key]) => metadata[key] !== undefined && metadata[key] !== null && metadata[key] !== '')
-    .map(([key, label]) => ({ key, label, value: formatMetadataValue(metadata[key]) }))
-    .slice(0, 8);
+function indexableHintTagType(value) {
+  return value === true || value === 'true' ? 'success' : 'info';
 }
 
-function formatMetadataValue(value) {
-  if (Array.isArray(value)) {
-    if (value.length > 4 && value.every(item => typeof item === 'number')) {
-      return value.slice(0, 4).join(',');
-    }
-    if (value.length && typeof value[0] === 'object') {
-      return `${value.length} 项`;
-    }
-    return value.slice(0, 3).join(' > ');
-  }
-  if (typeof value === 'object') {
-    return `${Object.keys(value).length} 项`;
-  }
-  if (typeof value === 'number' && value > 0 && value < 1) {
-    return `${Math.round(value * 100)}%`;
-  }
-  return String(value);
+function chunkPreviewRowClass({ row }) {
+  return row?.indexable ? '' : 'chunk-preview-row--muted';
 }
 
 function isTerminal(status) {
@@ -990,9 +994,28 @@ watch(
 
 .ingestion-insight-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.parse-confidence-banner {
+  margin-bottom: 14px;
+}
+
+.insight-card--warning {
+  border-color: rgba(245, 158, 11, 0.35);
+  background:
+    linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(251, 191, 36, 0.06)),
+    #fff;
+}
+
+.insight-card__hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: #b45309;
+  font-weight: 500;
 }
 
 .insight-card {
@@ -1045,8 +1068,19 @@ watch(
   vertical-align: middle;
 }
 
+:deep(.chunk-preview-row--muted) {
+  --el-table-tr-bg-color: #f8fafc;
+  color: #64748b;
+}
+
 .error-text {
   color: var(--el-color-danger);
+}
+
+@media (max-width: 1200px) {
+  .ingestion-insight-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 960px) {

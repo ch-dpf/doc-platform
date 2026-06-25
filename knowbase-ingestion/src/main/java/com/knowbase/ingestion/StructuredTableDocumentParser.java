@@ -2,6 +2,7 @@ package com.knowbase.ingestion;
 
 import com.knowbase.domain.status.ContentFamily;
 import com.knowbase.ingestion.adaptive.AdaptiveTableSheetProcessor;
+import com.knowbase.ingestion.table.TableParseConfidenceAggregator;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -96,6 +97,9 @@ public final class StructuredTableDocumentParser implements DocumentParser {
             parsedMetadata.put("columnKeyStrategy", "header_then_letter");
             parsedMetadata.put("rowGroupCount", table.rowGroupCount());
             parsedMetadata.put("structureAware", !table.blocks().isEmpty());
+            parsedMetadata.putAll(TableParseConfidenceAggregator.toDocumentMetadata(
+                    TableParseConfidenceAggregator.aggregate(table.blocks())
+            ));
             return new ParsedDocument(
                     source.sourceUri(),
                     firstNonBlank(source.filename(), source.sourceUri()),

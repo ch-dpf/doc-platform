@@ -5,8 +5,6 @@ import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
-import org.apache.poi.xwpf.usermodel.XWPFTableCell;
-import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -40,8 +38,13 @@ public final class DocxStructureParser implements DocumentParser {
                     if (text.isBlank()) {
                         continue;
                     }
+                    if (paragraph.getNumID() != null && paragraph.getNumID().intValue() > 0) {
+                        int listLevel = paragraph.getNumIlvl() == null ? 1 : paragraph.getNumIlvl().intValue() + 1;
+                        blocks.add(StructuralBlock.listItem(text, ordinal++, Math.max(1, listLevel)));
+                        continue;
+                    }
                     if (HeadingPatternDetector.isListParagraphStyle(paragraph.getStyle())) {
-                        blocks.add(StructuralBlock.paragraph(text, ordinal++));
+                        blocks.add(StructuralBlock.listItem(text, ordinal++, 1));
                         continue;
                     }
                     int headingLevel = headingLevel(paragraph.getStyle());
@@ -54,12 +57,11 @@ public final class DocxStructureParser implements DocumentParser {
                         blocks.add(StructuralBlock.paragraph(text, ordinal++));
                     }
                 } else if (element instanceof XWPFTable table) {
-                    int rowIndex = 0;
-                    for (XWPFTableRow row : table.getRows()) {
-                        String rowText = formatRow(row);
-                        if (!rowText.isBlank()) {
-                            blocks.add(StructuralBlock.tableRow(rowText, ordinal++, rowIndex++));
-                        }
+                    var models = com.knowbase.ingestion.office.DocxTableStructureExtractor.extractTables(List.of(table));
+                    for (var model : models) {
+                        List<StructuralBlock> tableBlocks = com.knowbase.ingestion.office.OfficeTableBlockMapper.fromDocxTable(model, ordinal);
+                        blocks.addAll(tableBlocks);
+                        ordinal += tableBlocks.size();
                     }
                 }
             }
@@ -107,16 +109,5 @@ public final class DocxStructureParser implements DocumentParser {
             return 1;
         }
         return 0;
-    }
-
-    private static String formatRow(XWPFTableRow row) {
-        List<String> cells = new ArrayList<>();
-        for (XWPFTableCell cell : row.getTableCells()) {
-            String text = cell.getText().trim();
-            if (!text.isBlank()) {
-                cells.add(text);
-            }
-        }
-        return String.join(" | ", cells);
     }
 }

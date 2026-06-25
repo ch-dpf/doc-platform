@@ -36,6 +36,175 @@ export function formatPercent(value, digits = 0) {
 
 export const percent = formatPercent;
 
+/** Documents below this parseConfidence should show a review banner in the ingest wizard. */
+export const PARSE_CONFIDENCE_THRESHOLD = 0.7;
+
+export const DOCUMENT_METADATA_DISPLAY_KEYS = [
+  ['parseConfidence', '解析置信度'],
+  ['parseConfidenceSource', '置信来源'],
+  ['tableRegionCount', '表区数'],
+  ['lowConfidenceReasons', '低置信原因'],
+  ['pageNumber', '页'],
+  ['bbox', 'bbox'],
+  ['readingOrder', '序'],
+  ['columnIndex', '列'],
+  ['columnCount', '列数'],
+  ['tableRegionId', '表区'],
+  ['tableRegionLabel', '表区名'],
+  ['sheetName', 'Sheet'],
+  ['rowRange', '行'],
+  ['columnRange', '列域'],
+  ['headerPath', '表头'],
+  ['ocrConfidence', '置信度'],
+  ['bboxSource', 'bbox源'],
+  ['parser', 'Parser'],
+  ['parserEngine', '引擎'],
+  ['tableFormat', '表格'],
+  ['rowGroupCount', '行组']
+];
+
+export const BLOCK_METADATA_TAG_KEYS = [
+  ['rowRole', '角色'],
+  ['indexableHint', '索引'],
+  ['pageNumber', 'P'],
+  ['bbox', 'bbox'],
+  ['readingOrder', '#'],
+  ['columnIndex', 'col'],
+  ['tableRegionId', 'table'],
+  ['tableRegionLabel', '表区'],
+  ['sheetName', 'sheet'],
+  ['rowRange', 'row'],
+  ['columnRange', 'col'],
+  ['ocrConfidence', 'conf'],
+  ['lowConfidenceOcr', '低置信'],
+  ['reviewRequired', '复核'],
+  ['headerPath', 'head'],
+  ['ocrFilterReason', '过滤']
+];
+
+export const CHUNK_METADATA_TAG_KEYS = [
+  ['chunkRole', 'role'],
+  ['sourceStructure', 'structure'],
+  ['rowRole', '角色'],
+  ['pageNumber', 'P'],
+  ['bbox', 'bbox'],
+  ['tableRegionId', 'table'],
+  ['tableRegionLabel', '表区'],
+  ['sheetName', 'sheet'],
+  ['rowRange', 'row'],
+  ['columnRange', 'col'],
+  ['headerPath', 'head'],
+  ['ocrConfidence', 'conf'],
+  ['ocrFilterReason', '过滤'],
+  ['fallback', 'fallback']
+];
+
+export function formatMetadataValue(value) {
+  if (value === true) {
+    return '是';
+  }
+  if (value === false) {
+    return '否';
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 4 && value.every(item => typeof item === 'number')) {
+      return value.slice(0, 4).join(',');
+    }
+    if (value.length && typeof value[0] === 'object') {
+      return `${value.length} 项`;
+    }
+    return value.slice(0, 3).join(' > ');
+  }
+  if (typeof value === 'object' && value !== null) {
+    return `${Object.keys(value).length} 项`;
+  }
+  if (typeof value === 'number' && value > 0 && value < 1) {
+    return formatPercent(value);
+  }
+  return String(value);
+}
+
+export function formatIndexableHint(value) {
+  if (value === true || value === 'true') {
+    return '可索引';
+  }
+  if (value === false || value === 'false') {
+    return '仅上下文';
+  }
+  return formatMetadataValue(value);
+}
+
+export function buildMetadataTags(metadata, keys, max = 8) {
+  if (!metadata || typeof metadata !== 'object') {
+    return [];
+  }
+  return keys
+    .filter(([key]) => metadata[key] !== undefined && metadata[key] !== null && metadata[key] !== '')
+    .map(([key, label]) => ({
+      key,
+      label,
+      value: key === 'indexableHint' ? formatIndexableHint(metadata[key]) : formatMetadataValue(metadata[key])
+    }))
+    .slice(0, max);
+}
+
+export function parseConfidenceValue(metadata) {
+  if (!metadata || metadata.parseConfidence == null) {
+    return null;
+  }
+  const value = Number(metadata.parseConfidence);
+  return Number.isFinite(value) ? value : null;
+}
+
+export function isLowParseConfidence(metadata, threshold = PARSE_CONFIDENCE_THRESHOLD) {
+  const confidence = parseConfidenceValue(metadata);
+  return confidence != null && confidence < threshold;
+}
+
+export function hasAnyLowParseConfidence(documents, threshold = PARSE_CONFIDENCE_THRESHOLD) {
+  return (documents || []).some(doc => isLowParseConfidence(doc?.parse?.metadata, threshold));
+}
+
+export function collectLowConfidenceReasons(documents, threshold = PARSE_CONFIDENCE_THRESHOLD) {
+  const reasons = new Set();
+  for (const doc of documents || []) {
+    const metadata = doc?.parse?.metadata || {};
+    if (!isLowParseConfidence(metadata, threshold)) {
+      continue;
+    }
+    const list = metadata.lowConfidenceReasons;
+    if (Array.isArray(list)) {
+      list.forEach(reason => reasons.add(String(reason)));
+    }
+  }
+  return [...reasons];
+}
+
+export function summarizeParseQuality(documents) {
+  const confidences = [];
+  let tableRegions = 0;
+  for (const doc of documents || []) {
+    const metadata = doc?.parse?.metadata || {};
+    const confidence = parseConfidenceValue(metadata);
+    if (confidence != null) {
+      confidences.push(confidence);
+    }
+    const regions = Number(metadata.tableRegionCount);
+    if (Number.isFinite(regions) && regions > 0) {
+      tableRegions += regions;
+    }
+  }
+  const parts = [];
+  if (confidences.length) {
+    const average = confidences.reduce((sum, value) => sum + value, 0) / confidences.length;
+    parts.push(formatPercent(average));
+  }
+  if (tableRegions > 0) {
+    parts.push(`${tableRegions} 表区`);
+  }
+  return parts.length ? parts.join(' · ') : '—';
+}
+
 export function formatLocationMeta(metadata) {
   if (!metadata || typeof metadata !== 'object') {
     return '';
@@ -44,8 +213,28 @@ export function formatLocationMeta(metadata) {
   if (metadata.pageNumber != null) {
     parts.push(`P${metadata.pageNumber}`);
   }
+  if (metadata.sheetName) {
+    parts.push(String(metadata.sheetName));
+  }
+  if (metadata.tableRegionLabel) {
+    parts.push(String(metadata.tableRegionLabel));
+  } else if (metadata.tableRegionId) {
+    parts.push(`表区 ${metadata.tableRegionId}`);
+  }
+  if (metadata.headerPath) {
+    parts.push(Array.isArray(metadata.headerPath) ? metadata.headerPath.join(' > ') : String(metadata.headerPath));
+  }
+  if (metadata.rowRole) {
+    parts.push(String(metadata.rowRole));
+  }
+  if (metadata.rowRange) {
+    parts.push(`行 ${metadata.rowRange}`);
+  }
   if (metadata.bbox) {
     parts.push(`bbox ${String(metadata.bbox)}`);
+  }
+  if (metadata.ocrConfidence != null) {
+    parts.push(`conf ${formatPercent(metadata.ocrConfidence)}`);
   }
   if (metadata.contentFamily) {
     parts.push(String(metadata.contentFamily));
@@ -64,8 +253,29 @@ export function formatChunkLocationTags(metadata) {
   if (metadata.pageNumber != null) {
     tags.push({ key: 'page', label: `P${metadata.pageNumber}` });
   }
+  if (metadata.sheetName) {
+    tags.push({ key: 'sheet', label: String(metadata.sheetName) });
+  }
+  if (metadata.tableRegionLabel) {
+    tags.push({ key: 'tableRegion', label: String(metadata.tableRegionLabel) });
+  } else if (metadata.tableRegionId) {
+    tags.push({ key: 'tableRegion', label: `表区 ${metadata.tableRegionId}` });
+  }
+  if (metadata.headerPath) {
+    const path = Array.isArray(metadata.headerPath) ? metadata.headerPath.join(' > ') : String(metadata.headerPath);
+    tags.push({ key: 'headerPath', label: path });
+  }
+  if (metadata.rowRole) {
+    tags.push({ key: 'rowRole', label: String(metadata.rowRole) });
+  }
+  if (metadata.rowRange) {
+    tags.push({ key: 'rowRange', label: `行 ${metadata.rowRange}` });
+  }
   if (metadata.bbox) {
     tags.push({ key: 'bbox', label: `bbox ${String(metadata.bbox)}` });
+  }
+  if (metadata.ocrConfidence != null) {
+    tags.push({ key: 'ocrConfidence', label: `conf ${formatPercent(metadata.ocrConfidence)}` });
   }
   if (metadata.contentFamily) {
     tags.push({ key: 'family', label: String(metadata.contentFamily) });
@@ -76,11 +286,100 @@ export function formatChunkLocationTags(metadata) {
   return tags;
 }
 
+/** Tags for citations / evidence cards (same location contract as chunks). */
+export function formatCitationLocationTags(metadata) {
+  return formatChunkLocationTags(metadata);
+}
+
+export function buildLibraryDocumentLocateRoute(libraryId, documentId, metadata = {}) {
+  if (!libraryId || !documentId) {
+    return null;
+  }
+  const query = {};
+  if (metadata.pageNumber != null) {
+    query.page = String(metadata.pageNumber);
+  }
+  if (metadata.chunkId) {
+    query.chunkId = String(metadata.chunkId);
+  }
+  if (metadata.sheetName) {
+    query.sheet = String(metadata.sheetName);
+  }
+  return {
+    name: 'library-document-detail',
+    params: { libraryId: String(libraryId), documentId: String(documentId) },
+    query
+  };
+}
+
+export function canLocateCitation(metadata) {
+  if (!metadata || typeof metadata !== 'object') {
+    return false;
+  }
+  return metadata.pageNumber != null
+    || metadata.sheetName != null
+    || metadata.tableRegionLabel != null
+    || metadata.bbox != null;
+}
+
 export function isChunkRetrievalEnabled(metadata) {
   if (!metadata || metadata.retrievalEnabled == null) {
     return true;
   }
   return metadata.retrievalEnabled !== false && String(metadata.retrievalEnabled).toLowerCase() !== 'false';
+}
+
+/** PDF page schematic overlay from chunk/citation bbox metadata (PDF points, origin bottom-left). */
+export function parseBboxOverlay(metadata, pageWidth = 612, pageHeight = 792) {
+  if (!metadata || typeof metadata !== 'object') {
+    return null;
+  }
+  const width = Number(metadata.pageWidth) > 0 ? Number(metadata.pageWidth) : pageWidth;
+  const height = Number(metadata.pageHeight) > 0 ? Number(metadata.pageHeight) : pageHeight;
+  const raw = metadata.tableRegionBbox || metadata.bbox;
+  if (!Array.isArray(raw) || raw.length < 4) {
+    return null;
+  }
+  const [x, y, bboxWidth, bboxHeight] = raw.map((value) => Number(value));
+  if (![x, y, bboxWidth, bboxHeight].every((value) => Number.isFinite(value))) {
+    return null;
+  }
+  return {
+    pageNumber: metadata.pageNumber == null ? null : Number(metadata.pageNumber),
+    left: `${(x / width) * 100}%`,
+    top: `${((height - y - bboxHeight) / height) * 100}%`,
+    width: `${(bboxWidth / width) * 100}%`,
+    height: `${(bboxHeight / height) * 100}%`,
+    label: metadata.tableRegionLabel || metadata.tableRegionId || '区域'
+  };
+}
+
+/** Word-level OCR overlays for schematic preview. */
+export function parseOcrWordOverlays(metadata, pageWidth = 612, pageHeight = 792) {
+  if (!metadata || typeof metadata !== 'object' || !Array.isArray(metadata.ocrWords)) {
+    return [];
+  }
+  const width = Number(metadata.pageWidth) > 0 ? Number(metadata.pageWidth) : pageWidth;
+  const height = Number(metadata.pageHeight) > 0 ? Number(metadata.pageHeight) : pageHeight;
+  return metadata.ocrWords
+    .map((word, index) => {
+      if (!word || !Array.isArray(word.bbox) || word.bbox.length < 4) {
+        return null;
+      }
+      const [x, y, bboxWidth, bboxHeight] = word.bbox.map((value) => Number(value));
+      if (![x, y, bboxWidth, bboxHeight].every((value) => Number.isFinite(value))) {
+        return null;
+      }
+      return {
+        key: `ocr-word-${index}`,
+        text: word.text || '',
+        left: `${(x / width) * 100}%`,
+        top: `${((height - y - bboxHeight) / height) * 100}%`,
+        width: `${(bboxWidth / width) * 100}%`,
+        height: `${(bboxHeight / height) * 100}%`
+      };
+    })
+    .filter(Boolean);
 }
 
 const SUMMARY_CHUNK_ROLES = new Set(['document_summary']);

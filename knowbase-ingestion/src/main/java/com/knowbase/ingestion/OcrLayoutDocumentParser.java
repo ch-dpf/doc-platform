@@ -1,17 +1,17 @@
 package com.knowbase.ingestion;
 
 import com.knowbase.domain.status.ContentFamily;
-import org.apache.tika.Tika;
-import org.apache.tika.exception.TikaException;
-import org.apache.tika.metadata.Metadata;
-import org.apache.tika.metadata.TikaCoreProperties;
-import org.apache.tika.parser.AutoDetectParser;
-import org.apache.tika.parser.ParseContext;
-import org.apache.tika.parser.ocr.TesseractOCRConfig;
-import org.apache.tika.sax.BodyContentHandler;
-import org.xml.sax.SAXException;
+import com.knowbase.ingestion.layout.LayoutAnalysisService;
+import com.knowbase.ingestion.layout.LayoutPageRequest;
+import com.knowbase.ingestion.layout.LayoutPageResult;
+import com.knowbase.ingestion.ocr.OcrBlockFactory;
+import com.knowbase.ingestion.ocr.OcrConfidencePolicy;
+import com.knowbase.ingestion.ocr.OcrEngineAdapter;
+import com.knowbase.ingestion.ocr.OcrEngineRegistry;
+import com.knowbase.ingestion.ocr.OcrEngineResult;
+import com.knowbase.ingestion.ocr.OcrRecognizeRequest;
+import com.knowbase.ingestion.parse.IngestionParseOptionsSupport;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -24,8 +24,21 @@ public final class OcrLayoutDocumentParser implements DocumentParser {
 
     public static final String PARSER_CODE = "ocr-layout";
 
-    private final Tika tika = new Tika();
-    private final AutoDetectParser parser = new AutoDetectParser();
+    private final LayoutAnalysisService layoutAnalysisService;
+    private final OcrEngineAdapter defaultEngine;
+
+    public OcrLayoutDocumentParser() {
+        this(null, OcrEngineRegistry.resolve(Map.of()));
+    }
+
+    public OcrLayoutDocumentParser(LayoutAnalysisService layoutAnalysisService) {
+        this(layoutAnalysisService, OcrEngineRegistry.resolve(Map.of()));
+    }
+
+    OcrLayoutDocumentParser(LayoutAnalysisService layoutAnalysisService, OcrEngineAdapter defaultEngine) {
+        this.layoutAnalysisService = layoutAnalysisService;
+        this.defaultEngine = defaultEngine;
+    }
 
     @Override
     public boolean supports(String sourceUri, String mimeType) {
@@ -49,82 +62,139 @@ public final class OcrLayoutDocumentParser implements DocumentParser {
 
     @Override
     public ParsedDocument parse(DocumentSource source) {
-        Metadata metadata = new Metadata();
-        if (source.filename() != null) {
-            metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, source.filename());
-        }
-        if (source.mimeType() != null) {
-            metadata.set(Metadata.CONTENT_TYPE, source.mimeType());
-        }
         try {
             byte[] content = source.inputStream().readAllBytes();
-            ParseContext context = new ParseContext();
-            TesseractOCRConfig ocrConfig = new TesseractOCRConfig();
-            ocrConfig.setSkipOcr(false);
-            String language = resolveLanguage(source.metadata());
-            if (language != null && !language.isBlank()) {
-                ocrConfig.setLanguage(language);
+            Map<String, Object> options = source.metadata() == null ? Map.of() : source.metadata();
+            IngestionParseOptionsSupport.IngestionParseOptions parseOptions = IngestionParseOptionsSupport.resolve(options);
+            if (layoutAnalysisService != null && layoutAnalysisService.hasAvailableProvider() && !isPdf(source)) {
+                return parseViaLayoutService(source, content, options, parseOptions);
             }
-            context.set(TesseractOCRConfig.class, ocrConfig);
-            BodyContentHandler handler = new BodyContentHandler(-1);
-            parser.parse(new java.io.ByteArrayInputStream(content), handler, metadata, context);
-            String text = handler.toString();
-            if (text == null || text.isBlank()) {
-                text = tika.parseToString(new java.io.ByteArrayInputStream(content), metadata);
-            }
-            Map<String, Object> parsedMetadata = new HashMap<>();
-            if (source.metadata() != null) {
-                parsedMetadata.putAll(source.metadata());
-            }
-            List<StructuralBlock> blocks = structuredOcrBlocks(text, parsedMetadata);
-            parsedMetadata.put("parserCode", PARSER_CODE);
-            parsedMetadata.put("parser", PARSER_CODE);
-            parsedMetadata.put("detectedContentType", metadata.get(Metadata.CONTENT_TYPE));
-            parsedMetadata.put("ocrApplied", true);
-            parsedMetadata.put("layoutParsing", true);
-            parsedMetadata.put("ocrLanguage", language == null ? "auto" : language);
-            parsedMetadata.putIfAbsent("ocrConfidence", -1d);
-            parsedMetadata.putIfAbsent("ocrConfidenceSource", "unavailable");
-            parsedMetadata.put("structureAware", !blocks.isEmpty());
-            parsedMetadata.put("blockCount", blocks.size());
-            String flatText = blocks.isEmpty() ? text : StructureParsingSupport.blocksToText(blocks);
-            ContentFamily family = isPdf(source) ? ContentFamily.SCANNED_DOCUMENT : ContentFamily.IMAGE_TEXT;
-            return new ParsedDocument(
-                    source.sourceUri(),
-                    firstNonBlank(metadata.get("title"), source.filename(), source.sourceUri()),
-                    flatText,
-                    family,
-                    Map.copyOf(parsedMetadata),
-                    blocks
-            );
-        } catch (IOException | SAXException | TikaException exception) {
+            return parseViaOcrEngine(source, content, options, parseOptions);
+        } catch (RuntimeException exception) {
+            throw exception;
+        } catch (Exception exception) {
             throw new IllegalStateException("OCR 版面解析失败: " + source.sourceUri(), exception);
         }
     }
 
-    private static List<StructuralBlock> structuredOcrBlocks(String text, Map<String, Object> metadata) {
-        Object hocr = metadata.get("ocrHocr");
-        if (hocr == null) {
-            hocr = metadata.get("hocr");
+    private ParsedDocument parseViaLayoutService(
+            DocumentSource source,
+            byte[] content,
+            Map<String, Object> options,
+            IngestionParseOptionsSupport.IngestionParseOptions parseOptions
+    ) {
+        Map<String, Object> mergedOptions = new HashMap<>(options);
+        mergedOptions.putIfAbsent("layoutProvider", "ocr-raster");
+        LayoutPageResult pageResult = layoutAnalysisService.analyzePage(new LayoutPageRequest(
+                content,
+                source.mimeType(),
+                1,
+                0d,
+                0d,
+                source.sourceUri(),
+                Map.copyOf(mergedOptions)
+        ));
+        List<StructuralBlock> blocks = OcrConfidencePolicy.apply(
+                pageResult.blocks(),
+                parseOptions.ocrConfidenceThreshold(),
+                parseOptions.ocrDownweightMode()
+        );
+        Map<String, Object> parsedMetadata = new HashMap<>(options);
+        parsedMetadata.putAll(pageResult.metadata());
+        parsedMetadata.put("parserCode", PARSER_CODE);
+        parsedMetadata.put("parser", PARSER_CODE);
+        parsedMetadata.put("layoutAnalysisApplied", true);
+        parsedMetadata.put("layoutProvider", pageResult.providerCode());
+        parsedMetadata.put("layoutModel", pageResult.modelName());
+        parsedMetadata.put("ocrApplied", true);
+        parsedMetadata.put("layoutParsing", true);
+        if (pageResult.detectedLanguage() != null) {
+            parsedMetadata.put("detectedLanguage", pageResult.detectedLanguage());
+            parsedMetadata.put("ocrLanguage", pageResult.detectedLanguage());
         }
-        if (hocr != null && !String.valueOf(hocr).isBlank()) {
-            List<StructuralBlock> blocks = OcrEngineOutputParser.parseHocr(String.valueOf(hocr), metadata);
-            if (!blocks.isEmpty()) {
-                return blocks;
-            }
+        if (pageResult.rotationDegrees() != null) {
+            parsedMetadata.put("pageRotation", pageResult.rotationDegrees());
         }
-        return StructureParsingSupport.parseOcrLayout(text, metadata);
+        parsedMetadata.put("parseConfidence", OcrConfidencePolicy.aggregateDocumentScore(blocks));
+        parsedMetadata.put("parseConfidenceSource", "ocr-layout");
+        parsedMetadata.put("structureAware", !blocks.isEmpty());
+        parsedMetadata.put("blockCount", blocks.size());
+        String flatText = blocks.isEmpty() ? "" : StructureParsingSupport.blocksToText(blocks);
+        return new ParsedDocument(
+                source.sourceUri(),
+                firstNonBlank(source.filename(), source.sourceUri()),
+                flatText,
+                ContentFamily.IMAGE_TEXT,
+                Map.copyOf(parsedMetadata),
+                blocks
+        );
     }
 
-    private static String resolveLanguage(Map<String, Object> metadata) {
-        if (metadata == null) {
-            return null;
+    private ParsedDocument parseViaOcrEngine(
+            DocumentSource source,
+            byte[] content,
+            Map<String, Object> options,
+            IngestionParseOptionsSupport.IngestionParseOptions parseOptions
+    ) {
+        String language = parseOptions.ocrLanguage();
+        if ("auto".equalsIgnoreCase(language)) {
+            language = null;
         }
-        Object language = metadata.get("ocrLanguage");
-        if (language == null) {
-            language = metadata.get("ocrLang");
+        OcrEngineAdapter engine = resolveEngine(options);
+        OcrRecognizeRequest request = new OcrRecognizeRequest(
+                source.sourceUri(),
+                source.mimeType(),
+                language,
+                options
+        );
+        OcrEngineResult engineResult = engine.recognize(content, request);
+        Map<String, Object> parsedMetadata = new HashMap<>();
+        if (source.metadata() != null) {
+            parsedMetadata.putAll(source.metadata());
         }
-        return language == null ? null : String.valueOf(language);
+        parsedMetadata.putAll(engineResult.engineMetadata());
+        List<StructuralBlock> blocks = OcrBlockFactory.fromEngineResult(engineResult, parsedMetadata);
+        blocks = OcrConfidencePolicy.apply(
+                blocks,
+                parseOptions.ocrConfidenceThreshold(),
+                parseOptions.ocrDownweightMode()
+        );
+        parsedMetadata.put("parserCode", PARSER_CODE);
+        parsedMetadata.put("parser", PARSER_CODE);
+        parsedMetadata.put("ocrEngine", engine.engineCode());
+        parsedMetadata.put("ocrApplied", true);
+        parsedMetadata.put("layoutParsing", true);
+        parsedMetadata.put("ocrLanguage", language == null ? "auto" : language);
+        parsedMetadata.put("parseConfidence", OcrConfidencePolicy.aggregateDocumentScore(blocks));
+        parsedMetadata.put("parseConfidenceSource", "ocr-layout");
+        parsedMetadata.put("structureAware", !blocks.isEmpty());
+        parsedMetadata.put("blockCount", blocks.size());
+        String flatText = blocks.isEmpty()
+                ? engineResult.rawPayload() == null ? "" : engineResult.rawPayload()
+                : StructureParsingSupport.blocksToText(blocks);
+        ContentFamily family = isPdf(source) ? ContentFamily.SCANNED_DOCUMENT : ContentFamily.IMAGE_TEXT;
+        return new ParsedDocument(
+                source.sourceUri(),
+                firstNonBlank(source.filename(), source.sourceUri()),
+                flatText,
+                family,
+                Map.copyOf(parsedMetadata),
+                blocks
+        );
+    }
+
+    private OcrEngineAdapter resolveEngine(Map<String, Object> options) {
+        if (options == null || options.isEmpty()) {
+            return defaultEngine;
+        }
+        Object requested = options.get("ocrEngine");
+        if (requested == null) {
+            requested = options.get("ocrEngineCode");
+        }
+        if (requested == null || String.valueOf(requested).isBlank()) {
+            return defaultEngine;
+        }
+        return OcrEngineRegistry.resolve(options);
     }
 
     private static boolean isPdf(DocumentSource source) {

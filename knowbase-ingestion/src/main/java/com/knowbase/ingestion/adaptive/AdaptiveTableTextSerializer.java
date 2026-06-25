@@ -1,9 +1,11 @@
 package com.knowbase.ingestion.adaptive;
 
+import com.knowbase.ingestion.table.MultiLevelHeaderStack;
 import org.apache.poi.ss.util.CellReference;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Phase 3: renders rows into retrieval-oriented text by {@link TableRowRole}.
@@ -19,12 +21,23 @@ public final class AdaptiveTableTextSerializer {
             List<String> values,
             String[] columnHeaders
     ) {
+        return serialize(role, sheetLabel, values, columnHeaders, null, columnHeaders == null ? 0 : columnHeaders.length);
+    }
+
+    public static String serialize(
+            TableRowRole role,
+            String sheetLabel,
+            List<String> values,
+            String[] columnHeaders,
+            MultiLevelHeaderStack headerStack,
+            int columnCount
+    ) {
         return switch (role) {
             case LAYOUT -> serializeLayout(sheetLabel, values);
             case SEPARATOR -> serializeSeparator(sheetLabel, values);
             case FORM_KV -> serializeFormKv(sheetLabel, values);
             case HEADER -> serializeHeader(sheetLabel, values);
-            case DATA -> serializeData(sheetLabel, values, columnHeaders);
+            case DATA -> serializeData(sheetLabel, values, columnHeaders, headerStack, columnCount);
             case COORDINATE -> serializeCoordinate(values);
         };
     }
@@ -81,7 +94,13 @@ public final class AdaptiveTableTextSerializer {
         return sheetContext(sheetLabel, "表头") + String.join(" | ", headers);
     }
 
-    private static String serializeData(String sheetLabel, List<String> values, String[] columnHeaders) {
+    private static String serializeData(
+            String sheetLabel,
+            List<String> values,
+            String[] columnHeaders,
+            MultiLevelHeaderStack headerStack,
+            int columnCount
+    ) {
         if (columnHeaders == null || columnHeaders.length == 0) {
             return serializeCoordinate(values);
         }
@@ -98,20 +117,35 @@ public final class AdaptiveTableTextSerializer {
         List<String> fields = new ArrayList<>();
         int limit = Math.max(values.size(), columnHeaders.length);
         for (int index = 0; index < limit; index++) {
-            String header = index < columnHeaders.length ? columnHeaders[index] : "";
+            String headerLabel = headerLabel(index, columnHeaders, headerStack, columnCount);
             String value = index < values.size() ? values.get(index) : "";
-            if (header == null || header.isBlank() || value == null || value.isBlank()) {
+            if (headerLabel.isBlank() || value == null || value.isBlank()) {
                 continue;
             }
-            if (header.equals(value.trim())) {
+            if (headerLabel.equals(value.trim())) {
                 continue;
             }
-            fields.add(header.trim() + ": " + value.trim());
+            fields.add(headerLabel + ": " + value.trim());
         }
         if (fields.isEmpty()) {
             return serializeCoordinate(values);
         }
         return sheetContext(sheetLabel, null) + String.join(" | ", fields);
+    }
+
+    private static String headerLabel(
+            int columnIndex,
+            String[] columnHeaders,
+            MultiLevelHeaderStack headerStack,
+            int columnCount
+    ) {
+        if (headerStack != null && headerStack.headerRowCount() > 0) {
+            List<String> path = headerStack.headerPathForColumn(columnIndex, columnCount);
+            return path.stream().filter(value -> value != null && !value.isBlank()).collect(Collectors.joining("/"));
+        }
+        return columnIndex < columnHeaders.length && columnHeaders[columnIndex] != null
+                ? columnHeaders[columnIndex].trim()
+                : "";
     }
 
     /**

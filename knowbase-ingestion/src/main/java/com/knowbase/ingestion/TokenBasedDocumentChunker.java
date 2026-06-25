@@ -10,6 +10,7 @@ import com.knowbase.tokenizer.TokenWindowChunker;
 import com.knowbase.tokenizer.TokenizerGuard;
 import com.knowbase.ingestion.smart.SmartStructureDocumentChunker;
 import com.knowbase.ingestion.smart.SmartTableDocumentChunker;
+import com.knowbase.ingestion.parse.OcrChunkMetadataSupport;
 import com.knowbase.tokenizer.TokenizerRegistry;
 
 import java.util.ArrayList;
@@ -499,6 +500,6 @@ public final class TokenBasedDocumentChunker implements DocumentChunker {
             metadata.put("parserCode", documentProfile.parserCode());
             metadata.put("chunkingStrategy", documentProfile.chunkingStrategy());
         }
-        return Map.copyOf(metadata);
+        return OcrChunkMetadataSupport.mergeBlockOcrFields(metadata, structuralSegment.metadata());
     }
 }

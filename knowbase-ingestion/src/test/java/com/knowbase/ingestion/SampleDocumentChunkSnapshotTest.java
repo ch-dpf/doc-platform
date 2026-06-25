@@ -1,5 +1,6 @@
 package com.knowbase.ingestion;
 
+import com.knowbase.ingestion.parse.ParsedDocumentParseEnricher;
 import com.knowbase.domain.model.DocumentChunk;
 import com.knowbase.domain.model.DocumentProfile;
 import com.knowbase.domain.model.LibraryProfile;
@@ -50,6 +51,71 @@ class SampleDocumentChunkSnapshotTest {
         assertTrue(snapshot.parsedText().contains("retrieval test"));
     }
 
+    @Test
+    void tableMetricsCsvProducesTableRowChunks() throws Exception {
+        ChunkSnapshot snapshot = snapshotTableSample("sample-documents/table/metrics.csv", "text/csv");
+        assertTrue(snapshot.indexableCount() >= 1);
+        assertTrue(snapshot.indexableChunks().stream().anyMatch(chunk -> chunk.content().contains("张三")));
+    }
+
+    @Test
+    void ocrHocrProducesBlocksReadyForChunking() throws Exception {
+        URI uri = SampleDocumentChunkSnapshotTest.class.getClassLoader()
+                .getResource("sample-documents/ocr/sample-scan.hocr").toURI();
+        String hocr = Files.readString(Path.of(uri));
+        ParsedDocument parsed = ParsedDocumentParseEnricher.enrich(new ParsedDocument(
+                uri.toString(),
+                "sample-scan.hocr",
+                hocr,
+                ContentFamily.IMAGE_TEXT,
+                Map.of("parserCode", "ocr-layout"),
+                com.knowbase.ingestion.ocr.OcrConfidencePolicy.apply(
+                        com.knowbase.ingestion.ocr.OcrBlockFactory.fromHocr(hocr, Map.of("pageNumber", 1)),
+                        0.6d
+                )
+        ));
+        assertTrue(parsed.blocks().stream().anyMatch(block -> block.metadata().containsKey("ocrConfidence")));
+        assertTrue(parsed.blocks().stream().anyMatch(block -> block.metadata().containsKey("evidenceAssetHint")));
+    }
+
+    private static ChunkSnapshot snapshotTableSample(String resourcePath, String mimeType) throws Exception {
+        URI uri = SampleDocumentChunkSnapshotTest.class.getClassLoader().getResource(resourcePath).toURI();
+        Path path = Path.of(uri);
+        try (InputStream inputStream = Files.newInputStream(path)) {
+            ParsedDocument parsed = ParsedDocumentParseEnricher.enrich(new StructuredTableDocumentParser().parse(new DocumentSource(
+                    path.toUri().toString(),
+                    path.getFileName().toString(),
+                    mimeType,
+                    inputStream,
+                    Map.of()
+            )));
+            return snapshotFromParsed(
+                    parsed,
+                    path.toUri().toString(),
+                    ContentFamily.STRUCTURED_TABLE,
+                    "table-deep",
+                    "table_row_token_window"
+            );
+        }
+    }
+
+    private static ChunkSnapshot snapshotFromParsed(ParsedDocument parsed, String sourceUri) {
+        return snapshotFromParsed(parsed, sourceUri, ContentFamily.PLAIN_TEXT, "markdown-structure", "paragraph_token_window");
+    }
+
+    private static ChunkSnapshot snapshotFromParsed(
+            ParsedDocument parsed,
+            String sourceUri,
+            ContentFamily contentFamily,
+            String parserCode,
+            String chunkingStrategy
+    ) {
+        DocumentPreparationResult prepared = prepareParsed(parsed, sourceUri, contentFamily, parserCode, chunkingStrategy);
+        List<DocumentChunk> allChunks = prepared.chunks();
+        List<DocumentChunk> indexable = allChunks.stream().filter(SampleDocumentChunkSnapshotTest::isIndexable).toList();
+        return new ChunkSnapshot(allChunks, indexable, prepared.parsed().text());
+    }
+
     private record ChunkSnapshot(List<DocumentChunk> allChunks, List<DocumentChunk> indexableChunks, String parsedText) {
         int indexableCount() {
             return indexableChunks.size();
@@ -83,6 +149,16 @@ class SampleDocumentChunkSnapshotTest {
     }
 
     private static DocumentPreparationResult prepareParsed(ParsedDocument parsed, String sourceUri) {
+        return prepareParsed(parsed, sourceUri, ContentFamily.PLAIN_TEXT, "markdown-structure", "paragraph_token_window");
+    }
+
+    private static DocumentPreparationResult prepareParsed(
+            ParsedDocument parsed,
+            String sourceUri,
+            ContentFamily contentFamily,
+            String parserCode,
+            String chunkingStrategy
+    ) {
         UUID libraryId = UUID.randomUUID();
         UUID documentId = UUID.randomUUID();
         UUID generationId = UUID.randomUUID();
@@ -104,9 +180,9 @@ class SampleDocumentChunkSnapshotTest {
                 UUID.randomUUID(),
                 libraryId,
                 "default_text",
-                ContentFamily.PLAIN_TEXT,
-                "markdown-structure",
-                "paragraph_token_window",
+                contentFamily,
+                parserCode,
+                chunkingStrategy,
                 null,
                 Map.of(),
                 Map.of(),

@@ -124,10 +124,50 @@
 现状：
 
 - 已支持 hOCR 中的 bbox 与 confidence 解析，并在缺失时保留估算/不可用标记。
+- 已支持 Tesseract 默认引擎与 PaddleOCR HTTP 适配（`paddleOcrEndpoint`）。
+- **新增**：复杂/扫描 PDF 可配置官方 PaddleOCR-VL HTTP pipeline 或 vLLM OpenAI 接口（`knowbase.vision-document`）；亦可回退 Ollama 社区版 VLM。
+
+配置（`application.yml`）：
+
+```yaml
+knowbase:
+  vision-document:
+    enabled: true
+    provider: paddleocr-vl   # paddleocr-vl | vllm | ollama
+    timeout: 600s
+    paddleocr-vl:
+      base-url: http://localhost:8080
+    vllm:
+      base-url: http://localhost:8118
+      model: PaddleOCR-VL-1.6-0.9B
+  ollama:
+    vision-language-model: ""   # 官方服务启用时留空
+  ingestion:
+    pdf:
+      vl-on-scanned: true
+      vl-on-low-confidence: true
+      vl-low-confidence-threshold: 0.55
+      vl-fallback-to-heuristic: true
+      vl-max-pages: 0
+```
+
+Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
+
+路由逻辑（`PdfLayoutParser`）：
+
+1. 扫描件 / 显式 `pdfParseMode=vl|vision|paddleocr-vl` → VLM（若已配置）
+2. VLM 失败且 `vl-fallback-to-heuristic=true` → Tesseract OCR 或 layout 启发式
+3. 电子版 PDF layout 置信度低于阈值 → 可选 VLM 重解析
+
+启用前：
+
+- **官方 pipeline**：`PaddleOCR/deploy/paddleocr_vl_docker/hps` → `docker compose up`（端口 8080）
+- **独立 vLLM**：`docker compose -f infra/docker-compose.paddleocr-vl.yml up -d`（端口 8118）
+- **Ollama 回退**：`ollama pull MedAIBase/PaddleOCR-VL:0.9b`，`provider: ollama`
 
 不足：
 
-- 尚未固化 PaddleOCR、Tesseract TSV、云 OCR JSON 等多引擎适配。
+- 官方 pipeline 返回的 `prunedResult` bbox 尚未写入 `StructuralBlock` metadata（当前使用 markdown 文本路径）。
 - rotation、language、paragraph/line/word 层级、低置信度策略仍不完整。
 
 后续完善：
@@ -135,8 +175,27 @@
 - 定义 `OcrEngineAdapter` SPI，统一输出 page、block、line、word、bbox、confidence、language、rotation。
 - 支持 Profile 级 OCR 引擎选择和参数配置。
 - 对低置信度 chunk 增加降权、过滤、人工复核标记。
+- 将 PaddleOCR-VL `prunedResult` 版面 bbox 映射到 evidence hint。
 
-### 4.3 外部解析器协议固化
+### 4.3 Markdown / VLM 表格语义
+
+现状：
+
+- Markdown 解析器支持 GFM 管道表格（`| col |`），输出带 `tableRegionId`、`rowRole` 的 `table_row`。
+- VLM（PaddleOCR-VL）输出的 Markdown 表格复用同一解析路径。
+- `TableRegionIdParseEnricher` 为 OCR/VLM 等缺失 region 的连续 `table_row` 自动补全 `tableRegionId`，并触发 `table_summary` 注入。
+
+不足：
+
+- 合并单元格、嵌套表、无边框表在 Markdown/VLM 路径仍依赖启发式。
+- HTML `colspan`/`rowspan` 已有 extractor，复杂嵌套表待加强。
+
+后续完善：
+
+- HTML/DOCX 浮动表与页内嵌套表区域检测。
+- 表格 cell 级 bbox（PDF/VLM 路径）。
+
+### 4.4 外部解析器协议固化
 
 现状：
 
@@ -154,7 +213,7 @@
 - 增加 adapter 级超时、重试、熔断和 fallback 到 Java parser。
 - 将外部解析 trace 写入 `IngestionRun` 阶段轨迹。
 
-### 4.4 语义切分与评测集
+### 4.5 语义切分与评测集
 
 现状：
 
@@ -172,7 +231,7 @@
 - 增加 chunk snapshot 测试，固定 `boundaryType`、tokenCount、metadata、parent/child 关系。
 - 增加 ingestion eval 脚本，输出召回、引用、chunk 边界和证据完整性报告。
 
-### 4.5 Citation 坐标闭环
+### 4.6 Citation 坐标闭环
 
 现状：
 
@@ -189,7 +248,7 @@
 - 前端支持页内区域、表格行/单元格和低置信度 OCR 标记展示。
 - 问答上下文裁剪时保留 citation metadata 一致性。
 
-### 4.6 多模态证据资产
+### 4.7 多模态证据资产
 
 现状：
 
@@ -205,7 +264,7 @@
 - 在 evidence pack 中保留图片/表格区域 asset URI。
 - 前端支持引用处预览页截图或表格区域截图。
 
-### 4.7 知识库与 Profile 管理
+### 4.8 知识库与 Profile 管理
 
 现状：
 
@@ -224,7 +283,7 @@
 - 前端增加 Profile 管理页，展示 parser、cleaning、chunking、tokenizer、metadata schema 配置。
 - 变更 Profile 时提示是否需要创建新索引版本或重新入库。
 
-### 4.8 入库任务运维
+### 4.9 入库任务运维
 
 现状：
 
@@ -243,7 +302,7 @@
 - 将解析、清洗、分段中间产物作为可选调试/重试缓存。
 - 前端增加入库任务运维页，支持任务列表、失败重试、错误导出和索引版本跳转。
 
-### 4.9 Pipeline 可观测与审计
+### 4.10 Pipeline 可观测与审计
 
 现状：
 

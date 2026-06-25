@@ -38,6 +38,7 @@ public final class DefaultRetrievalPostProcessor implements RetrievalPostProcess
         RetrievalPolicyView policy = RetrievalPolicyView.from(retrievalPolicy);
         List<RankedCandidate> ranked = withBaseRank(candidates);
         ranked = applyContentFamilyWeights(ranked, policy);
+        ranked = applyOcrDownweight(ranked);
         ranked = "rrf".equals(policy.fusion())
                 ? reciprocalRankFusion(ranked, policy)
                 : scoreSort(ranked);
@@ -102,6 +103,15 @@ public final class DefaultRetrievalPostProcessor implements RetrievalPostProcess
                     double weight = policy.contentFamilyWeights().getOrDefault(contentFamily.toUpperCase(Locale.ROOT), 1.0d);
                     return item.withScore(item.candidate().score() * weight);
                 })
+                .toList();
+    }
+
+    private static List<RankedCandidate> applyOcrDownweight(List<RankedCandidate> ranked) {
+        return ranked.stream()
+                .map(item -> item.withScore(OcrRetrievalDownweightSupport.adjustedScore(
+                        item.candidate().score(),
+                        item.candidate().metadata()
+                )))
                 .toList();
     }
 

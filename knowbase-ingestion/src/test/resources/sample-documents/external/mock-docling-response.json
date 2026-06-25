@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "1.0",
+  "text": "Quarterly report overview.",
+  "metadata": {
+    "pageCount": 1
+  },
+  "pages": [
+    {
+      "pageNumber": 1,
+      "width": 612,
+      "height": 792,
+      "assetUri": "minio://artifacts/page-1.png"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "heading",
+      "content": "Quarterly Report",
+      "level": 1,
+      "pageNumber": 1,
+      "bbox": [72, 720, 300, 24],
+      "readingOrder": 0,
+      "confidence": 0.98
+    },
+    {
+      "type": "paragraph",
+      "content": "Revenue increased by 12% year over year.",
+      "pageNumber": 1,
+      "bbox": [72, 680, 420, 18],
+      "readingOrder": 1,
+      "confidence": 0.95
+    }
+  ],
+  "tables": [
+    {
+      "tableRegionId": 1,
+      "tableRegionLabel": "docling-table-1",
+      "pageNumber": 1,
+      "bbox": [72, 500, 400, 80],
+      "rows": [
+        {
+          "rowRole": "HEADER",
+          "cells": ["Region", "Revenue"],
+          "bbox": [72, 560, 400, 20]
+        },
+        {
+          "rowRole": "DATA",
+          "cells": ["East", "1.2M"],
+          "headerPath": ["Region", "Revenue"],
+          "bbox": [72, 540, 400, 20]
+        }
+      ]
+    }
+  ],
+  "images": [
+    {
+      "pageNumber": 1,
+      "bbox": [72, 200, 200, 120],
+      "assetUri": "minio://artifacts/chart-1.png",
+      "description": "Revenue chart"
+    }
+  ]
+}

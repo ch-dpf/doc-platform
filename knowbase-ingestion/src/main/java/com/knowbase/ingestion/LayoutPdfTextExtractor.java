@@ -1,6 +1,12 @@
 package com.knowbase.ingestion;
 
+import com.knowbase.ingestion.pdf.PdfLayoutRoleClassifier;
+import com.knowbase.ingestion.pdf.PdfStreamTableDetector;
+import com.knowbase.ingestion.pdf.PdfTableCellExtractor;
+import com.knowbase.ingestion.pdf.PdfTableRegionMerger;
+import com.knowbase.ingestion.pdf.PdfTableRowInput;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 
@@ -24,6 +30,8 @@ public final class LayoutPdfTextExtractor {
 
     public static List<StructuralBlock> extract(byte[] pdfBytes) throws IOException {
         try (PDDocument document = PDDocument.load(pdfBytes)) {
+            Map<Integer, Float> pageHeights = pageHeights(document);
+            Map<Integer, Float> pageWidths = pageWidths(document);
             PositionCollectingStripper stripper = new PositionCollectingStripper();
             stripper.setSortByPosition(true);
             stripper.getText(document);
@@ -32,9 +40,28 @@ public final class LayoutPdfTextExtractor {
                 return List.of();
             }
             float bodyFontSize = medianFontSize(lines);
-            List<LayoutBlock> layoutBlocks = clusterBlocks(lines, bodyFontSize);
-            return toStructuralBlocks(layoutBlocks);
+            ExtractionContext context = new ExtractionContext(pageHeights, pageWidths, bodyFontSize);
+            List<LayoutBlock> layoutBlocks = clusterBlocks(lines, context);
+            return toStructuralBlocks(layoutBlocks, context);
         }
+    }
+
+    private static Map<Integer, Float> pageHeights(PDDocument document) {
+        Map<Integer, Float> heights = new HashMap<>();
+        for (int index = 0; index < document.getNumberOfPages(); index++) {
+            PDPage page = document.getPage(index);
+            heights.put(index + 1, page.getMediaBox().getHeight());
+        }
+        return heights;
+    }
+
+    private static Map<Integer, Float> pageWidths(PDDocument document) {
+        Map<Integer, Float> widths = new HashMap<>();
+        for (int index = 0; index < document.getNumberOfPages(); index++) {
+            PDPage page = document.getPage(index);
+            widths.put(index + 1, page.getMediaBox().getWidth());
+        }
+        return widths;
     }
 
     private static float medianFontSize(List<LayoutLine> lines) {
@@ -45,21 +72,21 @@ public final class LayoutPdfTextExtractor {
         return sizes.get(sizes.size() / 2);
     }
 
-    private static List<LayoutBlock> clusterBlocks(List<LayoutLine> lines, float bodyFontSize) {
+    private static List<LayoutBlock> clusterBlocks(List<LayoutLine> lines, ExtractionContext context) {
         List<LayoutBlock> blocks = new ArrayList<>();
         List<LayoutLine> current = new ArrayList<>();
         LayoutLine previous = null;
 
         for (LayoutLine line : lines) {
             if (previous != null && isBlockBreak(previous, line)) {
-                blocks.add(buildBlock(current, bodyFontSize));
+                blocks.add(buildBlock(current, context));
                 current = new ArrayList<>();
             }
             current.add(line);
             previous = line;
         }
         if (!current.isEmpty()) {
-            blocks.add(buildBlock(current, bodyFontSize));
+            blocks.add(buildBlock(current, context));
         }
         return blocks;
     }
@@ -73,21 +100,24 @@ public final class LayoutPdfTextExtractor {
         return gap > threshold;
     }
 
-    private static LayoutBlock buildBlock(List<LayoutLine> lines, float bodyFontSize) {
+    private static LayoutBlock buildBlock(List<LayoutLine> lines, ExtractionContext context) {
         String content = String.join("\n", lines.stream().map(LayoutLine::text).toList()).trim();
         LayoutLine first = lines.getFirst();
+        float bodyFontSize = context.bodyFontSize();
         float avgFont = (float) lines.stream().mapToDouble(LayoutLine::fontSize).average().orElse(bodyFontSize);
         float minX = (float) lines.stream().mapToDouble(LayoutLine::minX).min().orElse(first.minX());
         float maxX = (float) lines.stream().mapToDouble(LayoutLine::maxX).max().orElse(first.maxX());
         float topY = (float) lines.stream().mapToDouble(LayoutLine::y).max().orElse(first.y());
         float bottomY = (float) lines.stream().mapToDouble(line -> line.y() - line.height()).min().orElse(first.y());
-        String layoutRole = classifyRole(content, lines, avgFont, bodyFontSize);
+        float pageHeight = context.pageHeights().getOrDefault(first.pageNumber(), 0f);
+        String layoutRole = classifyRole(content, lines, avgFont, bodyFontSize, topY, pageHeight);
         int readingOrder = lines.stream().mapToInt(LayoutLine::readingOrder).min().orElse(first.readingOrder());
         int columnIndex = dominantColumn(lines);
         int columnCount = lines.stream().mapToInt(LayoutLine::columnCount).max().orElse(first.columnCount());
         int headingLevel = "title".equals(layoutRole) || "heading".equals(layoutRole)
                 ? headingLevel(avgFont, bodyFontSize)
                 : 0;
+        List<Float> cellBoundaryX = dominantCellBoundaries(lines);
         return new LayoutBlock(
                 first.pageNumber(),
                 readingOrder,
@@ -100,8 +130,17 @@ public final class LayoutPdfTextExtractor {
                 bottomY,
                 Math.max(1f, maxX - minX),
                 Math.max(1f, topY - bottomY),
-                avgFont
+                avgFont,
+                cellBoundaryX
         );
+    }
+
+    private static List<Float> dominantCellBoundaries(List<LayoutLine> lines) {
+        List<LayoutLine> tableLines = lines.stream().filter(LayoutLine::tableLike).toList();
+        if (tableLines.isEmpty()) {
+            return List.of();
+        }
+        return tableLines.getFirst().cellBoundaryX();
     }
 
     private static List<LayoutLine> enrichReadingOrderAndColumns(List<LayoutLine> lines) {
@@ -157,20 +196,25 @@ public final class LayoutPdfTextExtractor {
         return right > lines.size() / 2 ? 1 : 0;
     }
 
-    private static String classifyRole(String content, List<LayoutLine> lines, float avgFont, float bodyFontSize) {
+    private static String classifyRole(
+            String content,
+            List<LayoutLine> lines,
+            float avgFont,
+            float bodyFontSize,
+            float topY,
+            float pageHeight
+    ) {
         if (content.isBlank()) {
             return "body";
         }
         if (lines.stream().anyMatch(LayoutLine::tableLike)) {
             return "table";
         }
-        if (avgFont >= bodyFontSize * 1.18f && content.length() <= 120) {
-            return avgFont >= bodyFontSize * 1.35f ? "title" : "heading";
-        }
-        if (PDF_HEADING.matcher(content.split("\n", 2)[0].trim()).matches()) {
+        String role = PdfLayoutRoleClassifier.classify(content, topY, pageHeight, avgFont, bodyFontSize);
+        if ("body".equals(role) && PDF_HEADING.matcher(content.split("\n", 2)[0].trim()).matches()) {
             return "heading";
         }
-        return "body";
+        return role;
     }
 
     private static final java.util.regex.Pattern PDF_HEADING = java.util.regex.Pattern.compile(
@@ -188,108 +232,173 @@ public final class LayoutPdfTextExtractor {
         return 3;
     }
 
-    private static List<StructuralBlock> toStructuralBlocks(List<LayoutBlock> layoutBlocks) {
+    private static List<StructuralBlock> toStructuralBlocks(List<LayoutBlock> layoutBlocks, ExtractionContext context) {
         List<StructuralBlock> blocks = new ArrayList<>();
         int ordinal = 0;
         int tableRegionId = 0;
         List<LayoutBlock> currentTableRegion = new ArrayList<>();
+        TableRegionTracker tableTracker = new TableRegionTracker();
         for (LayoutBlock block : layoutBlocks) {
             if (block.content().isBlank()) {
                 continue;
             }
             if ("table".equals(block.layoutRole())) {
                 currentTableRegion.add(block);
-            } else if (!currentTableRegion.isEmpty()) {
-                appendTableRegion(blocks, currentTableRegion, tableRegionId++, ordinal);
-                ordinal += currentTableRegion.size();
-                currentTableRegion = new ArrayList<>();
-            }
-            if ("table".equals(block.layoutRole())) {
                 continue;
             }
-            Map<String, Object> metadata = new HashMap<>();
-            metadata.put("boundaryType", block.layoutRole());
-            metadata.put("layoutRole", block.layoutRole());
-            metadata.put("pageNumber", block.pageNumber());
-            metadata.put("readingOrder", block.readingOrder());
-            metadata.put("columnIndex", block.columnIndex());
-            metadata.put("columnCount", block.columnCount());
-            metadata.put("multiColumn", block.columnCount() > 1);
-            metadata.put("bbox", List.of(
-                    round(block.x()),
-                    round(block.y()),
-                    round(block.width()),
-                    round(block.height())
-            ));
-            metadata.put("fontSize", round(block.fontSize()));
-            metadata.put("layoutParsing", true);
-
-            StructuralBlock structuralBlock = switch (block.layoutRole()) {
-                case "title", "heading" -> StructuralBlock.heading(block.level(), block.content(), ordinal);
-                case "table" -> StructuralBlock.tableRow(
-                        block.content().replaceAll("\\s{2,}|\\t+", " | "),
-                        ordinal,
-                        ordinal
-                );
-                default -> StructuralBlock.paragraph(block.content(), ordinal);
-            };
-            Map<String, Object> merged = new HashMap<>(structuralBlock.metadata());
-            merged.putAll(metadata);
-            blocks.add(new StructuralBlock(
-                    structuralBlock.blockType(),
-                    structuralBlock.level(),
-                    structuralBlock.content(),
-                    ordinal++,
-                    merged
-            ));
+            if (!currentTableRegion.isEmpty()) {
+                ordinal = flushTableRegion(blocks, currentTableRegion, tableRegionId, ordinal, tableTracker, context);
+                tableRegionId = tableTracker.nextAssignableRegionId();
+                currentTableRegion = new ArrayList<>();
+            }
+            ordinal = appendLayoutBlock(blocks, block, ordinal, context);
         }
         if (!currentTableRegion.isEmpty()) {
-            appendTableRegion(blocks, currentTableRegion, tableRegionId, ordinal);
+            flushTableRegion(blocks, currentTableRegion, tableRegionId, ordinal, tableTracker, context);
         }
         return StructureParsingSupport.enrichHeadingPathsPublic(blocks);
     }
 
-    private static void appendTableRegion(
+    private static int appendLayoutBlock(List<StructuralBlock> blocks, LayoutBlock block, int ordinal, ExtractionContext context) {
+        Map<String, Object> metadata = layoutMetadata(block, context);
+        metadata.put("indexableHint", PdfLayoutRoleClassifier.isIndexableRole(block.layoutRole()));
+
+        StructuralBlock structuralBlock = switch (block.layoutRole()) {
+            case "title", "heading" -> StructuralBlock.heading(block.level(), block.content(), ordinal);
+            default -> StructuralBlock.paragraph(block.content(), ordinal);
+        };
+        Map<String, Object> merged = new HashMap<>(structuralBlock.metadata());
+        merged.putAll(metadata);
+        blocks.add(new StructuralBlock(
+                structuralBlock.blockType(),
+                structuralBlock.level(),
+                structuralBlock.content(),
+                ordinal,
+                merged
+        ));
+        return ordinal + 1;
+    }
+
+    private static Map<String, Object> layoutMetadata(LayoutBlock block, ExtractionContext context) {
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("boundaryType", block.layoutRole());
+        metadata.put("layoutRole", block.layoutRole());
+        metadata.put("pageNumber", block.pageNumber());
+        metadata.put("readingOrder", block.readingOrder());
+        metadata.put("columnIndex", block.columnIndex());
+        metadata.put("columnCount", block.columnCount());
+        metadata.put("multiColumn", block.columnCount() > 1);
+        metadata.put("bbox", List.of(
+                round(block.x()),
+                round(block.y()),
+                round(block.width()),
+                round(block.height())
+        ));
+        Float pageHeight = context.pageHeights().get(block.pageNumber());
+        Float pageWidth = context.pageWidths().get(block.pageNumber());
+        if (pageHeight != null) {
+            metadata.put("pageHeight", round(pageHeight));
+        }
+        if (pageWidth != null) {
+            metadata.put("pageWidth", round(pageWidth));
+        }
+        metadata.put("fontSize", round(block.fontSize()));
+        metadata.put("layoutParsing", true);
+        return metadata;
+    }
+
+    private static int flushTableRegion(
             List<StructuralBlock> blocks,
             List<LayoutBlock> tableRegion,
             int tableRegionId,
-            int startOrdinal
+            int ordinal,
+            TableRegionTracker tracker,
+            ExtractionContext context
     ) {
-        List<Double> regionBbox = unionBbox(tableRegion);
-        int rowCount = tableRegion.size();
-        for (int rowIndex = 0; rowIndex < tableRegion.size(); rowIndex++) {
-            LayoutBlock block = tableRegion.get(rowIndex);
-            Map<String, Object> metadata = new HashMap<>();
-            metadata.put("boundaryType", "table_row");
-            metadata.put("layoutRole", "table");
-            metadata.put("pageNumber", block.pageNumber());
-            metadata.put("readingOrder", block.readingOrder());
-            metadata.put("columnIndex", block.columnIndex());
-            metadata.put("columnCount", block.columnCount());
-            metadata.put("multiColumn", block.columnCount() > 1);
-            metadata.put("bbox", List.of(round(block.x()), round(block.y()), round(block.width()), round(block.height())));
-            metadata.put("tableRegionId", tableRegionId);
-            metadata.put("tableRegionRowIndex", rowIndex);
-            metadata.put("tableRegionRowCount", rowCount);
-            metadata.put("tableRegionBbox", regionBbox);
-            metadata.put("tableDetection", "pdf-layout-region");
-            metadata.put("layoutParsing", true);
-            blocks.add(new StructuralBlock(
-                    "table_row",
-                    0,
-                    block.content().replaceAll("\\s{2,}|\\t+", " | "),
-                    startOrdinal + rowIndex,
-                    Map.copyOf(metadata)
-            ));
+        List<PdfTableRowInput> rows = tableRegion.stream().map(LayoutPdfTextExtractor::toRowInput).toList();
+        PdfTableRegionMerger.PdfTableRegionSlice slice = new PdfTableRegionMerger.PdfTableRegionSlice(tableRegionId, rows);
+        if (tracker.lastSlice != null && PdfTableRegionMerger.isContinuation(tracker.lastSlice.rows(), slice.rows())) {
+            for (int index = 0; index < tracker.lastBlockCount; index++) {
+                blocks.remove(blocks.size() - 1);
+            }
+            List<PdfTableRowInput> combined = new ArrayList<>(tracker.lastSlice.rows());
+            combined.addAll(rows);
+            int mergedId = tracker.lastSlice.tableRegionId();
+            int added = appendTableRegion(blocks, combined, mergedId, tracker.lastStartOrdinal, context);
+            tracker.lastSlice = new PdfTableRegionMerger.PdfTableRegionSlice(mergedId, combined);
+            tracker.lastBlockCount = added;
+            return tracker.lastStartOrdinal + added;
+        }
+        int added = appendTableRegion(blocks, rows, tableRegionId, ordinal, context);
+        tracker.lastSlice = slice;
+        tracker.lastStartOrdinal = ordinal;
+        tracker.lastBlockCount = added;
+        tracker.nextAssignableRegionId = tableRegionId + 1;
+        return ordinal + added;
+    }
+
+    private static int appendTableRegion(
+            List<StructuralBlock> blocks,
+            List<PdfTableRowInput> rows,
+            int tableRegionId,
+            int startOrdinal,
+            ExtractionContext context
+    ) {
+        List<StructuralBlock> tableBlocks = PdfTableCellExtractor.toStructuralBlocks(rows, tableRegionId, startOrdinal);
+        for (int index = 0; index < tableBlocks.size(); index++) {
+            tableBlocks.set(index, enrichTableBlockPageDimensions(tableBlocks.get(index), context));
+        }
+        blocks.addAll(tableBlocks);
+        return tableBlocks.size();
+    }
+
+    private static StructuralBlock enrichTableBlockPageDimensions(StructuralBlock block, ExtractionContext context) {
+        Object pageNumber = block.metadata().get("pageNumber");
+        if (!(pageNumber instanceof Number page)) {
+            return block;
+        }
+        Float pageWidth = context.pageWidths().get(page.intValue());
+        Float pageHeight = context.pageHeights().get(page.intValue());
+        if (pageWidth == null && pageHeight == null) {
+            return block;
+        }
+        Map<String, Object> metadata = new HashMap<>(block.metadata());
+        if (pageWidth != null) {
+            metadata.put("pageWidth", round(pageWidth));
+        }
+        if (pageHeight != null) {
+            metadata.put("pageHeight", round(pageHeight));
+        }
+        return new StructuralBlock(block.blockType(), block.level(), block.content(), block.ordinal(), Map.copyOf(metadata));
+    }
+
+    private static final class TableRegionTracker {
+        private PdfTableRegionMerger.PdfTableRegionSlice lastSlice;
+        private int lastStartOrdinal;
+        private int lastBlockCount;
+        private int nextAssignableRegionId = 0;
+
+        int nextAssignableRegionId() {
+            return nextAssignableRegionId;
         }
     }
 
-    private static List<Double> unionBbox(List<LayoutBlock> blocks) {
-        double minX = blocks.stream().mapToDouble(LayoutBlock::x).min().orElse(0);
-        double minY = blocks.stream().mapToDouble(LayoutBlock::y).min().orElse(0);
-        double maxX = blocks.stream().mapToDouble(block -> block.x() + block.width()).max().orElse(minX);
-        double maxY = blocks.stream().mapToDouble(block -> block.y() + block.height()).max().orElse(minY);
-        return List.of(round((float) minX), round((float) minY), round((float) (maxX - minX)), round((float) (maxY - minY)));
+    private record ExtractionContext(Map<Integer, Float> pageHeights, Map<Integer, Float> pageWidths, float bodyFontSize) {
+    }
+
+    private static PdfTableRowInput toRowInput(LayoutBlock block) {
+        return new PdfTableRowInput(
+                block.pageNumber(),
+                block.readingOrder(),
+                block.columnIndex(),
+                block.columnCount(),
+                block.content(),
+                block.x(),
+                block.y(),
+                block.width(),
+                block.height(),
+                block.cellBoundaryX()
+        );
     }
 
     private static double round(float value) {
@@ -306,14 +415,21 @@ public final class LayoutPdfTextExtractor {
             float maxX,
             int readingOrder,
             int columnIndex,
-            int columnCount
+            int columnCount,
+            List<Float> cellBoundaryX
     ) {
         LayoutLine withReadingOrder(int readingOrder, int columnIndex, int columnCount) {
-            return new LayoutLine(pageNumber, text, y, height, fontSize, minX, maxX, readingOrder, columnIndex, columnCount);
+            return new LayoutLine(
+                    pageNumber, text, y, height, fontSize, minX, maxX,
+                    readingOrder, columnIndex, columnCount, cellBoundaryX
+            );
         }
 
         boolean tableLike() {
-            return text.contains("\t") || text.matches(".*\\S\\s{3,}\\S.*");
+            if (cellBoundaryX != null && cellBoundaryX.size() >= 3) {
+                return true;
+            }
+            return PdfStreamTableDetector.isStreamTableRow(text);
         }
     }
 
@@ -329,7 +445,8 @@ public final class LayoutPdfTextExtractor {
             float y,
             float width,
             float height,
-            float fontSize
+            float fontSize,
+            List<Float> cellBoundaryX
     ) {
     }
 
@@ -404,20 +521,30 @@ public final class LayoutPdfTextExtractor {
             float minX = Float.MAX_VALUE;
             float maxX = Float.MIN_VALUE;
             float fontSizeSum = 0f;
+            List<Float> cellBoundaryX = new ArrayList<>();
             for (PositionSample sample : lineSamples) {
                 TextPosition position = sample.position();
+                if (cellBoundaryX.isEmpty()) {
+                    cellBoundaryX.add(position.getXDirAdj());
+                }
                 minX = Math.min(minX, position.getXDirAdj());
                 maxX = Math.max(maxX, position.getXDirAdj() + position.getWidthDirAdj());
                 fontSizeSum += position.getFontSizeInPt();
                 if (previous != null) {
                     float gap = position.getXDirAdj() - (previous.getXDirAdj() + previous.getWidthDirAdj());
                     if (gap > Math.max(2f, previous.getWidthOfSpace() * 0.8f)) {
-                        builder.append(gap > previous.getWidthOfSpace() * 2.5f ? '\t' : ' ');
+                        if (gap > previous.getWidthOfSpace() * 2.5f) {
+                            builder.append('\t');
+                            cellBoundaryX.add(position.getXDirAdj());
+                        } else {
+                            builder.append(' ');
+                        }
                     }
                 }
                 builder.append(position.getUnicode());
                 previous = position;
             }
+            cellBoundaryX.add(maxX);
             PositionSample anchor = lineSamples.getFirst();
             TextPosition anchorPosition = anchor.position();
             float avgFont = fontSizeSum / lineSamples.size();
@@ -431,7 +558,8 @@ public final class LayoutPdfTextExtractor {
                     maxX,
                     0,
                     0,
-                    1
+                    1,
+                    List.copyOf(cellBoundaryX)
             );
         }
     }
