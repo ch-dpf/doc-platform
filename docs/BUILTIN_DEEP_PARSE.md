@@ -48,7 +48,7 @@ flowchart LR
 | 格式 | 主 Parser | 深度能力 | 与主流差距 |
 |------|-----------|----------|------------|
 | PDF 电子版 | `pdf-layout` | 多栏、TextPosition bbox、列对齐表、续表、TableGrid | 复杂网格/嵌套表、公式 |
-| PDF 扫描件 | `pdf-layout` → LayoutAnalysisService | PaddleOCR-VL `prunedResult` bbox + markdown 回退 | 专用 reading-order 模型 |
+| PDF 扫描件 | `pdf-layout` → LayoutAnalysisService | PaddleOCR-VL `prunedResult` bbox + markdown 回退 | 跨页专用 reading-order 模型 |
 | Markdown | `markdown-structure` | 标题/列表/代码块/GFM 管道表 | 合并单元格、嵌套表 |
 | HTML | `html-structure` | Jsoup 标题/列表/顶层表、colspan/rowspan | 嵌套表独立区域、CSS 浮动 |
 | Word | `docx-structure` | 标题/列表/表、gridSpan/vMerge | 文本框、浮动表、页眉页脚 |
@@ -61,25 +61,25 @@ flowchart LR
 
 ### 4.1 解析层
 
-- **`ReadingOrderModel`**：跨页、跨栏全局序号（现多为页内 ordinal / bbox 启发式）
+- **跨页 ReadingOrder 模型**：HTTP 客户端已就绪（`ReadingOrderHttpClient`），缺默认托管服务
 - **`FormulaBlock` 类型**：PDF/Word 公式保留 LaTeX/MathML
 - **本地 ONNX layout provider**：`LayoutAnalysisProvider` 扩展位已预留
 
 ### 4.2 资产与引用
 
-- **`EvidenceArtifactGenerator`**：页截图、表区裁剪图写入 ObjectStorage（现仅有 URI hint）
-- **Citation 闭环**：后端 metadata 已就绪；前端 PDF.js bbox overlay 已接入文档详情页
+- **`EvidenceArtifactGenerator`**：可选生成 PDF 页 PNG 至 ObjectStorage（`knowbase.ingestion.evidence-artifacts.enabled`）
+- **Citation 闭环**：文档详情 + QA 页均支持 PDF.js bbox overlay；Excel cell 级定位仍缺
 
 ### 4.3 质量与运维
 
-- **`sample-documents` 金标集**：每类 ≥3 文档 + chunk 快照（部分已有，见 `scripts/run-ingestion-eval.ps1`）
-- **ingestion eval 脚本**：离线 parse/chunk 回归 + 在线 `verify-sample-documents.ps1`
+- **`sample-documents` 金标集**：每类 ≥3 真实二进制样例仍不足；离线回归见 `scripts/run-ingestion-eval.ps1`
+- **ingestion eval 报告**：缺自动化 hit@k / citation 完整性报告
 - **Parser 健康探针**：Ollama VLM / Tesseract / Paddle endpoint 启动检查
 
 ### 4.4 配置与产品
 
-- **Profile 级 parser 选项**：`ocrEngine`、`layoutProvider`、`ocrDownweightMode` 已可通过 `DocumentProfile.options` 覆盖
-- **`default_scanned_document`**：可改为 `pdf-layout` + VLM/OCR 路由，而非仅 `ocr-layout`
+- **Profile 级 parser 选项**：`ocrEngine`、`layoutProvider`、`ocrDownweightMode`、`readingOrderEndpoint` 已可通过 `DocumentProfile.options` 或 `application.yml` 覆盖
+- **`default_scanned_document`**：已改为 `pdf-layout` + `vl-on-scanned` 路由（图片仍用 `ocr-layout`）
 
 ## 5. 配置速查
 
@@ -105,6 +105,13 @@ knowbase:
       language: auto
       confidence-threshold: 0.6
       downweight-mode: downweight   # filter | downweight | review
+    reading-order:
+      endpoint: ""                  # 专用阅读顺序 HTTP 服务
+      timeout: 30s
+    evidence-artifacts:
+      enabled: false                # 生成 PDF 页 PNG 至 ObjectStorage
+      bucket: knowbase-evidence
+      max-pages: 20
 ```
 
 Docker 本地部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
@@ -126,3 +133,57 @@ Docker 本地部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md
 # 解析专项回归
 .\scripts\run-parse-regression.ps1
 ```
+
+## 8. 能力矩阵（内置解析 vs 二期 vs 主流）
+
+> 评估基准：当前分支 `knowbase-ingestion` 单测 + 近期落地项。仅 **内置解析器**，不含 `ExternalDocumentParser`。
+
+### 8.1 总览
+
+| 维度 | 二期 §3.1–§3.4 | 主流深度解析 | 轻量 RAG |
+|------|-----------------|-------------|---------|
+| 格式广度 | 高 | 中上 | 低 |
+| PDF 电子版 | ~82% | 中 | 低 |
+| 扫描/VLM | ~78% | 中 | 低 |
+| Excel 报表 | ~85% | 中 | 低 |
+| Citation 坐标 | ~72% | 中偏后 | 低 |
+| 评测回归 | ~58% | 偏后 | 低 |
+
+**内置解析层二期目标（§3.1–§3.4）粗估：约 75–80% 完成。**
+
+### 8.2 对照二期规划（§3.1–§3.4）
+
+| 模块 | 交付项 | 状态 | 说明 |
+|------|--------|------|------|
+| PDF | 多栏 + 页内阅读顺序 | ✅/🟡 | `LayoutPdfTextExtractor` + `ReadingOrderService`；HTTP 远程序已接 |
+| PDF | 表格区域 + TableGrid | 🟡 | stream/ruled/borderless 启发式 + `TableGridModel`；复杂嵌套表仍弱 |
+| PDF | citation 页码+bbox | 🟡 | metadata + 文档详情/QA PDF.js overlay |
+| OCR | hOCR/TSV/JSON + 降权闭环 | ✅ | `OcrDownweightMode` → 检索降权 |
+| OCR | PaddleOCR-VL bbox | ✅ | `PaddleOcrVlPrunedResultMapper` |
+| 表格 | Excel 多级表头/公式/隐藏行 | ✅ | `table-deep` 三阶段 |
+| 评测 | chunk 快照 + 离线回归 | 🟡 | `SampleDocumentChunkSnapshotTest` + `run-ingestion-eval.ps1` |
+| 扫描 preset | pdf-layout + VLM 路由 | ✅ | `default_scanned_document` 已切换 |
+
+### 8.3 对照主流 RAG 产品（内置能力）
+
+| 能力 | RAGFlow | Docling | MinerU | **KnowBase 内置** |
+|------|---------|---------|--------|-------------------|
+| 版面 ML | 强 | 很强 | 很强 | 中（启发式 + 可选 VLM HTTP） |
+| PDF 复杂表 | 较强 | 很强 | 强 | 中（row 级 + TableGrid） |
+| Excel 报表 | 中 | 中 | 弱 | **强** |
+| OCR 治理 | 部分 | 部分 | — | **强**（filter/downweight/review） |
+| Citation 可视化 | PDF 高亮 | 坐标导出 | 页图+框 | 中（PDF.js overlay） |
+| 可编排 Profile | 模板 | 管道 | 少 | **强** |
+
+### 8.4 剩余高 ROI（内置）
+
+| 优先级 | 项 | 状态 |
+|--------|-----|------|
+| P1 | 复杂 PDF 表（嵌套/ruled 网格） | 🟡 已增强 stream/borderless/ruled 检测 |
+| P1 | ReadingOrder HTTP 默认服务 | 🟡 客户端已就绪，需部署模型端点 |
+| P2 | QA/详情 citation PDF 高亮 | ✅ |
+| P2 | EvidenceArtifact 页 PNG | ✅ 可选开关 |
+| P2 | 金标集 + E2E eval 报告 | 🟡 脚本有，报告仍缺 |
+| P3 | FormulaBlock | ❌ |
+| P3 | ONNX layout provider | ❌ |
+| P3 | Parser 健康探针 | ❌ |

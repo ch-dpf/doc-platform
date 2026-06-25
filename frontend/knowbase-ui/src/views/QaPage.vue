@@ -125,6 +125,14 @@
                       >
                         查看原文定位
                       </el-button>
+                      <el-button
+                        v-if="item.libraryId && item.documentId && isPdfCitation(item)"
+                        link
+                        type="primary"
+                        @click="previewCitationPdf(item)"
+                      >
+                        页内预览
+                      </el-button>
                     </div>
                     <p class="muted evidence-copy">{{ item.snippet || '暂无引用摘要' }}</p>
                   </div>
@@ -155,14 +163,24 @@
         </main>
       </div>
     </PageCard>
+
+    <el-dialog v-model="citationPreviewVisible" title="引用页内预览" width="860px" destroy-on-close>
+      <PdfPreviewPanel
+        v-if="citationPreviewUrl"
+        :source-url="citationPreviewUrl"
+        :page-number="citationPreviewPage"
+        :chunk-metadata="citationPreviewMetadata"
+      />
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import PageCard from '../components/PageCard.vue';
-import { askQuestion, listAgents, listPipelineTrace } from '../api';
+import PdfPreviewPanel from '../components/PdfPreviewPanel.vue';
+import { askQuestion, fetchDocumentPreview, listAgents, listPipelineTrace } from '../api';
 import { requestContext } from '../context';
 import {
   buildLibraryDocumentLocateRoute,
@@ -193,6 +211,10 @@ const loading = ref(false);
 const message = ref('');
 const messageType = ref('success');
 const activeTab = ref('evidence');
+const citationPreviewVisible = ref(false);
+const citationPreviewUrl = ref('');
+const citationPreviewPage = ref(1);
+const citationPreviewMetadata = ref(null);
 const resultText = computed(() => (queryResult.value ? JSON.stringify(queryResult.value, null, 2) : '等待提问'));
 
 function statusTagType(status) {
@@ -256,6 +278,36 @@ function openCitationDocument(citation) {
     router.push(routeLocation);
   }
 }
+
+function isPdfCitation(citation) {
+  const uri = String(citation?.sourceUri || '').toLowerCase();
+  return uri.endsWith('.pdf') || citation?.metadata?.pageNumber != null;
+}
+
+async function previewCitationPdf(citation) {
+  if (!citation?.libraryId || !citation?.documentId) {
+    return;
+  }
+  try {
+    if (citationPreviewUrl.value) {
+      URL.revokeObjectURL(citationPreviewUrl.value);
+      citationPreviewUrl.value = '';
+    }
+    const result = await fetchDocumentPreview(citation.libraryId, citation.documentId);
+    citationPreviewUrl.value = URL.createObjectURL(result.blob);
+    citationPreviewPage.value = Number(citation.metadata?.pageNumber || 1);
+    citationPreviewMetadata.value = citation.metadata || null;
+    citationPreviewVisible.value = true;
+  } catch (error) {
+    showMessage(error.message, 'error');
+  }
+}
+
+onBeforeUnmount(() => {
+  if (citationPreviewUrl.value) {
+    URL.revokeObjectURL(citationPreviewUrl.value);
+  }
+});
 
 function showMessage(text, type) {
   message.value = text || '操作失败';

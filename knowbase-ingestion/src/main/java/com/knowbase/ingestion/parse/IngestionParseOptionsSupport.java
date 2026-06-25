@@ -20,16 +20,29 @@ public final class IngestionParseOptionsSupport {
             String ocrLanguage,
             double ocrConfidenceThreshold,
             OcrDownweightMode ocrDownweightMode,
-            String layoutProvider
+            String layoutProvider,
+            String readingOrderEndpoint,
+            boolean evidenceArtifactsEnabled
     ) {
     }
 
     public static Map<String, Object> mergeForLoad(DocumentProfile documentProfile, Map<String, Object> sourceOptions) {
+        return mergeForLoad(documentProfile, sourceOptions, Map.of());
+    }
+
+    public static Map<String, Object> mergeForLoad(
+            DocumentProfile documentProfile,
+            Map<String, Object> sourceOptions,
+            Map<String, Object> applicationDefaults
+    ) {
         Map<String, Object> merged = new HashMap<>();
-        merged.put("ocrEngine", "tesseract");
-        merged.put("ocrLanguage", "auto");
-        merged.put("ocrConfidenceThreshold", 0.6d);
-        merged.put("ocrDownweightMode", OcrDownweightMode.DOWNWEIGHT.wireValue());
+        if (applicationDefaults != null) {
+            merged.putAll(applicationDefaults);
+        }
+        merged.putIfAbsent("ocrEngine", "tesseract");
+        merged.putIfAbsent("ocrLanguage", "auto");
+        merged.putIfAbsent("ocrConfidenceThreshold", 0.6d);
+        merged.putIfAbsent("ocrDownweightMode", OcrDownweightMode.DOWNWEIGHT.wireValue());
         if (documentProfile != null && documentProfile.options() != null) {
             merged.putAll(documentProfile.options());
         }
@@ -48,7 +61,41 @@ public final class IngestionParseOptionsSupport {
         if (resolved.layoutProvider() != null) {
             merged.putIfAbsent("layoutProvider", resolved.layoutProvider());
         }
+        if (resolved.readingOrderEndpoint() != null) {
+            merged.putIfAbsent("readingOrderEndpoint", resolved.readingOrderEndpoint());
+        }
+        merged.putIfAbsent("evidenceArtifactsEnabled", resolved.evidenceArtifactsEnabled());
         return Map.copyOf(merged);
+    }
+
+    public static Map<String, Object> applicationDefaults(
+            String ocrEngine,
+            String ocrLanguage,
+            double ocrConfidenceThreshold,
+            String ocrDownweightMode,
+            String layoutProvider,
+            String readingOrderEndpoint,
+            boolean evidenceArtifactsEnabled
+    ) {
+        Map<String, Object> defaults = new HashMap<>();
+        if (ocrEngine != null) {
+            defaults.put("ocrEngine", ocrEngine);
+        }
+        if (ocrLanguage != null) {
+            defaults.put("ocrLanguage", ocrLanguage);
+        }
+        defaults.put("ocrConfidenceThreshold", ocrConfidenceThreshold);
+        if (ocrDownweightMode != null) {
+            defaults.put("ocrDownweightMode", ocrDownweightMode);
+        }
+        if (layoutProvider != null && !layoutProvider.isBlank()) {
+            defaults.put("layoutProvider", layoutProvider);
+        }
+        if (readingOrderEndpoint != null && !readingOrderEndpoint.isBlank()) {
+            defaults.put("readingOrderEndpoint", readingOrderEndpoint);
+        }
+        defaults.put("evidenceArtifactsEnabled", evidenceArtifactsEnabled);
+        return Map.copyOf(defaults);
     }
 
     public static IngestionParseOptions resolve(Map<String, Object> options) {
@@ -57,8 +104,21 @@ public final class IngestionParseOptionsSupport {
                 readString(options, "ocrLanguage", "ocrLang"),
                 readDouble(options, "ocrConfidenceThreshold", 0.6d),
                 OcrDownweightMode.from(options == null ? null : options.get("ocrDownweightMode")),
-                readString(options, "layoutProvider", "layoutAnalysisProvider")
+                readString(options, "layoutProvider", "layoutAnalysisProvider"),
+                readString(options, "readingOrderEndpoint", "readingOrderModelEndpoint"),
+                readBoolean(options, "evidenceArtifactsEnabled", false)
         );
+    }
+
+    private static boolean readBoolean(Map<String, Object> options, String key, boolean defaultValue) {
+        if (options == null || options.get(key) == null) {
+            return defaultValue;
+        }
+        Object value = options.get(key);
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return !"false".equalsIgnoreCase(String.valueOf(value));
     }
 
     private static String readString(Map<String, Object> options, String... keys) {

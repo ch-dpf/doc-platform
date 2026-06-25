@@ -165,17 +165,27 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 - **独立 vLLM**：`docker compose -f infra/docker-compose.paddleocr-vl.yml up -d`（端口 8118）
 - **Ollama 回退**：`ollama pull MedAIBase/PaddleOCR-VL:0.9b`，`provider: ollama`
 
+现状：
+
+- 已支持 hOCR 中的 bbox 与 confidence 解析，并在缺失时保留估算/不可用标记。
+- 已支持 Tesseract 默认引擎与 PaddleOCR HTTP 适配（`paddleOcrEndpoint`）。
+- 复杂/扫描 PDF 可配置官方 PaddleOCR-VL HTTP pipeline 或 vLLM OpenAI 接口（`knowbase.vision-document`）；亦可回退 Ollama 社区版 VLM。
+- **`LayoutAnalysisService`** 统一光栅页版面分析；**`PaddleOcrVlPrunedResultMapper`** 将 `prunedResult` bbox 写入块 metadata。
+- **`OcrEngineAdapter` SPI**、Profile/`application.yml` 级 OCR 选项、**`OcrDownweightMode`** 降权闭环已落地。
+- **`ReadingOrderHttpClient`** 支持专用阅读顺序 HTTP 端点（`knowbase.ingestion.reading-order.endpoint`）。
+- **`EvidenceArtifactGenerator`** 可选将 PDF 页 PNG 写入 ObjectStorage（`evidence-artifacts.enabled`）。
+- **`default_scanned_document`** preset 已切换为 `pdf-layout` + VLM/OCR 路由。
+
 不足：
 
-- 官方 pipeline 返回的 `prunedResult` bbox 尚未写入 `StructuralBlock` metadata（当前使用 markdown 文本路径）。
-- rotation、language、paragraph/line/word 层级、低置信度策略仍不完整。
+- 专用 reading-order 模型需自行部署 HTTP 服务；跨页/跨栏全局序号仍弱。
+- 复杂 PDF 表格（嵌套/无边框网格）检测仍依赖启发式。
 
 后续完善：
 
-- 定义 `OcrEngineAdapter` SPI，统一输出 page、block、line、word、bbox、confidence、language、rotation。
-- 支持 Profile 级 OCR 引擎选择和参数配置。
-- 对低置信度 chunk 增加降权、过滤、人工复核标记。
-- 将 PaddleOCR-VL `prunedResult` 版面 bbox 映射到 evidence hint。
+- 部署 PP-DocLayout 类 reading-order 端点并接入默认配置。
+- 表格 cell 级 bbox 精度与 nested table 检测。
+- Parser 健康探针（VLM/OCR endpoint ready check）。
 
 ### 4.3 Markdown / VLM 表格语义
 
@@ -236,16 +246,15 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 现状：
 
 - 解析和 chunk metadata 已逐步保留 page、bbox、table/cell 坐标。
+- 文档详情页与 QA 页均已支持 PDF.js bbox overlay（`PdfPreviewPanel`）。
 
 不足：
 
-- 检索证据、引用对象和前端展示尚未形成 page/bbox/cell coordinate 闭环。
-- 多页、跨表格、跨 sheet 引用的展示策略未定义。
+- Excel 预览仍无法按 cell 定位；多页/跨 sheet 引用策略未产品化。
 
 后续完善：
 
-- 扩展 evidence/citation 结果，保留 `pageNumber`、`bbox`、`sheetName`、`rowRange`、`columnRange`、`cellCoordinates`。
-- 前端支持页内区域、表格行/单元格和低置信度 OCR 标记展示。
+- Excel/Word 预览定位与 cell 级 citation 展示。
 - 问答上下文裁剪时保留 citation metadata 一致性。
 
 ### 4.7 多模态证据资产

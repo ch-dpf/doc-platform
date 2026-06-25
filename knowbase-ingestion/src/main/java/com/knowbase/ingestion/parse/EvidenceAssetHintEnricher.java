@@ -19,6 +19,10 @@ public final class EvidenceAssetHintEnricher {
     }
 
     public static StructuralBlock apply(StructuralBlock block, String sourceUri) {
+        return apply(block, sourceUri, null);
+    }
+
+    public static StructuralBlock apply(StructuralBlock block, String sourceUri, Map<String, Object> documentMetadata) {
         if (block == null) {
             return block;
         }
@@ -31,6 +35,7 @@ public final class EvidenceAssetHintEnricher {
         if (!artifact.isEmpty()) {
             hint.putAll(artifact);
         }
+        attachStoredPageArtifact(hint, metadata, documentMetadata);
         if (hint.isEmpty()) {
             return block;
         }
@@ -124,5 +129,26 @@ public final class EvidenceAssetHintEnricher {
             return hint;
         }
         return Map.of();
+    }
+
+    private static void attachStoredPageArtifact(
+            Map<String, Object> hint,
+            Map<String, Object> blockMetadata,
+            Map<String, Object> documentMetadata
+    ) {
+        if (documentMetadata == null || blockMetadata == null) {
+            return;
+        }
+        Object pageNumber = blockMetadata.get("pageNumber");
+        if (!(pageNumber instanceof Number page)) {
+            return;
+        }
+        String pageImageUri = EvidenceArtifactGenerator.resolvePageArtifactUri(documentMetadata, page.intValue());
+        if (pageImageUri == null) {
+            return;
+        }
+        hint.put("pageImageUri", pageImageUri);
+        hint.putIfAbsent("assetUri", pageImageUri);
+        hint.putIfAbsent("assetKind", "pdf_page_image");
     }
 }

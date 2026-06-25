@@ -25,7 +25,7 @@ public final class ParsedDocumentParseEnricher {
         for (StructuralBlock block : parsed.blocks()) {
             StructuralBlock step = StructuralBlockIndexabilityPolicy.applyIndexableHint(block);
             step = ParsePageDimensionEnricher.apply(step, documentMetadata);
-            step = EvidenceAssetHintEnricher.apply(step, parsed.sourceUri());
+            step = EvidenceAssetHintEnricher.apply(step, parsed.sourceUri(), documentMetadata);
             blocks.add(step);
         }
         blocks = OcrParseEnricher.enrich(blocks, documentMetadata);

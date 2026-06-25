@@ -3,6 +3,7 @@ package com.knowbase.ingestion;
 import com.knowbase.ingestion.pdf.PdfLayoutRoleClassifier;
 import com.knowbase.ingestion.pdf.PdfStreamTableDetector;
 import com.knowbase.ingestion.pdf.PdfTableCellExtractor;
+import com.knowbase.ingestion.pdf.PdfTableLayoutAnalyzer;
 import com.knowbase.ingestion.pdf.PdfTableRegionMerger;
 import com.knowbase.ingestion.pdf.PdfTableRowInput;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -207,7 +208,7 @@ public final class LayoutPdfTextExtractor {
         if (content.isBlank()) {
             return "body";
         }
-        if (lines.stream().anyMatch(LayoutLine::tableLike)) {
+        if (lines.stream().anyMatch(LayoutLine::tableLike) || PdfTableLayoutAnalyzer.isTableRun(lines)) {
             return "table";
         }
         String role = PdfLayoutRoleClassifier.classify(content, topY, pageHeight, avgFont, bodyFontSize);
@@ -316,6 +317,9 @@ public final class LayoutPdfTextExtractor {
             ExtractionContext context
     ) {
         List<PdfTableRowInput> rows = tableRegion.stream().map(LayoutPdfTextExtractor::toRowInput).toList();
+        String tableDetection = PdfTableLayoutAnalyzer.tableDetectionSource(tableRegion.stream()
+                .map(block -> (PdfTableLayoutAnalyzer.TableLineCandidate) new TableLineProxy(block))
+                .toList());
         PdfTableRegionMerger.PdfTableRegionSlice slice = new PdfTableRegionMerger.PdfTableRegionSlice(tableRegionId, rows);
         if (tracker.lastSlice != null && PdfTableRegionMerger.isContinuation(tracker.lastSlice.rows(), slice.rows())) {
             for (int index = 0; index < tracker.lastBlockCount; index++) {
@@ -324,12 +328,12 @@ public final class LayoutPdfTextExtractor {
             List<PdfTableRowInput> combined = new ArrayList<>(tracker.lastSlice.rows());
             combined.addAll(rows);
             int mergedId = tracker.lastSlice.tableRegionId();
-            int added = appendTableRegion(blocks, combined, mergedId, tracker.lastStartOrdinal, context);
+            int added = appendTableRegion(blocks, combined, mergedId, tracker.lastStartOrdinal, context, tableDetection);
             tracker.lastSlice = new PdfTableRegionMerger.PdfTableRegionSlice(mergedId, combined);
             tracker.lastBlockCount = added;
             return tracker.lastStartOrdinal + added;
         }
-        int added = appendTableRegion(blocks, rows, tableRegionId, ordinal, context);
+        int added = appendTableRegion(blocks, rows, tableRegionId, ordinal, context, tableDetection);
         tracker.lastSlice = slice;
         tracker.lastStartOrdinal = ordinal;
         tracker.lastBlockCount = added;
@@ -342,9 +346,10 @@ public final class LayoutPdfTextExtractor {
             List<PdfTableRowInput> rows,
             int tableRegionId,
             int startOrdinal,
-            ExtractionContext context
+            ExtractionContext context,
+            String tableDetection
     ) {
-        List<StructuralBlock> tableBlocks = PdfTableCellExtractor.toStructuralBlocks(rows, tableRegionId, startOrdinal);
+        List<StructuralBlock> tableBlocks = PdfTableCellExtractor.toStructuralBlocks(rows, tableRegionId, startOrdinal, tableDetection);
         for (int index = 0; index < tableBlocks.size(); index++) {
             tableBlocks.set(index, enrichTableBlockPageDimensions(tableBlocks.get(index), context));
         }
@@ -405,6 +410,28 @@ public final class LayoutPdfTextExtractor {
         return Math.round(value * 100.0) / 100.0;
     }
 
+    private record TableLineProxy(LayoutBlock block) implements PdfTableLayoutAnalyzer.TableLineCandidate {
+        @Override
+        public String text() {
+            return block.content();
+        }
+
+        @Override
+        public float minX() {
+            return block.x();
+        }
+
+        @Override
+        public boolean tableLike() {
+            return block.cellBoundaryX() != null && block.cellBoundaryX().size() >= 3;
+        }
+
+        @Override
+        public List<Float> cellBoundaryX() {
+            return block.cellBoundaryX();
+        }
+    }
+
     private record LayoutLine(
             int pageNumber,
             String text,
@@ -417,7 +444,7 @@ public final class LayoutPdfTextExtractor {
             int columnIndex,
             int columnCount,
             List<Float> cellBoundaryX
-    ) {
+    ) implements PdfTableLayoutAnalyzer.TableLineCandidate {
         LayoutLine withReadingOrder(int readingOrder, int columnIndex, int columnCount) {
             return new LayoutLine(
                     pageNumber, text, y, height, fontSize, minX, maxX,
@@ -425,11 +452,16 @@ public final class LayoutPdfTextExtractor {
             );
         }
 
-        boolean tableLike() {
+        public boolean tableLike() {
             if (cellBoundaryX != null && cellBoundaryX.size() >= 3) {
                 return true;
             }
             return PdfStreamTableDetector.isStreamTableRow(text);
+        }
+
+        @Override
+        public List<Float> cellBoundaryX() {
+            return cellBoundaryX;
         }
     }
 

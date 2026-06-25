@@ -413,6 +413,9 @@ public class KnowbaseProperties {
         private boolean promoteEvalGateEnabled = true;
         private Summary summary = new Summary();
         private Pdf pdf = new Pdf();
+        private Ocr ocr = new Ocr();
+        private ReadingOrder readingOrder = new ReadingOrder();
+        private EvidenceArtifacts evidenceArtifacts = new EvidenceArtifacts();
 
         public boolean isAsyncEnabled() {
             return asyncEnabled;
@@ -460,6 +463,120 @@ public class KnowbaseProperties {
 
         public void setPdf(Pdf pdf) {
             this.pdf = pdf == null ? new Pdf() : pdf;
+        }
+
+        public Ocr getOcr() {
+            return ocr;
+        }
+
+        public void setOcr(Ocr ocr) {
+            this.ocr = ocr == null ? new Ocr() : ocr;
+        }
+
+        public ReadingOrder getReadingOrder() {
+            return readingOrder;
+        }
+
+        public void setReadingOrder(ReadingOrder readingOrder) {
+            this.readingOrder = readingOrder == null ? new ReadingOrder() : readingOrder;
+        }
+
+        public EvidenceArtifacts getEvidenceArtifacts() {
+            return evidenceArtifacts;
+        }
+
+        public void setEvidenceArtifacts(EvidenceArtifacts evidenceArtifacts) {
+            this.evidenceArtifacts = evidenceArtifacts == null ? new EvidenceArtifacts() : evidenceArtifacts;
+        }
+    }
+
+    public static class Ocr {
+        private String defaultEngine = "tesseract";
+        private String language = "auto";
+        private double confidenceThreshold = 0.6d;
+        private String downweightMode = "downweight";
+
+        public String getDefaultEngine() {
+            return defaultEngine;
+        }
+
+        public void setDefaultEngine(String defaultEngine) {
+            this.defaultEngine = defaultEngine;
+        }
+
+        public String getLanguage() {
+            return language;
+        }
+
+        public void setLanguage(String language) {
+            this.language = language;
+        }
+
+        public double getConfidenceThreshold() {
+            return confidenceThreshold;
+        }
+
+        public void setConfidenceThreshold(double confidenceThreshold) {
+            this.confidenceThreshold = confidenceThreshold;
+        }
+
+        public String getDownweightMode() {
+            return downweightMode;
+        }
+
+        public void setDownweightMode(String downweightMode) {
+            this.downweightMode = downweightMode;
+        }
+    }
+
+    public static class ReadingOrder {
+        private String endpoint = "";
+        private java.time.Duration timeout = java.time.Duration.ofSeconds(30);
+
+        public String getEndpoint() {
+            return endpoint;
+        }
+
+        public void setEndpoint(String endpoint) {
+            this.endpoint = endpoint;
+        }
+
+        public java.time.Duration getTimeout() {
+            return timeout;
+        }
+
+        public void setTimeout(java.time.Duration timeout) {
+            this.timeout = timeout == null ? java.time.Duration.ofSeconds(30) : timeout;
+        }
+    }
+
+    public static class EvidenceArtifacts {
+        private boolean enabled = false;
+        private String bucket = "knowbase-evidence";
+        private int maxPages = 20;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getBucket() {
+            return bucket;
+        }
+
+        public void setBucket(String bucket) {
+            this.bucket = bucket;
+        }
+
+        public int getMaxPages() {
+            return maxPages;
+        }
+
+        public void setMaxPages(int maxPages) {
+            this.maxPages = maxPages;
         }
     }
 

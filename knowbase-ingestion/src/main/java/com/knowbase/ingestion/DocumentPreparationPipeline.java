@@ -24,6 +24,7 @@ public final class DocumentPreparationPipeline {
     private final ChunkPostProcessor chunkPostProcessor;
     private final DocumentLlmSummaryGenerator documentLlmSummaryGenerator;
     private final IngestionStageTracer stageTracer;
+    private final Map<String, Object> parseApplicationDefaults;
 
     public DocumentPreparationPipeline(
             DocumentSourceLoader sourceLoader,
@@ -37,7 +38,8 @@ public final class DocumentPreparationPipeline {
                 new DefaultDocumentMetadataEnricher(),
                 CompositeChunkPostProcessor.of(new StructuredTableChunkPostProcessor()),
                 null,
-                null
+                null,
+                Map.of()
         );
     }
 
@@ -54,7 +56,8 @@ public final class DocumentPreparationPipeline {
                 metadataEnricher,
                 CompositeChunkPostProcessor.of(new StructuredTableChunkPostProcessor()),
                 null,
-                null
+                null,
+                Map.of()
         );
     }
 
@@ -65,7 +68,7 @@ public final class DocumentPreparationPipeline {
             DocumentMetadataEnricher metadataEnricher,
             ChunkPostProcessor chunkPostProcessor
     ) {
-        this(sourceLoader, textNormalizer, documentChunker, metadataEnricher, chunkPostProcessor, null, null);
+        this(sourceLoader, textNormalizer, documentChunker, metadataEnricher, chunkPostProcessor, null, null, Map.of());
     }
 
     public DocumentPreparationPipeline(
@@ -76,7 +79,7 @@ public final class DocumentPreparationPipeline {
             ChunkPostProcessor chunkPostProcessor,
             PipelineObserver pipelineObserver
     ) {
-        this(sourceLoader, textNormalizer, documentChunker, metadataEnricher, chunkPostProcessor, null, pipelineObserver);
+        this(sourceLoader, textNormalizer, documentChunker, metadataEnricher, chunkPostProcessor, null, pipelineObserver, Map.of());
     }
 
     public DocumentPreparationPipeline(
@@ -86,7 +89,8 @@ public final class DocumentPreparationPipeline {
             DocumentMetadataEnricher metadataEnricher,
             ChunkPostProcessor chunkPostProcessor,
             DocumentLlmSummaryGenerator documentLlmSummaryGenerator,
-            PipelineObserver pipelineObserver
+            PipelineObserver pipelineObserver,
+            Map<String, Object> parseApplicationDefaults
     ) {
         this.sourceLoader = Objects.requireNonNull(sourceLoader, "sourceLoader");
         this.textNormalizer = Objects.requireNonNull(textNormalizer, "textNormalizer");
@@ -96,6 +100,7 @@ public final class DocumentPreparationPipeline {
                 ? CompositeChunkPostProcessor.noop()
                 : chunkPostProcessor;
         this.documentLlmSummaryGenerator = documentLlmSummaryGenerator;
+        this.parseApplicationDefaults = parseApplicationDefaults == null ? Map.of() : Map.copyOf(parseApplicationDefaults);
         PipelineObserver observer = pipelineObserver == null ? new NoopPipelineObserver() : pipelineObserver;
         this.stageTracer = new IngestionStageTracer(observer);
     }
@@ -140,7 +145,11 @@ public final class DocumentPreparationPipeline {
         IngestionTraceContext context = traceContext == null
                 ? null
                 : traceContext;
-        Map<String, Object> effectiveOptions = IngestionParseOptionsSupport.mergeForLoad(documentProfile, sourceOptions);
+        Map<String, Object> effectiveOptions = IngestionParseOptionsSupport.mergeForLoad(
+                documentProfile,
+                sourceOptions,
+                parseApplicationDefaults
+        );
         ParsedDocument loaded = stageTracer.trace(
                 context,
                 "load_source",

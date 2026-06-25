@@ -13,6 +13,8 @@ import java.util.Map;
  */
 public final class ReadingOrderService {
 
+    private static final ReadingOrderHttpClient REMOTE_CLIENT = new ReadingOrderHttpClient();
+
     private ReadingOrderService() {
     }
 
@@ -57,8 +59,7 @@ public final class ReadingOrderService {
     }
 
     private static List<StructuralBlock> tryRemoteOrdering(String endpoint, List<StructuralBlock> blocks) {
-        // Placeholder for dedicated reading-order model HTTP adapter.
-        return null;
+        return REMOTE_CLIENT.order(endpoint, blocks);
     }
 
     private static int compareBlocks(IndexedBlock left, IndexedBlock right) {

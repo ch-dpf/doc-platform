@@ -70,6 +70,13 @@ knowbase:
       language: auto
       confidence-threshold: 0.6
       downweight-mode: downweight
+    reading-order:
+      endpoint: ""
+      timeout: 30s
+    evidence-artifacts:
+      enabled: false
+      bucket: knowbase-evidence
+      max-pages: 20
     summary:
       prompt-id: default_summary
       language: the same language as the source content

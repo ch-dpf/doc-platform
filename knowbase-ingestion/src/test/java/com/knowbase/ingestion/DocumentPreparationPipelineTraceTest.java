@@ -107,7 +107,8 @@ class DocumentPreparationPipelineTraceTest {
                 new DefaultDocumentMetadataEnricher(),
                 CompositeChunkPostProcessor.of(new StructuredTableChunkPostProcessor()),
                 summaryGenerator,
-                observer
+                observer,
+                Map.of()
         );
 
         ParsedDocument parsed = new StructuredTableDocumentParser().parse(new DocumentSource(

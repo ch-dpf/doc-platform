@@ -34,7 +34,7 @@ public final class LocalFilesystemObjectStorage implements ObjectStorage {
             Files.createDirectories(target.getParent());
             byte[] bytes = inputStream.readAllBytes();
             Files.write(target, bytes);
-            return new StoredObject(bucket, objectKey, "file://" + target, contentType, bytes.length);
+            return new StoredObject(bucket, objectKey, target.toUri().toString(), contentType, bytes.length);
         } catch (IOException exception) {
             throw new IllegalStateException("写入对象存储失败: " + bucket + "/" + objectKey, exception);
         }

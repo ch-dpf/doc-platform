@@ -5,6 +5,7 @@ import com.knowbase.ingestion.pdf.PdfScannedDocumentRouter;
 import com.knowbase.ingestion.pdf.PdfTextExtractabilityAnalyzer;
 import com.knowbase.ingestion.pdf.PdfVisionDocumentRouter;
 import com.knowbase.ingestion.pdf.VisionDocumentParseSettings;
+import com.knowbase.ingestion.parse.EvidenceArtifactGenerator;
 import com.knowbase.domain.status.ContentFamily;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -22,13 +23,24 @@ public final class PdfLayoutParser implements DocumentParser {
     public static final String PARSER_CODE = "pdf-layout";
 
     private final VisionDocumentParseSettings visionSettings;
+    private final EvidenceArtifactGenerator evidenceArtifactGenerator;
 
     public PdfLayoutParser() {
-        this(VisionDocumentParseSettings.disabled());
+        this(VisionDocumentParseSettings.disabled(), EvidenceArtifactGenerator.disabled());
     }
 
     public PdfLayoutParser(VisionDocumentParseSettings visionSettings) {
+        this(visionSettings, EvidenceArtifactGenerator.disabled());
+    }
+
+    public PdfLayoutParser(
+            VisionDocumentParseSettings visionSettings,
+            EvidenceArtifactGenerator evidenceArtifactGenerator
+    ) {
         this.visionSettings = visionSettings == null ? VisionDocumentParseSettings.disabled() : visionSettings;
+        this.evidenceArtifactGenerator = evidenceArtifactGenerator == null
+                ? EvidenceArtifactGenerator.disabled()
+                : evidenceArtifactGenerator;
     }
 
     @Override
@@ -47,7 +59,7 @@ public final class PdfLayoutParser implements DocumentParser {
 
             ParsedDocument visionParsed = tryVisionParse(source, bytes, extractability, null, false);
             if (visionParsed != null) {
-                return visionParsed;
+                return withEvidenceArtifacts(source, bytes, visionParsed);
             }
 
             if (PdfScannedDocumentRouter.shouldRouteToOcr(extractability, source.metadata(), false)) {
@@ -66,7 +78,7 @@ public final class PdfLayoutParser implements DocumentParser {
 
             visionParsed = tryVisionParse(source, bytes, extractability, layoutConfidence, blocks.isEmpty());
             if (visionParsed != null) {
-                return visionParsed;
+                return withEvidenceArtifacts(source, bytes, visionParsed);
             }
 
             if (blocks.isEmpty()) {
@@ -96,6 +108,7 @@ public final class PdfLayoutParser implements DocumentParser {
             metadata.put("pageCount", countPages(blocks));
             collectPageDimensions(bytes, blocks, metadata);
             metadata.putAll(PdfParseConfidenceAggregator.toDocumentMetadata(layoutConfidence));
+            metadata.putAll(generateEvidenceArtifacts(source, bytes, metadata));
             String flatText = StructureParsingSupport.blocksToText(blocks);
             return new ParsedDocument(
                     source.sourceUri(),
@@ -134,6 +147,30 @@ public final class PdfLayoutParser implements DocumentParser {
             }
             return null;
         }
+    }
+
+    private ParsedDocument withEvidenceArtifacts(DocumentSource source, byte[] bytes, ParsedDocument parsed) {
+        Map<String, Object> metadata = new HashMap<>(parsed.metadata());
+        metadata.putAll(generateEvidenceArtifacts(source, bytes, metadata));
+        return new ParsedDocument(
+                parsed.sourceUri(),
+                parsed.title(),
+                parsed.text(),
+                parsed.contentFamily(),
+                Map.copyOf(metadata),
+                parsed.blocks()
+        );
+    }
+
+    private Map<String, Object> generateEvidenceArtifacts(
+            DocumentSource source,
+            byte[] bytes,
+            Map<String, Object> metadata
+    ) {
+        if (!Boolean.TRUE.equals(metadata.get("evidenceArtifactsEnabled")) || !evidenceArtifactGenerator.enabled()) {
+            return Map.of();
+        }
+        return evidenceArtifactGenerator.generateForPdf(bytes, source.sourceUri());
     }
 
     private static ParsedDocument fallbackStructureParse(DocumentSource source, byte[] bytes) {

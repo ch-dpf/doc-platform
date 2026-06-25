@@ -70,6 +70,8 @@ import com.knowbase.ingestion.MarkdownStructureParser;
 import com.knowbase.ingestion.OcrLayoutDocumentParser;
 import com.knowbase.ingestion.OcrDocumentParser;
 import com.knowbase.ingestion.PdfLayoutParser;
+import com.knowbase.ingestion.parse.EvidenceArtifactGenerator;
+import com.knowbase.ingestion.parse.IngestionParseOptionsSupport;
 import com.knowbase.ingestion.PdfStructureParser;
 import com.knowbase.ingestion.layout.LayoutAnalysisProvider;
 import com.knowbase.ingestion.layout.LayoutAnalysisService;
@@ -439,8 +441,23 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    PdfLayoutParser pdfLayoutParser(VisionDocumentParseSettings visionDocumentParseSettings) {
-        return new PdfLayoutParser(visionDocumentParseSettings);
+    EvidenceArtifactGenerator evidenceArtifactGenerator(KnowbaseProperties properties, ObjectStorage objectStorage) {
+        KnowbaseProperties.EvidenceArtifacts settings = properties.getIngestion().getEvidenceArtifacts();
+        return new EvidenceArtifactGenerator(
+                objectStorage,
+                settings.getBucket(),
+                settings.isEnabled(),
+                settings.getMaxPages()
+        );
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    PdfLayoutParser pdfLayoutParser(
+            VisionDocumentParseSettings visionDocumentParseSettings,
+            EvidenceArtifactGenerator evidenceArtifactGenerator
+    ) {
+        return new PdfLayoutParser(visionDocumentParseSettings, evidenceArtifactGenerator);
     }
 
     @Bean
@@ -535,8 +552,10 @@ public class KnowbaseAutoConfiguration {
             DocumentMetadataEnricher documentMetadataEnricher,
             ChunkPostProcessor chunkPostProcessor,
             DocumentLlmSummaryGenerator documentLlmSummaryGenerator,
-            PipelineObserver pipelineObserver
+            PipelineObserver pipelineObserver,
+            KnowbaseProperties properties
     ) {
+        KnowbaseProperties.Ingestion ingestion = properties.getIngestion();
         return new DocumentPreparationPipeline(
                 documentSourceLoader,
                 documentNormalizer,
@@ -544,7 +563,16 @@ public class KnowbaseAutoConfiguration {
                 documentMetadataEnricher,
                 chunkPostProcessor,
                 documentLlmSummaryGenerator,
-                pipelineObserver
+                pipelineObserver,
+                IngestionParseOptionsSupport.applicationDefaults(
+                        ingestion.getOcr().getDefaultEngine(),
+                        ingestion.getOcr().getLanguage(),
+                        ingestion.getOcr().getConfidenceThreshold(),
+                        ingestion.getOcr().getDownweightMode(),
+                        null,
+                        ingestion.getReadingOrder().getEndpoint(),
+                        ingestion.getEvidenceArtifacts().isEnabled()
+                )
         );
     }
 

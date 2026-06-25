@@ -69,7 +69,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
                             tableDocumentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                             documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window"),
-                            documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "ocr-layout", "page_token_window")
+                            documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "pdf-layout", "page_token_window")
                     )
             ),
             libraryPreset(
@@ -107,7 +107,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                             documentProfile("default_markdown", "RICH_TEXT", "markdown-structure", "structure_token_window"),
                             documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
-                            documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "ocr-layout", "page_token_window")
+                            documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "pdf-layout", "page_token_window")
                     )
             ),
             libraryPreset(
@@ -371,7 +371,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                 tableDocumentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                 documentProfile("default_presentation", "PRESENTATION", "pptx-structure", "slide_token_window"),
                 documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window"),
-                documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "ocr-layout", "page_token_window"),
+                documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "pdf-layout", "page_token_window"),
                 documentProfile("default_image", "IMAGE_TEXT", "ocr-layout", "page_token_window"),
                 documentProfile("default_code_or_config", "CODE_OR_CONFIG", "code-config-structure", "code_token_window")
         );

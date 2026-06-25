@@ -19,6 +19,15 @@ public final class PdfTableCellExtractor {
             int tableRegionId,
             int startOrdinal
     ) {
+        return toStructuralBlocks(rows, tableRegionId, startOrdinal, null);
+    }
+
+    public static List<StructuralBlock> toStructuralBlocks(
+            List<PdfTableRowInput> rows,
+            int tableRegionId,
+            int startOrdinal,
+            String tableDetection
+    ) {
         if (rows == null || rows.isEmpty()) {
             return List.of();
         }
@@ -52,7 +61,7 @@ public final class PdfTableCellExtractor {
             if (content.isBlank()) {
                 content = row.content().replaceAll("\\s{2,}|\\t+", " | ");
             }
-            Map<String, Object> metadata = baseMetadata(row, tableRegionId, tableRegionLabel, firstPage, rowIndex, rows.size());
+            Map<String, Object> metadata = baseMetadata(row, tableRegionId, tableRegionLabel, firstPage, rowIndex, rows.size(), tableDetection);
             metadata.put("rowRole", "DATA");
             metadata.put("tableFormat", "pdf");
             metadata.put("indexableHint", true);
@@ -70,7 +79,7 @@ public final class PdfTableCellExtractor {
         if (blocks.isEmpty() && headerStack.headerRowCount() > 0) {
             for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
                 PdfTableRowInput row = rows.get(rowIndex);
-                Map<String, Object> metadata = baseMetadata(row, tableRegionId, tableRegionLabel, firstPage, rowIndex, rows.size());
+                Map<String, Object> metadata = baseMetadata(row, tableRegionId, tableRegionLabel, firstPage, rowIndex, rows.size(), tableDetection);
                 metadata.put("rowRole", rowIndex == 0 ? "HEADER" : "DATA");
                 metadata.put("tableFormat", "pdf");
                 metadata.put("indexableHint", rowIndex != 0);
@@ -107,7 +116,8 @@ public final class PdfTableCellExtractor {
             String tableRegionLabel,
             int firstPage,
             int rowIndex,
-            int rowCount
+            int rowCount,
+            String tableDetection
     ) {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("boundaryType", "table_row");
@@ -119,7 +129,9 @@ public final class PdfTableCellExtractor {
         metadata.put("bbox", List.of(round(row.minX()), round(row.y()), round(row.width()), round(row.height())));
         metadata.put("tableRegionId", tableRegionId);
         metadata.put("tableRegionLabel", tableRegionLabel);
-        metadata.put("tableDetection", row.cellBoundaryX().size() >= 2 ? "aligned-column" : "stream");
+        metadata.put("tableDetection", tableDetection == null || tableDetection.isBlank()
+                ? (row.cellBoundaryX().size() >= 2 ? "aligned-column" : "stream")
+                : tableDetection);
         if (row.pageNumber() > firstPage) {
             metadata.put("tableContinuation", true);
         }
