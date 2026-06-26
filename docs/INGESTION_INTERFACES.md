@@ -82,6 +82,97 @@ REST 层通过 `IngestionRunController` 暴露对应端点（详见 [API.md](./A
 
 前端入库向导第二步调用 `prepare/chunk` 展示分段预览，确认后通过 `ingestion-runs/upload` 或 `ingestion-runs` 正式入库。
 
+## 结构化日志
+
+入库与准备链路在关键阶段输出 **中文 SLF4J 结构化日志**（`INFO` / `WARN`），参数占位符便于 `grep` 与日志平台检索。与观测 trace span 互补：span 写入 DB/观测 API，应用日志写入标准输出。
+
+### 按链路分层
+
+| 层级 | 类 | 典型日志前缀 |
+|------|-----|-------------|
+| 准备 API | `DefaultIngestionPrepareService` | `准备批次开始/完成`、`准备文档完成/失败` |
+| 入库任务 | `DefaultIngestionPipeline` | `入库任务开始/完成/失败`、`入库文档开始/完成/失败` |
+| 向量化与索引 | `DefaultIngestionPipeline` | `向量化开始/完成/失败`、`索引写入开始/完成/失败` |
+| 阶段 trace | `IngestionStageTracer` | `入库阶段开始/成功/失败`（含 `durationMs`） |
+| 文档加载 | `DocumentSourceLoader` | `文档加载开始/完成`、`文档解析路由` |
+| 准备解析 | `DocumentPreparationPipeline` | `准备阶段解析开始/完成` |
+| 解析增强 | `ParsedDocumentParseEnricher` | `解析增强完成` |
+| PDF 版面 | `PdfLayoutParser` | `PDF 版面解析开始/完成/失败` |
+| 规范化 | `DocumentTextNormalizer` | `规范化完成` |
+| 分块 | `TokenBasedDocumentChunker` | `分块完成` |
+| Web 异常 | `KnowbaseExceptionHandler` | `资源未找到`、`访问被拒绝`、`请求参数无效`、`业务规则校验失败`、`未处理异常` |
+
+### 日志消息一览
+
+**准备（`POST .../ingestion/prepare/*`）**
+
+```
+准备批次开始: libraryId={}, stage={}, documents={}, profileCode={}
+准备文档完成: libraryId={}, stage={}, sourceUri={}, profileCode={}
+准备文档失败: libraryId={}, stage={}, sourceUri={}
+准备批次完成: libraryId={}, stage={}, sourceCount={}, succeeded={}, failed={}
+```
+
+**入库任务（`DefaultIngestionPipeline`）**
+
+```
+入库任务开始: runId={}, libraryId={}, documents={}, profileCode={}
+入库文档开始: runId={}, sourceUri={}
+向量化开始: runId={}, sourceUri={}, documentId={}, indexableChunks={}, provider={}, model={}
+向量化完成: runId={}, sourceUri={}, vectors={}
+向量化失败: runId={}, sourceUri={}, documentId={}
+索引写入开始: runId={}, sourceUri={}, documentId={}, chunks={}
+索引写入完成: runId={}, sourceUri={}, documentId={}, chunks={}
+索引写入失败: runId={}, sourceUri={}, documentId={}
+入库文档完成: runId={}, sourceUri={}, documentId={}, chunks={}, indexable={}
+入库文档失败: runId={}, sourceUri={}, documentId={}
+入库任务失败: runId={}, libraryId={}, succeeded={}, failed={}
+入库任务完成: runId={}, libraryId={}, status={}, succeeded={}, failed={}, chunks={}
+```
+
+**单文档处理子阶段**
+
+```
+文档加载开始: sourceUri={}
+文档解析路由: sourceUri={}, parser={}, mimeType={}, bytes={}
+文档加载完成: sourceUri={}, parser={}, blocks={}, structureAware={}
+准备阶段解析开始: sourceUri={}
+准备阶段解析完成: sourceUri={}, blocks={}, structureAware={}
+解析增强完成: sourceUri={}, parserCode={}, blocks={}, indexableBlocks={}, tableRegions={}, parseConfidence={}
+PDF 版面解析开始: sourceUri={}
+PDF 版面解析完成: sourceUri={}, route={}, blocks={}, mlLayout={}, parseConfidence={}
+PDF 版面解析失败: sourceUri={}
+规范化完成: sourceUri={}, rawChars={}, normalizedChars={}, blocks={}->{}, rules={}
+分块完成: sourceUri={}, engine={}, chunkMode={}, chunks={}, indexable={}, embeddingModel={}
+```
+
+**阶段 tracer（`IngestionStageTracer`，与 span 同名阶段）**
+
+```
+入库阶段开始: stage={}, runId={}, sourceUri={}, attrs={}
+入库阶段开始: stage={}, attrs={}
+入库阶段成功: stage={}, runId={}, sourceUri={}, durationMs={}, attrs={}
+入库阶段成功: stage={}, durationMs={}, attrs={}
+入库阶段失败: stage={}, runId={}, sourceUri={}, durationMs={}
+入库阶段失败: stage={}, durationMs={}
+```
+
+`stage` 取值与 Pipeline 阶段对应，例如 `load_source`、`parse_document`、`normalize_text`、`chunk_document` 等。
+
+### 本地排查示例
+
+```powershell
+# 跟踪某次入库任务
+java -jar knowbase-app/target/knowbase-app-1.0.0-SNAPSHOT.jar 2>&1 |
+  Select-String "runId=<uuid>"
+
+# 查看 PDF 版面解析与回退
+Select-String "PDF 版面解析"
+
+# 准备预览失败
+Select-String "准备文档失败"
+```
+
 ## 自动配置扩展
 
 `knowbase-autoconfigure` 默认注册：

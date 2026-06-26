@@ -73,9 +73,12 @@ import com.knowbase.ingestion.PdfLayoutParser;
 import com.knowbase.ingestion.parse.EvidenceArtifactGenerator;
 import com.knowbase.ingestion.parse.IngestionParseOptionsSupport;
 import com.knowbase.ingestion.PdfStructureParser;
+import com.knowbase.ingestion.layout.LayoutAnalysisOptions;
 import com.knowbase.ingestion.layout.LayoutAnalysisProvider;
 import com.knowbase.ingestion.layout.LayoutAnalysisService;
+import com.knowbase.ingestion.layout.LocalPdfTextLayoutProvider;
 import com.knowbase.ingestion.layout.OcrRasterLayoutProvider;
+import com.knowbase.ingestion.layout.OllamaLayoutTableProvider;
 import com.knowbase.ingestion.layout.PaddleOcrVlLayoutProvider;
 import com.knowbase.ingestion.layout.VisionMarkdownLayoutProvider;
 import com.knowbase.ingestion.pdf.VisionDocumentParseSettings;
@@ -350,6 +353,24 @@ public class KnowbaseAutoConfiguration {
     @ConditionalOnMissingBean
     LayoutAnalysisService layoutAnalysisService(KnowbaseProperties properties) {
         List<LayoutAnalysisProvider> providers = new ArrayList<>();
+        KnowbaseProperties.Ingestion ingestion = properties.getIngestion();
+        KnowbaseProperties.Layout.Ollama layoutOllama = ingestion.getLayout().getOllama();
+        if (layoutOllama.isEnabled()) {
+            String layoutModel = resolveOllamaLayoutModel(properties);
+            if (layoutModel != null && !layoutModel.isBlank()) {
+                KnowbaseProperties.Ollama ollama = properties.getOllama();
+                OllamaClient layoutClient = new OllamaClient(
+                        ollama.getBaseUrl(),
+                        ollama.getVisionLanguageTimeout()
+                );
+                providers.add(new OllamaLayoutTableProvider(
+                        layoutClient,
+                        layoutModel,
+                        ollama.getVisionLanguageTimeout()
+                ));
+            }
+        }
+        providers.add(new LocalPdfTextLayoutProvider());
         KnowbaseProperties.VisionDocument visionDocument = properties.getVisionDocument();
         if (visionDocument != null && visionDocument.isEnabled()) {
             String provider = normalizeVisionProvider(visionDocument.getProvider());
@@ -432,6 +453,21 @@ public class KnowbaseAutoConfiguration {
         return new OllamaVisionDocumentModelClient(visionOllamaClient, visionModel);
     }
 
+    private static String resolveOllamaLayoutModel(KnowbaseProperties properties) {
+        KnowbaseProperties.Layout.Ollama layoutOllama = properties.getIngestion().getLayout().getOllama();
+        if (layoutOllama.getModel() != null && !layoutOllama.getModel().isBlank()) {
+            return layoutOllama.getModel().trim();
+        }
+        KnowbaseProperties.Ollama ollama = properties.getOllama();
+        if (ollama == null) {
+            return null;
+        }
+        if (ollama.getVisionLanguageModel() != null && !ollama.getVisionLanguageModel().isBlank()) {
+            return ollama.getVisionLanguageModel().trim();
+        }
+        return ollama.getChatModel();
+    }
+
     private static String normalizeVisionProvider(String provider) {
         if (provider == null || provider.isBlank()) {
             return "paddleocr-vl";
@@ -455,9 +491,16 @@ public class KnowbaseAutoConfiguration {
     @ConditionalOnMissingBean
     PdfLayoutParser pdfLayoutParser(
             VisionDocumentParseSettings visionDocumentParseSettings,
-            EvidenceArtifactGenerator evidenceArtifactGenerator
+            EvidenceArtifactGenerator evidenceArtifactGenerator,
+            LayoutAnalysisService layoutAnalysisService,
+            KnowbaseProperties properties
     ) {
-        return new PdfLayoutParser(visionDocumentParseSettings, evidenceArtifactGenerator);
+        return new PdfLayoutParser(
+                visionDocumentParseSettings,
+                evidenceArtifactGenerator,
+                layoutAnalysisService,
+                properties.getIngestion().getLayout().getOllama().isFallbackToHeuristic()
+        );
     }
 
     @Bean
@@ -569,8 +612,12 @@ public class KnowbaseAutoConfiguration {
                         ingestion.getOcr().getLanguage(),
                         ingestion.getOcr().getConfidenceThreshold(),
                         ingestion.getOcr().getDownweightMode(),
-                        null,
+                        ingestion.getLayout().getDefaultProvider(),
+                        ingestion.getReadingOrder().getProvider(),
                         ingestion.getReadingOrder().getEndpoint(),
+                        ingestion.getReadingOrder().getOllamaModel(),
+                        properties.getOllama().getBaseUrl(),
+                        ingestion.getReadingOrder().getTimeout(),
                         ingestion.getEvidenceArtifacts().isEnabled()
                 )
         );

@@ -9,6 +9,8 @@ import com.knowbase.tokenizer.ModelTokenizer;
 import com.knowbase.ingestion.DocumentMetadataEnricher.MetadataContext;
 import com.knowbase.ingestion.parse.ParsedDocumentParseEnricher;
 import com.knowbase.ingestion.parse.IngestionParseOptionsSupport;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -16,6 +18,8 @@ import java.util.Objects;
 import java.util.UUID;
 
 public final class DocumentPreparationPipeline {
+
+    private static final Logger log = LoggerFactory.getLogger(DocumentPreparationPipeline.class);
 
     private final DocumentSourceLoader sourceLoader;
     private final DocumentNormalizer textNormalizer;
@@ -402,8 +406,16 @@ public final class DocumentPreparationPipeline {
     }
 
     public ParsedDocument parse(String sourceUri, Map<String, Object> sourceOptions) {
+        log.info("准备阶段解析开始: sourceUri={}", sourceUri);
         ParsedDocument loaded = ensureExtractedText(sourceLoader.load(sourceUri, sourceOptions));
-        return ParsedDocumentParseEnricher.enrich(ParsedDocumentStructureEnricher.enrich(loaded, sourceUri));
+        ParsedDocument parsed = ParsedDocumentParseEnricher.enrich(ParsedDocumentStructureEnricher.enrich(loaded, sourceUri));
+        log.info(
+                "准备阶段解析完成: sourceUri={}, blocks={}, structureAware={}",
+                sourceUri,
+                parsed.blocks().size(),
+                parsed.structureAware()
+        );
+        return parsed;
     }
 
     private PostProcessOutcome applyPostProcess(List<DocumentChunk> chunks, ChunkPostProcessContext context) {

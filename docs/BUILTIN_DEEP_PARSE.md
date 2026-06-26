@@ -9,7 +9,7 @@
 | **DocumentParser** | 按 MIME/扩展名将字节流变为 `ParsedDocument` | `pdf-layout`、`html-structure`、`table-deep` 等 |
 | **StructuralBlock** | 结构块：heading / paragraph / table_row / list_item … | `knowbase-ingestion` |
 | **Parse Enricher 链** | 解析后统一增强：页尺寸、bbox 提示、OCR 置信度、表区 ID、TableGrid、阅读顺序、表摘要 | `ParsedDocumentParseEnricher` |
-| **LayoutAnalysisService** | 光栅页统一版面分析 SPI（PaddleOCR-VL / VLM markdown / OCR raster） | `knowbase-ingestion/layout/` |
+| **LayoutAnalysisService** | 光栅页统一版面分析 SPI（PaddleOCR-VL / VLM markdown / OCR raster / **local-pdf-layout**） | `knowbase-ingestion/layout/` |
 | **TableGridModel** | table → row → cell 三层逻辑网格 | `TableGridModel` + `TableGridParseEnricher` |
 | **DocumentProfile (L2)** | 按文件类型路由 parser + chunking + OCR/layout 选项 | `knowbase-preset` |
 | **Vision-Language Model** | 复杂/扫描 PDF 的 VLM 逐页解析 | `knowbase.vision-document`（官方 PaddleOCR-VL / vLLM） |
@@ -39,15 +39,17 @@ flowchart LR
 6. `OcrLanguageEnricher` — 语言传播
 7. `TableRegionIdParseEnricher` — 孤立 table_row 补 region
 8. `TableGridParseEnricher` — table/row/cell 三层 `tableGrid`
-9. `TableRegionSummaryParseEnricher` — 表区摘要块
-10. `ReadingOrderParseEnricher` — 阅读顺序（bbox 启发式 + HTTP 扩展点）
-11. `UniversalParseConfidenceAggregator` — 文档级置信度
+9. `TableSemanticParseEnricher` — 合并单元格摘要（hasMergedCells、maxColumnSpan/RowSpan、tableSemanticVersion）
+10. `TableRegionSummaryParseEnricher` — 表区摘要块
+11. `FormulaBlockParseEnricher` — LaTeX 启发式 → `formula` 块（formulaLatex/Format/Display）
+12. `ReadingOrderParseEnricher` — 阅读顺序（bbox 启发式 + HTTP 扩展点）
+13. `UniversalParseConfidenceAggregator` — 文档级置信度
 
 ## 3. 格式覆盖与深度（内置）
 
 | 格式 | 主 Parser | 深度能力 | 与主流差距 |
 |------|-----------|----------|------------|
-| PDF 电子版 | `pdf-layout` | 多栏、TextPosition bbox、列对齐表、续表、TableGrid | 复杂网格/嵌套表、公式 |
+| PDF 电子版 | `pdf-layout` | 多栏、TextPosition bbox、列对齐表、续表、TableGrid、公式块、cell columnSpan | 复杂 ruled 网格、Word 公式 |
 | PDF 扫描件 | `pdf-layout` → LayoutAnalysisService | PaddleOCR-VL `prunedResult` bbox + markdown 回退 | 跨页专用 reading-order 模型 |
 | Markdown | `markdown-structure` | 标题/列表/代码块/GFM 管道表 | 合并单元格、嵌套表 |
 | HTML | `html-structure` | Jsoup 标题/列表/顶层表、colspan/rowspan | 嵌套表独立区域、CSS 浮动 |
@@ -61,9 +63,10 @@ flowchart LR
 
 ### 4.1 解析层
 
-- **跨页 ReadingOrder 模型**：HTTP 客户端已就绪（`ReadingOrderHttpClient`），缺默认托管服务
-- **`FormulaBlock` 类型**：PDF/Word 公式保留 LaTeX/MathML
-- **本地 ONNX layout provider**：`LayoutAnalysisProvider` 扩展位已预留
+- **跨页 ReadingOrder 模型**：HTTP 客户端 + **`CrossPageReadingOrderAdjuster`**；**Ollama `knowbase-reading-order`**（`reading-order.provider=ollama`）+ 启发式回退
+- **Ollama ML 表格检测**：`OllamaLayoutTableProvider`（ruled/borderless/nested）→ 失败回退 `local-pdf-layout` 启发式
+- **`FormulaBlock` 类型**：✅ `PdfFormulaDetector` + `FormulaBlockParseEnricher`（LaTeX 启发式 → `formula` 块）
+- **本地 ONNX layout provider**：扩展位预留（默认 **`local-pdf-layout`** PDFBox TextPosition）
 
 ### 4.2 资产与引用
 
@@ -72,8 +75,9 @@ flowchart LR
 
 ### 4.3 质量与运维
 
-- **`sample-documents` 金标集**：每类 ≥3 真实二进制样例仍不足；离线回归见 `scripts/run-ingestion-eval.ps1`
-- **ingestion eval 报告**：缺自动化 hit@k / citation 完整性报告
+- **`sample-documents` 金标集**：每类 ≥3 样例（test resources + `retrieval-eval-samples.json`）；`SampleDocumentCatalogCoverageTest` 门禁
+- **ingestion eval 报告**：✅ `run-ingestion-eval.ps1` 输出 `sample-documents/ingestion-eval-report.json` + `IngestionCitationCompletenessEvaluator`
+- **结构化应用日志**：✅ 入库/准备全链路中文 SLF4J 日志（见 [INGESTION_INTERFACES.md](./INGESTION_INTERFACES.md) §结构化日志）
 - **Parser 健康探针**：Ollama VLM / Tesseract / Paddle endpoint 启动检查
 
 ### 4.4 配置与产品
@@ -105,8 +109,10 @@ knowbase:
       language: auto
       confidence-threshold: 0.6
       downweight-mode: downweight   # filter | downweight | review
+    layout:
+      default-provider: ollama-layout   # ML first (Ollama vision); fallback local-pdf-layout
     reading-order:
-      endpoint: ""                  # 专用阅读顺序 HTTP 服务
+      provider: ollama                  # knowbase-reading-order via Ollama; fallback heuristic-bbox
       timeout: 30s
     evidence-artifacts:
       enabled: false                # 生成 PDF 页 PNG 至 ObjectStorage
@@ -120,8 +126,8 @@ Docker 本地部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md
 
 ## 6. 相关文档
 
+- [INGESTION_INTERFACES.md](./INGESTION_INTERFACES.md) — SPI 说明与**结构化日志**速查
 - [PHASE2_INGESTION_PLAN.md](./PHASE2_INGESTION_PLAN.md) — 二期交付与缺项
-- [INGESTION_INTERFACES.md](./INGESTION_INTERFACES.md) — SPI 说明
 - [EXCEL_ADAPTIVE_PARSE.md](./EXCEL_ADAPTIVE_PARSE.md) — 表格自适应
 
 ## 7. 评测脚本
@@ -155,20 +161,21 @@ Docker 本地部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md
 
 | 模块 | 交付项 | 状态 | 说明 |
 |------|--------|------|------|
-| PDF | 多栏 + 页内阅读顺序 | ✅/🟡 | `LayoutPdfTextExtractor` + `ReadingOrderService`；HTTP 远程序已接 |
-| PDF | 表格区域 + TableGrid | 🟡 | stream/ruled/borderless 启发式 + `TableGridModel`；复杂嵌套表仍弱 |
-| PDF | citation 页码+bbox | 🟡 | metadata + 文档详情/QA PDF.js overlay |
+| PDF | 多栏 + 页内阅读顺序 | ✅/🟡 | 多栏 columnIndex 排序 + 跨页表 `CrossPageReadingOrderAdjuster` |
+| PDF | 表格区域 + TableGrid | ✅/🟡 | 嵌套表 + 跨页续表 + cell bbox/columnSpan + `TableSemanticParseEnricher` |
+| PDF | 公式块 | ✅ | `PdfFormulaDetector` + `FormulaBlockParseEnricher` |
+| PDF | citation 页码+bbox | 🟡 | metadata + 文档详情/QA PDF.js overlay；公式/合并单元格字段已入 citation |
 | OCR | hOCR/TSV/JSON + 降权闭环 | ✅ | `OcrDownweightMode` → 检索降权 |
 | OCR | PaddleOCR-VL bbox | ✅ | `PaddleOcrVlPrunedResultMapper` |
 | 表格 | Excel 多级表头/公式/隐藏行 | ✅ | `table-deep` 三阶段 |
-| 评测 | chunk 快照 + 离线回归 | 🟡 | `SampleDocumentChunkSnapshotTest` + `run-ingestion-eval.ps1` |
+| 评测 | chunk 快照 + 离线回归 | ✅/🟡 | 196 项单测 + `SampleDocumentChunkSnapshotTest` + 金标覆盖 + `ingestion-eval-report.json` |
 | 扫描 preset | pdf-layout + VLM 路由 | ✅ | `default_scanned_document` 已切换 |
 
 ### 8.3 对照主流 RAG 产品（内置能力）
 
 | 能力 | RAGFlow | Docling | MinerU | **KnowBase 内置** |
 |------|---------|---------|--------|-------------------|
-| 版面 ML | 强 | 很强 | 很强 | 中（启发式 + 可选 VLM HTTP） |
+| 版面 ML | 强 | 很强 | 很强 | 中（**local-pdf-layout** + 可选 VLM HTTP） |
 | PDF 复杂表 | 较强 | 很强 | 强 | 中（row 级 + TableGrid） |
 | Excel 报表 | 中 | 中 | 弱 | **强** |
 | OCR 治理 | 部分 | 部分 | — | **强**（filter/downweight/review） |
@@ -179,11 +186,12 @@ Docker 本地部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md
 
 | 优先级 | 项 | 状态 |
 |--------|-----|------|
-| P1 | 复杂 PDF 表（嵌套/ruled 网格） | 🟡 已增强 stream/borderless/ruled 检测 |
-| P1 | ReadingOrder HTTP 默认服务 | 🟡 客户端已就绪，需部署模型端点 |
+| P1 | 复杂 PDF 表（嵌套/ruled 网格） | 🟡 | `PdfNestedTableSegmenter` + 列边界续表 + cell bbox |
+| P1 | ReadingOrder Ollama / HTTP 服务 | 🟡 | `OllamaReadingOrderClient` + `knowbase-reading-order` Modelfile；HTTP 端点可选 |
 | P2 | QA/详情 citation PDF 高亮 | ✅ |
 | P2 | EvidenceArtifact 页 PNG | ✅ 可选开关 |
-| P2 | 金标集 + E2E eval 报告 | 🟡 脚本有，报告仍缺 |
-| P3 | FormulaBlock | ❌ |
+| P2 | 金标集 + 离线 eval 报告 | ✅ | `run-ingestion-eval.ps1` → `ingestion-eval-report.json` |
+| P2 | 在线 E2E hit@k 召回 | 🟡 | 离线 citation 评分已有；在线需 `verify-sample-documents.ps1` |
+| P3 | FormulaBlock | ✅ | PDF LaTeX 启发式 |
 | P3 | ONNX layout provider | ❌ |
 | P3 | Parser 健康探针 | ❌ |

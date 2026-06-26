@@ -15,4 +15,12 @@ public record OllamaMessage(String role, String content, List<String> images) {
     public static OllamaMessage userWithImages(String content, List<String> base64Images) {
         return new OllamaMessage("user", content, base64Images);
     }
+
+    public static OllamaMessage system(String content) {
+        return new OllamaMessage("system", content);
+    }
+
+    public static OllamaMessage user(String content) {
+        return new OllamaMessage("user", content);
+    }
 }

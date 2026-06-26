@@ -37,8 +37,42 @@ class SamplePdfParseRegressionTest {
         assertTrue(parsed.blocks().stream()
                 .filter(block -> "table_row".equals(block.blockType()))
                 .anyMatch(block -> block.metadata().containsKey("tableGrid")));
+        assertTrue(parsed.blocks().stream()
+                .filter(block -> "table_row".equals(block.blockType()))
+                .anyMatch(block -> block.metadata().containsKey("cellCoordinates")));
         assertTrue(parsed.metadata().containsKey("pageWidths"));
         assertTrue(parsed.metadata().containsKey("pageHeights"));
+    }
+
+    @Test
+    void pdfFormulaLineProducesFormulaBlock() throws Exception {
+        byte[] pdfBytes = buildFormulaPdf();
+        ParsedDocument parsed = ParsedDocumentParseEnricher.enrich(new PdfLayoutParser().parse(new DocumentSource(
+                "memory://formula.pdf",
+                "formula.pdf",
+                "application/pdf",
+                new ByteArrayInputStream(pdfBytes),
+                Map.of()
+        )));
+        assertTrue(parsed.blocks().stream().anyMatch(block -> "formula".equals(block.blockType())));
+        assertTrue(parsed.blocks().stream().anyMatch(block -> block.metadata().containsKey("formulaLatex")));
+    }
+
+    private static byte[] buildFormulaPdf() throws Exception {
+        try (PDDocument document = new PDDocument()) {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            try (PDPageContentStream stream = new PDPageContentStream(document, page)) {
+                stream.beginText();
+                stream.setFont(PDType1Font.HELVETICA, 12);
+                stream.newLineAtOffset(72, 720);
+                stream.showText("Equation $E=mc^2$ for citation eval.");
+                stream.endText();
+            }
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            document.save(outputStream);
+            return outputStream.toByteArray();
+        }
     }
 
     private static byte[] buildTablePdf() throws Exception {

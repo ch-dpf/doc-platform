@@ -1,15 +1,17 @@
 package com.knowbase.ingestion.parse;
 
 import com.knowbase.ingestion.StructuralBlock;
+import com.knowbase.model.ollama.OllamaClient;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
- * Heuristic reading order: page → top-to-bottom bbox → ordinal fallback.
- * Optional HTTP provider can be wired later via {@code readingOrderEndpoint}.
+ * Reading order: Ollama ML model → dedicated HTTP endpoint → heuristic bbox fallback.
  */
 public final class ReadingOrderService {
 
@@ -23,15 +25,56 @@ public final class ReadingOrderService {
             return blocks;
         }
         if (blocks.stream().allMatch(ReadingOrderService::hasReadingOrder)) {
-            return blocks;
+            return CrossPageReadingOrderAdjuster.adjust(blocks);
         }
-        String endpoint = readEndpoint(documentMetadata);
-        if (endpoint != null) {
-            List<StructuralBlock> remote = tryRemoteOrdering(endpoint, blocks);
-            if (remote != null) {
-                return remote;
+        IngestionParseOptionsSupport.IngestionParseOptions options =
+                IngestionParseOptionsSupport.resolve(documentMetadata);
+        String provider = options.readingOrderProvider() == null
+                ? "heuristic"
+                : options.readingOrderProvider().toLowerCase(Locale.ROOT);
+
+        if ("ollama".equals(provider)) {
+            List<StructuralBlock> ollamaOrdered = tryOllamaOrdering(options, blocks);
+            if (ollamaOrdered != null) {
+                return CrossPageReadingOrderAdjuster.adjust(ollamaOrdered);
+            }
+        } else if ("http".equals(provider)) {
+            String endpoint = options.readingOrderEndpoint();
+            if (endpoint != null && !endpoint.isBlank()) {
+                List<StructuralBlock> remote = tryRemoteOrdering(endpoint, blocks);
+                if (remote != null) {
+                    return CrossPageReadingOrderAdjuster.adjust(remote);
+                }
             }
         }
+
+        return CrossPageReadingOrderAdjuster.adjust(applyHeuristic(blocks));
+    }
+
+    private static List<StructuralBlock> tryOllamaOrdering(
+            IngestionParseOptionsSupport.IngestionParseOptions options,
+            List<StructuralBlock> blocks
+    ) {
+        String model = options.readingOrderOllamaModel();
+        String baseUrl = options.readingOrderOllamaBaseUrl();
+        if (model == null || model.isBlank() || baseUrl == null || baseUrl.isBlank()) {
+            return null;
+        }
+        Duration timeout = options.readingOrderTimeout() == null
+                ? Duration.ofSeconds(30)
+                : options.readingOrderTimeout();
+        OllamaReadingOrderClient client = new OllamaReadingOrderClient(
+                new OllamaClient(baseUrl, timeout),
+                timeout
+        );
+        return client.order(model, blocks);
+    }
+
+    private static List<StructuralBlock> tryRemoteOrdering(String endpoint, List<StructuralBlock> blocks) {
+        return REMOTE_CLIENT.order(endpoint, blocks);
+    }
+
+    private static List<StructuralBlock> applyHeuristic(List<StructuralBlock> blocks) {
         List<IndexedBlock> indexed = new ArrayList<>(blocks.size());
         for (int index = 0; index < blocks.size(); index++) {
             indexed.add(new IndexedBlock(index, blocks.get(index)));
@@ -55,17 +98,21 @@ public final class ReadingOrderService {
                     Map.copyOf(metadata)
             ));
         }
-        return List.copyOf(ordered);
-    }
-
-    private static List<StructuralBlock> tryRemoteOrdering(String endpoint, List<StructuralBlock> blocks) {
-        return REMOTE_CLIENT.order(endpoint, blocks);
+        return ordered;
     }
 
     private static int compareBlocks(IndexedBlock left, IndexedBlock right) {
         int pageCompare = Integer.compare(pageNumber(left.block()), pageNumber(right.block()));
         if (pageCompare != 0) {
             return pageCompare;
+        }
+        int leftColumns = columnCount(left.block());
+        int rightColumns = columnCount(right.block());
+        if (leftColumns > 1 || rightColumns > 1) {
+            int columnCompare = Integer.compare(columnIndex(left.block()), columnIndex(right.block()));
+            if (columnCompare != 0) {
+                return columnCompare;
+            }
         }
         double topLeft = bboxTop(left.block());
         double topRight = bboxTop(right.block());
@@ -80,6 +127,26 @@ public final class ReadingOrderService {
             return xCompare;
         }
         return Integer.compare(left.originalIndex(), right.originalIndex());
+    }
+
+    private static int columnIndex(StructuralBlock block) {
+        Object raw = block.metadata().get("columnIndex");
+        if (raw instanceof Number number) {
+            return number.intValue();
+        }
+        return 0;
+    }
+
+    private static int columnCount(StructuralBlock block) {
+        Object raw = block.metadata().get("columnCount");
+        if (raw instanceof Number number) {
+            return number.intValue();
+        }
+        Object multiColumn = block.metadata().get("multiColumn");
+        if (Boolean.TRUE.equals(multiColumn)) {
+            return 2;
+        }
+        return 1;
     }
 
     private static int pageNumber(StructuralBlock block) {
@@ -112,20 +179,6 @@ public final class ReadingOrderService {
 
     private static boolean hasReadingOrder(StructuralBlock block) {
         return block.metadata() != null && block.metadata().get("readingOrder") instanceof Number;
-    }
-
-    private static String readEndpoint(Map<String, Object> metadata) {
-        if (metadata == null) {
-            return null;
-        }
-        Object endpoint = metadata.get("readingOrderEndpoint");
-        if (endpoint == null) {
-            endpoint = metadata.get("readingOrderModelEndpoint");
-        }
-        if (endpoint == null || String.valueOf(endpoint).isBlank()) {
-            return null;
-        }
-        return String.valueOf(endpoint).trim();
     }
 
     private record IndexedBlock(int originalIndex, StructuralBlock block) {

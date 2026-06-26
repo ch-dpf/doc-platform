@@ -133,6 +133,8 @@ knowbase:
 
 开启后，创建入库任务接口会先返回任务 ID，任务状态可通过 `GET /api/v1/ingestion-runs/{runId}` 查询；前端控制台与验证脚本会自动轮询直到进入终态。
 
+入库与准备链路会在后端标准输出打印**中文结构化日志**（如 `入库任务开始`、`文档加载开始`、`向量化完成`）。按 `runId=` 或 `sourceUri=` 过滤即可跟踪单次任务；完整消息列表见 [docs/INGESTION_INTERFACES.md](docs/INGESTION_INTERFACES.md) §结构化日志。
+
 可注入的 Facade：
 
 - `KnowbaseLibraryFacade`

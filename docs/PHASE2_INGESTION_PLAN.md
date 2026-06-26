@@ -228,18 +228,21 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 现状：
 
 - 已有结构优先、token 预算、字符兜底，以及单元级自动化测试。
+- **`sample-documents` 回归集**：test resources + 顶层 manifest，每类 ≥3 样例（`SampleDocumentCatalogCoverageTest` 门禁）。
+- **chunk 边界快照**：`SampleDocumentChunkSnapshotTest` 固定 Markdown/CSV/OCR 的 indexable 块数与 token 上限。
+- **离线 citation 评分**：`IngestionCitationCompletenessEvaluator` + `IngestionEvalReportGenerator`。
+- **eval 脚本**：`run-ingestion-eval.ps1` 跑 parse/chunk 回归并输出 `sample-documents/ingestion-eval-report.json`。
 
 不足：
 
-- 缺少真实样本文档回归集。
-- 缺少 chunk 边界快照、召回质量、引用完整性、OCR 低置信度样本评估。
+- 在线 E2E hit@k 仍依赖 `verify-sample-documents.ps1` 对运行中后端。
 - semantic chunk、sentence-window、parent-child profile 还不是可评测的产品预设。
 
 后续完善：
 
-- 建立 `sample-documents` 数据集，覆盖 PDF、扫描件、Excel、Markdown 长文、代码/配置。
-- 增加 chunk snapshot 测试，固定 `boundaryType`、tokenCount、metadata、parent/child 关系。
-- 增加 ingestion eval 脚本，输出召回、引用、chunk 边界和证据完整性报告。
+- 将离线 citation 评分接入 CI 产物对比（基线 diff）。
+- 补充 PDF/XLSX programmatic 样例的 chunk 边界快照。
+- 增加在线召回 hit@k 报告与离线 citation 报告合并视图。
 
 ### 4.6 Citation 坐标闭环
 
@@ -316,11 +319,12 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 现状：
 
 - 已有 Pipeline span、错误记录和观测页面基础能力。
+- **结构化应用日志**：入库与准备链路在 `DefaultIngestionPipeline`、`DocumentPreparationPipeline`、`IngestionStageTracer` 等类输出中文 SLF4J 日志，覆盖任务级、文档级、向量化/索引写入与单阶段耗时；消息格式与 grep 示例见 [INGESTION_INTERFACES.md](./INGESTION_INTERFACES.md) §结构化日志。
 
 不足：
 
 - 入库页与观测 trace 尚未深度联动。
-- 缺少阶段耗时、文档级失败分布、parser/chunker/tokenizer 统计和吞吐量指标。
+- 缺少阶段耗时、文档级失败分布、parser/chunker/tokenizer 统计和吞吐量指标（应用日志已有单阶段 `durationMs`，尚未聚合为指标）。
 - 缺少面向运维的告警与慢任务识别。
 
 后续完善：

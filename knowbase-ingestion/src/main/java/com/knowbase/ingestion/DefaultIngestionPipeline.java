@@ -19,6 +19,8 @@ import com.knowbase.model.ollama.OllamaEmbeddingModelClient;
 import com.knowbase.tokenizer.ModelTokenizer;
 import com.knowbase.tokenizer.ProfileBackedTokenizer;
 import com.knowbase.tokenizer.TokenizerRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -31,6 +33,8 @@ import java.util.function.Function;
 import java.util.concurrent.Executor;
 
 public final class DefaultIngestionPipeline implements IngestionPipeline {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultIngestionPipeline.class);
 
     private final KnowbaseRepository repository;
     private final DocumentPreparationPipeline documentPreparationPipeline;
@@ -176,6 +180,13 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
         );
         repository.saveIngestionRun(running);
         UUID traceId = UUID.randomUUID();
+        log.info(
+                "入库任务开始: runId={}, libraryId={}, documents={}, profileCode={}",
+                request.runId(),
+                request.libraryId(),
+                sourceUris.size(),
+                resolvedProfileCode
+        );
         UUID ingestSpan = pipelineObserver.startSpan(
                 "ingestion",
                 request.runId(),
@@ -201,6 +212,7 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
             DocumentIndexJob indexJob = DocumentIndexJobProgress.start(repository, request.runId(), request.libraryId(), sourceUri);
             KnowledgeDocument document = null;
             try {
+                log.info("入库文档开始: runId={}, sourceUri={}", request.runId(), sourceUri);
                 DocumentProfile resolvedProfile = documentProfileResolver.resolve(
                         sourceUri,
                         resolvedProfileCode,
@@ -299,9 +311,31 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                         ))
                 );
                 try {
+                    log.info(
+                            "向量化开始: runId={}, sourceUri={}, documentId={}, indexableChunks={}, provider={}, model={}",
+                            request.runId(),
+                            sourceUri,
+                            document.documentId(),
+                            indexableChunks.size(),
+                            profile.embeddingProvider(),
+                            profile.embeddingModel()
+                    );
                     embeddings = embedChunks(embeddingModelClient, profile, indexableChunks);
+                    log.info(
+                            "向量化完成: runId={}, sourceUri={}, vectors={}",
+                            request.runId(),
+                            sourceUri,
+                            indexableChunks.size()
+                    );
                     pipelineObserver.finishSpan(embedSpan, "SUCCEEDED", Map.of("vectors", indexableChunks.size()));
                 } catch (RuntimeException exception) {
+                    log.warn(
+                            "向量化失败: runId={}, sourceUri={}, documentId={}",
+                            request.runId(),
+                            sourceUri,
+                            document.documentId(),
+                            exception
+                    );
                     pipelineObserver.finishSpan(embedSpan, "FAILED", Map.of("error", exception.getMessage()));
                     throw exception;
                 }
@@ -326,9 +360,30 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                         ))
                 );
                 try {
+                    log.info(
+                            "索引写入开始: runId={}, sourceUri={}, documentId={}, chunks={}",
+                            request.runId(),
+                            sourceUri,
+                            document.documentId(),
+                            indexedChunks.size()
+                    );
                     repository.replaceDocumentChunks(document.documentId(), indexedChunks);
+                    log.info(
+                            "索引写入完成: runId={}, sourceUri={}, documentId={}, chunks={}",
+                            request.runId(),
+                            sourceUri,
+                            document.documentId(),
+                            indexedChunks.size()
+                    );
                     pipelineObserver.finishSpan(writeSpan, "SUCCEEDED", Map.of("chunksWritten", indexedChunks.size()));
                 } catch (RuntimeException exception) {
+                    log.warn(
+                            "索引写入失败: runId={}, sourceUri={}, documentId={}",
+                            request.runId(),
+                            sourceUri,
+                            document.documentId(),
+                            exception
+                    );
                     pipelineObserver.finishSpan(writeSpan, "FAILED", Map.of("error", exception.getMessage()));
                     throw exception;
                 }
@@ -358,10 +413,25 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
 
                 chunkCount += indexableChunks.size();
                 succeeded++;
+                log.info(
+                        "入库文档完成: runId={}, sourceUri={}, documentId={}, chunks={}, indexable={}",
+                        request.runId(),
+                        sourceUri,
+                        document.documentId(),
+                        chunks.size(),
+                        indexableChunks.size()
+                );
                 pipelineObserver.finishSpan(documentSpan, "SUCCEEDED", Map.of("chunkCount", chunks.size()));
             } catch (RuntimeException exception) {
                 failed++;
                 failureMessages.add(shortFailure(sourceUri, exception));
+                log.warn(
+                        "入库文档失败: runId={}, sourceUri={}, documentId={}",
+                        request.runId(),
+                        sourceUri,
+                        document == null ? null : document.documentId(),
+                        exception
+                );
                 pipelineObserver.recordIngestionError(request.runId(), sourceUri, "INGEST_DOCUMENT_FAILED", exception.getMessage());
                 pipelineObserver.finishSpan(documentSpan, "FAILED", Map.of("error", exception.getMessage()));
                 if (document != null) {
@@ -397,6 +467,13 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
             );
             repository.saveIngestionRun(failedRun);
             pipelineObserver.finishSpan(ingestSpan, "FAILED", Map.of("failedDocuments", failed));
+            log.warn(
+                    "入库任务失败: runId={}, libraryId={}, succeeded={}, failed={}",
+                    request.runId(),
+                    request.libraryId(),
+                    succeeded,
+                    failed
+            );
             return failedRun;
         }
 
@@ -432,6 +509,15 @@ public final class DefaultIngestionPipeline implements IngestionPipeline {
                 "failedDocuments", failed,
                 "chunkCount", chunkCount
         ));
+        log.info(
+                "入库任务完成: runId={}, libraryId={}, status={}, succeeded={}, failed={}, chunks={}",
+                request.runId(),
+                request.libraryId(),
+                finalStatus,
+                succeeded,
+                failed,
+                chunkCount
+        );
         return repository.saveIngestionRun(completed);
     }
 

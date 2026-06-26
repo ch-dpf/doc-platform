@@ -414,6 +414,7 @@ public class KnowbaseProperties {
         private Summary summary = new Summary();
         private Pdf pdf = new Pdf();
         private Ocr ocr = new Ocr();
+        private Layout layout = new Layout();
         private ReadingOrder readingOrder = new ReadingOrder();
         private EvidenceArtifacts evidenceArtifacts = new EvidenceArtifacts();
 
@@ -473,6 +474,14 @@ public class KnowbaseProperties {
             this.ocr = ocr == null ? new Ocr() : ocr;
         }
 
+        public Layout getLayout() {
+            return layout;
+        }
+
+        public void setLayout(Layout layout) {
+            this.layout = layout == null ? new Layout() : layout;
+        }
+
         public ReadingOrder getReadingOrder() {
             return readingOrder;
         }
@@ -529,9 +538,76 @@ public class KnowbaseProperties {
         }
     }
 
+    public static class Layout {
+        /** Default layout provider for raster/PDF pages (ML first, heuristic fallback in provider chain). */
+        private String defaultProvider = "ollama-layout";
+        private Ollama ollama = new Ollama();
+
+        public String getDefaultProvider() {
+            return defaultProvider;
+        }
+
+        public void setDefaultProvider(String defaultProvider) {
+            this.defaultProvider = defaultProvider;
+        }
+
+        public Ollama getOllama() {
+            return ollama;
+        }
+
+        public void setOllama(Ollama ollama) {
+            this.ollama = ollama == null ? new Ollama() : ollama;
+        }
+
+        public static class Ollama {
+            /** Enable Ollama vision layout for ruled/borderless/nested PDF tables. */
+            private boolean enabled = true;
+            /** Blank = use knowbase.ollama.vision-language-model, else chat-model. */
+            private String model = "";
+            private boolean fallbackToHeuristic = true;
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public String getModel() {
+                return model;
+            }
+
+            public void setModel(String model) {
+                this.model = model;
+            }
+
+            public boolean isFallbackToHeuristic() {
+                return fallbackToHeuristic;
+            }
+
+            public void setFallbackToHeuristic(boolean fallbackToHeuristic) {
+                this.fallbackToHeuristic = fallbackToHeuristic;
+            }
+        }
+    }
+
     public static class ReadingOrder {
+        /** heuristic | http | ollama */
+        private String provider = "ollama";
         private String endpoint = "";
+        /** Dedicated reading-order model in Ollama ({@code ollama pull knowbase-reading-order}). */
+        private String ollamaModel = "knowbase-reading-order";
+        private boolean fallbackToHeuristic = true;
         private java.time.Duration timeout = java.time.Duration.ofSeconds(30);
+
+        public String getProvider() {
+            return provider;
+        }
+
+        public void setProvider(String provider) {
+            this.provider = provider;
+        }
 
         public String getEndpoint() {
             return endpoint;
@@ -539,6 +615,22 @@ public class KnowbaseProperties {
 
         public void setEndpoint(String endpoint) {
             this.endpoint = endpoint;
+        }
+
+        public String getOllamaModel() {
+            return ollamaModel;
+        }
+
+        public void setOllamaModel(String ollamaModel) {
+            this.ollamaModel = ollamaModel;
+        }
+
+        public boolean isFallbackToHeuristic() {
+            return fallbackToHeuristic;
+        }
+
+        public void setFallbackToHeuristic(boolean fallbackToHeuristic) {
+            this.fallbackToHeuristic = fallbackToHeuristic;
         }
 
         public java.time.Duration getTimeout() {

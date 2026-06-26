@@ -32,6 +32,8 @@ import com.knowbase.ingestion.StructuralBlock;
 import com.knowbase.tokenizer.ModelTokenizer;
 import com.knowbase.tokenizer.ProfileBackedTokenizer;
 import com.knowbase.tokenizer.TokenizerRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -51,6 +53,8 @@ import java.util.UUID;
  * </ol>
  */
 public final class DefaultIngestionPrepareService implements PrepareIngestionUseCase {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultIngestionPrepareService.class);
 
     private static final int DEFAULT_MAX_PREVIEW_BLOCKS = 30;
     private static final int DEFAULT_MAX_PREVIEW_CHARS = 500;
@@ -113,6 +117,13 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
         List<IngestionPrepareDocumentResult> documents = new ArrayList<>();
         int succeeded = 0;
         int failed = 0;
+        log.info(
+                "准备批次开始: libraryId={}, stage={}, documents={}, profileCode={}",
+                command.libraryId(),
+                stage.name().toLowerCase(),
+                sourceUris.size(),
+                resolvedProfileCode
+        );
 
         for (String sourceUri : sourceUris) {
             try {
@@ -168,6 +179,13 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
                         : null;
 
                 succeeded++;
+                log.info(
+                        "准备文档完成: libraryId={}, stage={}, sourceUri={}, profileCode={}",
+                        command.libraryId(),
+                        stage.name().toLowerCase(),
+                        sourceUri,
+                        documentProfile.code()
+                );
                 documents.add(new IngestionPrepareDocumentResult(
                         sourceUri,
                         prepared.parsed().title(),
@@ -183,6 +201,13 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
                 ));
             } catch (RuntimeException exception) {
                 failed++;
+                log.warn(
+                        "准备文档失败: libraryId={}, stage={}, sourceUri={}",
+                        command.libraryId(),
+                        stage.name().toLowerCase(),
+                        sourceUri,
+                        exception
+                );
                 documents.add(new IngestionPrepareDocumentResult(
                         sourceUri,
                         null,
@@ -199,6 +224,14 @@ public final class DefaultIngestionPrepareService implements PrepareIngestionUse
             }
         }
 
+        log.info(
+                "准备批次完成: libraryId={}, stage={}, sourceCount={}, succeeded={}, failed={}",
+                command.libraryId(),
+                stage.name().toLowerCase(),
+                sourceUris.size(),
+                succeeded,
+                failed
+        );
         return new IngestionPrepareResult(
                 command.libraryId(),
                 stage.name().toLowerCase(),

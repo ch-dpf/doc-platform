@@ -16,10 +16,13 @@ KnowBase is a RAG platform: a Maven multi-module Java 21 / Spring Boot 3.2 backe
 - **Frontend**: `npm --prefix frontend/knowbase-ui run dev` → `http://localhost:5173` (Vite proxies `/api` to `http://127.0.0.1:8080`).
 
 ### Key non-obvious gotchas
-- **Ollama is optional.** The default `application.yml` sets `knowbase.ollama.enabled=true`, but no Ollama server is provisioned here. Pass `--knowbase.ollama.enabled=false` to activate the built-in `Deterministic` embedding/chat clients — this exercises the full RAG pipeline (chunk → embed → pgvector → retrieve → answer) with no external model downloads. Only run a real Ollama (`bge-m3`, `llama3.2` on `:11434`) if you specifically need real LLM output.
+- **Ollama is optional for CI/smoke tests.** Default ingestion uses **ML layout** (`layout.default-provider=ollama-layout`) and **Ollama reading-order** (`reading-order.provider=ollama`); both fall back to PDFBox heuristics when Ollama is unreachable. Pass `--knowbase.ollama.enabled=false` for Deterministic embedding/chat. For fully heuristic parsing without ML attempts, also pass `--knowbase.ingestion.layout.ollama.enabled=false --knowbase.ingestion.reading-order.provider=heuristic`. Before first run with ML defaults: `.\scripts\pull-ollama-layout-models.ps1` (creates `knowbase-reading-order`, pulls `llama3.2-vision`).
 - **MinIO is not needed.** Storage defaults to local filesystem (`knowbase.storage.type=local`); MinIO is only used when `type=minio`.
 - The helper scripts in `scripts/` (`start-app.ps1`, `verify-postgres-rag.ps1`, etc.) are **PowerShell / Windows-only**. On Linux, run the equivalent `mvn` / `npm` / `curl` commands directly. `mvnw` is Windows-only (`mvnw.cmd`); use the installed `mvn`.
 - There is **no backend lint config** (standard Maven compile only) and the frontend has **no lint/test scripts** (only `dev`, `build`, `preview`).
 
 ### Tests
 - Backend unit tests: `mvn -Dmaven.repo.local=.m2/repository test` (no external services required; ~30 tests across `knowbase-ingestion` / `knowbase-retrieval`).
+
+### Ingestion debug logs
+- Ingestion/prepare pipelines emit **Chinese structured SLF4J logs** (`入库任务开始`, `文档加载开始`, `向量化完成`, etc.). Filter by `runId=` or `sourceUri=` when tailing backend stdout. Full message catalog: `docs/INGESTION_INTERFACES.md` §结构化日志.

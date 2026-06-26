@@ -134,7 +134,9 @@ public final class PdfTableCellExtractor {
                 : tableDetection);
         if (row.pageNumber() > firstPage) {
             metadata.put("tableContinuation", true);
+            metadata.put("tableContinuationFromPage", firstPage);
         }
+        metadata.put("tablePageSpan", List.of(firstPage, row.pageNumber()));
         metadata.put("tableRegionRowIndex", rowIndex);
         metadata.put("tableRegionRowCount", rowCount);
         metadata.put("layoutParsing", true);
@@ -166,7 +168,7 @@ public final class PdfTableCellExtractor {
             }
             cells.add(Map.copyOf(cell));
         }
-        return cells;
+        return PdfTableCellSpanInferrer.infer(cells);
     }
 
     private static double round(float value) {

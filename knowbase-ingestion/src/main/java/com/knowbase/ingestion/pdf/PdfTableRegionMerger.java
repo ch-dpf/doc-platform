@@ -21,7 +21,7 @@ public final class PdfTableRegionMerger {
             PdfTableRegionSlice next = regions.get(index);
             if (isContinuation(current.rows(), next.rows())) {
                 List<PdfTableRowInput> combined = new ArrayList<>(current.rows());
-                combined.addAll(next.rows());
+                combined.addAll(skipRepeatedHeader(current.rows(), next.rows()));
                 current = new PdfTableRegionSlice(current.tableRegionId(), combined);
             } else {
                 merged.add(current);
@@ -46,6 +46,39 @@ public final class PdfTableRegionMerger {
         if (prevColumns != nextColumns) {
             return false;
         }
+        List<PdfTableColumnDetector.ColumnBoundary> previousBounds = PdfTableColumnDetector.detectFromBlocks(previous);
+        List<PdfTableColumnDetector.ColumnBoundary> nextBounds = PdfTableColumnDetector.detectFromBlocks(next);
+        if (!previousBounds.isEmpty() && !nextBounds.isEmpty()) {
+            return PdfAlignedColumnDetector.boundariesMatch(previousBounds, nextBounds);
+        }
         return Math.abs(first.minX() - last.minX()) < 24f;
+    }
+
+    private static List<PdfTableRowInput> skipRepeatedHeader(
+            List<PdfTableRowInput> previous,
+            List<PdfTableRowInput> next
+    ) {
+        if (next.isEmpty() || previous.isEmpty()) {
+            return next == null ? List.of() : next;
+        }
+        if (looksLikeRepeatedHeader(previous.getFirst(), next.getFirst())) {
+            return next.size() <= 1 ? List.of() : List.copyOf(next.subList(1, next.size()));
+        }
+        return List.copyOf(next);
+    }
+
+    private static boolean looksLikeRepeatedHeader(PdfTableRowInput previousFirst, PdfTableRowInput nextFirst) {
+        List<String> previousCells = PdfTableColumnDetector.splitCells(previousFirst.content());
+        List<String> nextCells = PdfTableColumnDetector.splitCells(nextFirst.content());
+        if (previousCells.size() < 2 || previousCells.size() != nextCells.size()) {
+            return false;
+        }
+        int matches = 0;
+        for (int index = 0; index < previousCells.size(); index++) {
+            if (previousCells.get(index).equalsIgnoreCase(nextCells.get(index))) {
+                matches++;
+            }
+        }
+        return matches >= Math.max(2, previousCells.size() / 2);
     }
 }

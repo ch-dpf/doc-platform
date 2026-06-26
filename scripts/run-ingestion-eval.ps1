@@ -9,6 +9,7 @@ try {
     $parseTests = @(
         "SampleTableParseRegressionTest",
         "SampleHtmlTableParseRegressionTest",
+        "SampleHtmlMergedCellsParseRegressionTest",
         "SamplePdfParseRegressionTest",
         "SampleXlsxParseRegressionTest",
         "SampleOcrHocrRegressionTest",
@@ -17,6 +18,11 @@ try {
         "SampleConfigParseRegressionTest",
         "SampleMultiHeaderTableParseRegressionTest",
         "SampleDocumentChunkSnapshotTest",
+        "SampleDocumentCatalogCoverageTest",
+        "IngestionCitationCompletenessEvaluatorTest",
+        "FormulaBlockParseEnricherTest",
+        "PdfFormulaDetectorTest",
+        "PdfTableCellSpanInferrerTest",
         "LayoutBboxSupportTest",
         "PaddleOcrVlPrunedResultMapperTest",
         "TableGridModelTest",
@@ -35,6 +41,13 @@ try {
 
     $sampleManifest = Get-Content -Raw "sample-documents/retrieval-eval-samples.json" | ConvertFrom-Json
     $enabledSamples = @($sampleManifest.samples | Where-Object { $_.enabled -ne $false })
+    $categoryCounts = @{}
+    foreach ($sample in $enabledSamples) {
+        if (-not $categoryCounts.ContainsKey($sample.category)) {
+            $categoryCounts[$sample.category] = 0
+        }
+        $categoryCounts[$sample.category] = $categoryCounts[$sample.category] + 1
+    }
     $summary = [ordered]@{
         status = "passed"
         ranAt = (Get-Date).ToString("o")
@@ -48,20 +61,17 @@ try {
         retrievalEvalSamples = [ordered]@{
             version = $sampleManifest.version
             enabledCount = $enabledSamples.Count
-            categories = @(
-                "markdown",
-                "plain",
-                "table",
-                "html",
-                "ocr",
-                "config",
-                "pdf-programmatic",
-                "xlsx-programmatic"
-            )
+            categoryCounts = $categoryCounts
         }
-        notes = "Offline parse/chunk regression only. Live retrieval eval uses scripts/verify-sample-documents.ps1 against a running backend."
+        citationEval = [ordered]@{
+            evaluator = "IngestionCitationCompletenessEvaluator"
+            note = "See IngestionCitationCompletenessEvaluatorTest for PDF/table citation field scoring"
+        }
+        notes = "Offline parse/chunk/citation-metadata regression. Live retrieval eval uses scripts/verify-sample-documents.ps1 against a running backend."
     }
-    $summary | ConvertTo-Json -Depth 6
+    $reportPath = "sample-documents/ingestion-eval-report.json"
+    $summary | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $reportPath
+    $summary | ConvertTo-Json -Depth 8
 } finally {
     Pop-Location
 }

@@ -1,6 +1,8 @@
 package com.knowbase.ingestion;
 
 import com.knowbase.storage.ObjectStorage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.net.URLDecoder;
@@ -14,6 +16,8 @@ import java.util.Map;
 import java.util.Optional;
 
 public final class DocumentSourceLoader {
+
+    private static final Logger log = LoggerFactory.getLogger(DocumentSourceLoader.class);
 
     private final ObjectStorage objectStorage;
     private final List<DocumentParser> parsers;
@@ -32,21 +36,37 @@ public final class DocumentSourceLoader {
     }
 
     public ParsedDocument load(String sourceUri, Map<String, Object> options) {
+        log.info("文档加载开始: sourceUri={}", sourceUri);
         LoadedContent loaded = resolveContent(sourceUri, options);
         Map<String, Object> effectiveOptions = options == null ? Map.of() : options;
         Map<String, Object> routedOptions = ParseOptionsSupport.applyParseMode(effectiveOptions, sourceUri);
         String preferredParser = stringOption(routedOptions.get("parserCode"));
         DocumentParser parser = selectParser(sourceUri, loaded.mimeType(), preferredParser, routedOptions)
                 .orElseThrow(() -> new IllegalArgumentException("不支持的文档来源: " + sourceUri));
+        log.info(
+                "文档解析路由: sourceUri={}, parser={}, mimeType={}, bytes={}",
+                sourceUri,
+                parser.getClass().getSimpleName(),
+                loaded.mimeType(),
+                loaded.content().length
+        );
         HashMap<String, Object> metadata = new HashMap<>(loaded.metadata());
         metadata.putAll(routedOptions);
-        return parser.parse(new DocumentSource(
+        ParsedDocument parsed = parser.parse(new DocumentSource(
                 sourceUri,
                 loaded.filename(),
                 loaded.mimeType(),
                 new java.io.ByteArrayInputStream(loaded.content()),
                 Map.copyOf(metadata)
         ));
+        log.info(
+                "文档加载完成: sourceUri={}, parser={}, blocks={}, structureAware={}",
+                sourceUri,
+                parser.getClass().getSimpleName(),
+                parsed.blocks().size(),
+                parsed.structureAware()
+        );
+        return parsed;
     }
 
     private Optional<DocumentParser> selectParser(

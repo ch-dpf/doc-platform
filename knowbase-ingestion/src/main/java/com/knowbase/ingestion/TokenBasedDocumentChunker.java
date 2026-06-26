@@ -12,6 +12,8 @@ import com.knowbase.ingestion.smart.SmartStructureDocumentChunker;
 import com.knowbase.ingestion.smart.SmartTableDocumentChunker;
 import com.knowbase.ingestion.parse.OcrChunkMetadataSupport;
 import com.knowbase.tokenizer.TokenizerRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -20,6 +22,8 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class TokenBasedDocumentChunker implements DocumentChunker {
+
+    private static final Logger log = LoggerFactory.getLogger(TokenBasedDocumentChunker.class);
 
     private final TokenizerRegistry tokenizerRegistry;
     private final TokenWindowChunker tokenWindowChunker;
@@ -99,7 +103,7 @@ public final class TokenBasedDocumentChunker implements DocumentChunker {
     ) {
         tokenizerGuard.validateForIndexing(tokenizer, profile.embeddingProvider(), profile.embeddingModel());
         if (SmartTableDocumentChunker.shouldUse(document, documentProfile, requestOptions)) {
-            return smartTableDocumentChunker.chunk(
+            List<DocumentChunk> chunks = smartTableDocumentChunker.chunk(
                     libraryId,
                     documentId,
                     indexVersionId,
@@ -109,9 +113,11 @@ public final class TokenBasedDocumentChunker implements DocumentChunker {
                     tokenizer,
                     requestOptions
             );
+            logChunkComplete(document, "smart-table", profile, documentProfile, chunks);
+            return chunks;
         }
         if (SmartStructureDocumentChunker.shouldUseSmartEngine(documentProfile, requestOptions)) {
-            return smartStructureDocumentChunker.chunk(
+            List<DocumentChunk> chunks = smartStructureDocumentChunker.chunk(
                     libraryId,
                     documentId,
                     indexVersionId,
@@ -121,6 +127,8 @@ public final class TokenBasedDocumentChunker implements DocumentChunker {
                     tokenizer,
                     requestOptions
             );
+            logChunkComplete(document, "smart-structure", profile, documentProfile, chunks);
+            return chunks;
         }
         SegmentationConfig config = SegmentationConfigResolver.resolve(profile, documentProfile, requestOptions);
         List<StructuralSegment> structuralSegments = structureSegmenter.segment(document, documentProfile);
@@ -219,7 +227,46 @@ public final class TokenBasedDocumentChunker implements DocumentChunker {
                 ));
             }
         }
+        logChunkComplete(document, "token-window-" + config.chunkMode().name().toLowerCase(), profile, documentProfile, chunks);
         return chunks;
+    }
+
+    private static void logChunkComplete(
+            ParsedDocument document,
+            String engine,
+            LibraryProfile profile,
+            DocumentProfile documentProfile,
+            List<DocumentChunk> chunks
+    ) {
+        int indexableCount = 0;
+        for (DocumentChunk chunk : chunks) {
+            if (isIndexableChunk(chunk)) {
+                indexableCount++;
+            }
+        }
+        log.info(
+                "分块完成: sourceUri={}, engine={}, chunkMode={}, chunks={}, indexable={}, embeddingModel={}",
+                document.sourceUri(),
+                engine,
+                documentProfile == null ? null : documentProfile.chunkingStrategy(),
+                chunks.size(),
+                indexableCount,
+                profile.embeddingModel()
+        );
+    }
+
+    private static boolean isIndexableChunk(DocumentChunk chunk) {
+        if (chunk.parentChunkId() != null) {
+            return true;
+        }
+        if (chunk.metadata() == null) {
+            return true;
+        }
+        Object indexable = chunk.metadata().get("indexable");
+        if (indexable instanceof Boolean value) {
+            return value;
+        }
+        return true;
     }
 
     private List<TokenChunk> tokenChunksWithCharacterFallback(

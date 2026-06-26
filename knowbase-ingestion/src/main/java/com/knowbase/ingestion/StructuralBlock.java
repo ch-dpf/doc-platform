@@ -69,4 +69,21 @@ public record StructuralBlock(
                 Map.of("boundaryType", "dom_block", "tag", tag)
         );
     }
+
+    public static StructuralBlock formula(String latex, int ordinal, boolean display) {
+        return new StructuralBlock(
+                "formula",
+                0,
+                latex,
+                ordinal,
+                Map.of(
+                        "boundaryType", "formula",
+                        "layoutRole", "formula",
+                        "formulaBlock", true,
+                        "formulaLatex", latex,
+                        "formulaFormat", "latex",
+                        "formulaDisplay", display
+                )
+        );
+    }
 }

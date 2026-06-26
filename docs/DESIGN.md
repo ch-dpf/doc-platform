@@ -915,6 +915,8 @@ REST 层另提供 `/api/v1/chat/sessions` 多轮会话 API，前端问答页当�
 - `write_index`
 - `publish_index_version`
 
+应用日志（SLF4J，中文结构化消息，与 span 阶段互补）见 [INGESTION_INTERFACES.md](./INGESTION_INTERFACES.md) §结构化日志。典型检索键：`runId`、`sourceUri`、`libraryId`、`stage`。
+
 问答 trace span：
 
 - `load_agent_config`

@@ -1,0 +1,1 @@
+Short note for paragraph chunk regression. This sample verifies plain text token window splitting.

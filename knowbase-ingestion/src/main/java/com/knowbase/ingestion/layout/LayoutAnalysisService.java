@@ -68,6 +68,7 @@ public final class LayoutAnalysisService {
             throw new IllegalStateException("PDF 无可用页面: " + source.sourceUri());
         }
         Map<String, Object> mergedOptions = options == null ? new HashMap<>() : new HashMap<>(options);
+        mergedOptions.put(LayoutAnalysisOptions.PDF_BYTES, pdfBytes);
         List<StructuralBlock> blocks = new ArrayList<>();
         int globalOrdinal = 0;
         String detectedLanguage = null;

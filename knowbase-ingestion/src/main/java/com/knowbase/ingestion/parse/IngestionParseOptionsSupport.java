@@ -21,7 +21,11 @@ public final class IngestionParseOptionsSupport {
             double ocrConfidenceThreshold,
             OcrDownweightMode ocrDownweightMode,
             String layoutProvider,
+            String readingOrderProvider,
             String readingOrderEndpoint,
+            String readingOrderOllamaModel,
+            String readingOrderOllamaBaseUrl,
+            java.time.Duration readingOrderTimeout,
             boolean evidenceArtifactsEnabled
     ) {
     }
@@ -64,6 +68,18 @@ public final class IngestionParseOptionsSupport {
         if (resolved.readingOrderEndpoint() != null) {
             merged.putIfAbsent("readingOrderEndpoint", resolved.readingOrderEndpoint());
         }
+        if (resolved.readingOrderProvider() != null) {
+            merged.putIfAbsent("readingOrderProvider", resolved.readingOrderProvider());
+        }
+        if (resolved.readingOrderOllamaModel() != null) {
+            merged.putIfAbsent("readingOrderOllamaModel", resolved.readingOrderOllamaModel());
+        }
+        if (resolved.readingOrderOllamaBaseUrl() != null) {
+            merged.putIfAbsent("readingOrderOllamaBaseUrl", resolved.readingOrderOllamaBaseUrl());
+        }
+        if (resolved.readingOrderTimeout() != null) {
+            merged.putIfAbsent("readingOrderTimeoutMillis", resolved.readingOrderTimeout().toMillis());
+        }
         merged.putIfAbsent("evidenceArtifactsEnabled", resolved.evidenceArtifactsEnabled());
         return Map.copyOf(merged);
     }
@@ -75,6 +91,34 @@ public final class IngestionParseOptionsSupport {
             String ocrDownweightMode,
             String layoutProvider,
             String readingOrderEndpoint,
+            boolean evidenceArtifactsEnabled
+    ) {
+        return applicationDefaults(
+                ocrEngine,
+                ocrLanguage,
+                ocrConfidenceThreshold,
+                ocrDownweightMode,
+                "ollama-layout",
+                "ollama",
+                readingOrderEndpoint,
+                "knowbase-reading-order",
+                "",
+                java.time.Duration.ofSeconds(30),
+                evidenceArtifactsEnabled
+        );
+    }
+
+    public static Map<String, Object> applicationDefaults(
+            String ocrEngine,
+            String ocrLanguage,
+            double ocrConfidenceThreshold,
+            String ocrDownweightMode,
+            String layoutProvider,
+            String readingOrderProvider,
+            String readingOrderEndpoint,
+            String readingOrderOllamaModel,
+            String readingOrderOllamaBaseUrl,
+            java.time.Duration readingOrderTimeout,
             boolean evidenceArtifactsEnabled
     ) {
         Map<String, Object> defaults = new HashMap<>();
@@ -91,8 +135,20 @@ public final class IngestionParseOptionsSupport {
         if (layoutProvider != null && !layoutProvider.isBlank()) {
             defaults.put("layoutProvider", layoutProvider);
         }
+        if (readingOrderProvider != null && !readingOrderProvider.isBlank()) {
+            defaults.put("readingOrderProvider", readingOrderProvider);
+        }
         if (readingOrderEndpoint != null && !readingOrderEndpoint.isBlank()) {
             defaults.put("readingOrderEndpoint", readingOrderEndpoint);
+        }
+        if (readingOrderOllamaModel != null && !readingOrderOllamaModel.isBlank()) {
+            defaults.put("readingOrderOllamaModel", readingOrderOllamaModel);
+        }
+        if (readingOrderOllamaBaseUrl != null && !readingOrderOllamaBaseUrl.isBlank()) {
+            defaults.put("readingOrderOllamaBaseUrl", readingOrderOllamaBaseUrl);
+        }
+        if (readingOrderTimeout != null) {
+            defaults.put("readingOrderTimeoutMillis", readingOrderTimeout.toMillis());
         }
         defaults.put("evidenceArtifactsEnabled", evidenceArtifactsEnabled);
         return Map.copyOf(defaults);
@@ -105,9 +161,46 @@ public final class IngestionParseOptionsSupport {
                 readDouble(options, "ocrConfidenceThreshold", 0.6d),
                 OcrDownweightMode.from(options == null ? null : options.get("ocrDownweightMode")),
                 readString(options, "layoutProvider", "layoutAnalysisProvider"),
+                readReadingOrderProvider(options),
                 readString(options, "readingOrderEndpoint", "readingOrderModelEndpoint"),
+                readString(options, "readingOrderOllamaModel"),
+                readString(options, "readingOrderOllamaBaseUrl"),
+                readDuration(options, "readingOrderTimeoutMillis", java.time.Duration.ofSeconds(30)),
                 readBoolean(options, "evidenceArtifactsEnabled", false)
         );
+    }
+
+    private static String readReadingOrderProvider(Map<String, Object> options) {
+        String provider = readString(options, "readingOrderProvider");
+        if (provider != null) {
+            return provider;
+        }
+        if (readString(options, "readingOrderEndpoint", "readingOrderModelEndpoint") != null) {
+            return "http";
+        }
+        if (readString(options, "readingOrderOllamaModel") != null) {
+            return "ollama";
+        }
+        return "ollama";
+    }
+
+    private static java.time.Duration readDuration(
+            Map<String, Object> options,
+            String key,
+            java.time.Duration defaultValue
+    ) {
+        if (options == null || options.get(key) == null) {
+            return defaultValue;
+        }
+        Object value = options.get(key);
+        if (value instanceof Number number) {
+            return java.time.Duration.ofMillis(number.longValue());
+        }
+        try {
+            return java.time.Duration.ofMillis(Long.parseLong(String.valueOf(value).trim()));
+        } catch (NumberFormatException ignored) {
+            return defaultValue;
+        }
     }
 
     private static boolean readBoolean(Map<String, Object> options, String key, boolean defaultValue) {

@@ -1,15 +1,19 @@
 package com.knowbase.ingestion;
 
+import com.knowbase.ingestion.pdf.PdfLayoutTableDetectionRouter;
 import com.knowbase.ingestion.pdf.PdfParseConfidenceAggregator;
 import com.knowbase.ingestion.pdf.PdfScannedDocumentRouter;
 import com.knowbase.ingestion.pdf.PdfTextExtractabilityAnalyzer;
 import com.knowbase.ingestion.pdf.PdfVisionDocumentRouter;
 import com.knowbase.ingestion.pdf.VisionDocumentParseSettings;
 import com.knowbase.ingestion.parse.EvidenceArtifactGenerator;
+import com.knowbase.ingestion.layout.LayoutAnalysisService;
 import com.knowbase.domain.status.ContentFamily;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -20,10 +24,14 @@ import java.util.Map;
 
 public final class PdfLayoutParser implements DocumentParser {
 
+    private static final Logger log = LoggerFactory.getLogger(PdfLayoutParser.class);
+
     public static final String PARSER_CODE = "pdf-layout";
 
     private final VisionDocumentParseSettings visionSettings;
     private final EvidenceArtifactGenerator evidenceArtifactGenerator;
+    private final LayoutAnalysisService layoutAnalysisService;
+    private final boolean layoutFallbackToHeuristic;
 
     public PdfLayoutParser() {
         this(VisionDocumentParseSettings.disabled(), EvidenceArtifactGenerator.disabled());
@@ -37,10 +45,21 @@ public final class PdfLayoutParser implements DocumentParser {
             VisionDocumentParseSettings visionSettings,
             EvidenceArtifactGenerator evidenceArtifactGenerator
     ) {
+        this(visionSettings, evidenceArtifactGenerator, null, true);
+    }
+
+    public PdfLayoutParser(
+            VisionDocumentParseSettings visionSettings,
+            EvidenceArtifactGenerator evidenceArtifactGenerator,
+            LayoutAnalysisService layoutAnalysisService,
+            boolean layoutFallbackToHeuristic
+    ) {
         this.visionSettings = visionSettings == null ? VisionDocumentParseSettings.disabled() : visionSettings;
         this.evidenceArtifactGenerator = evidenceArtifactGenerator == null
                 ? EvidenceArtifactGenerator.disabled()
                 : evidenceArtifactGenerator;
+        this.layoutAnalysisService = layoutAnalysisService;
+        this.layoutFallbackToHeuristic = layoutFallbackToHeuristic;
     }
 
     @Override
@@ -53,6 +72,7 @@ public final class PdfLayoutParser implements DocumentParser {
 
     @Override
     public ParsedDocument parse(DocumentSource source) {
+        log.info("PDF 版面解析开始: sourceUri={}", source.sourceUri());
         try (InputStream inputStream = source.inputStream()) {
             byte[] bytes = inputStream.readAllBytes();
             PdfTextExtractabilityAnalyzer.Analysis extractability = PdfTextExtractabilityAnalyzer.analyze(bytes);
@@ -72,7 +92,14 @@ public final class PdfLayoutParser implements DocumentParser {
                 }
             }
 
-            List<StructuralBlock> blocks = LayoutPdfTextExtractor.extract(bytes);
+            List<StructuralBlock> blocks = PdfLayoutTableDetectionRouter.extractBlocks(
+                    source,
+                    bytes,
+                    layoutAnalysisService,
+                    layoutFallbackToHeuristic
+            );
+            boolean usedMlLayout = blocks.stream()
+                    .anyMatch(block -> "ollama-layout".equals(block.metadata().get("layoutProvider")));
             PdfParseConfidenceAggregator.PdfParseConfidence layoutConfidence =
                     PdfParseConfidenceAggregator.aggregate(blocks);
 
@@ -103,13 +130,25 @@ public final class PdfLayoutParser implements DocumentParser {
             metadata.put("pdfCharsPerPage", extractability.charsPerPage());
             metadata.put("pdfScannedLikely", extractability.scannedLikely());
             metadata.put("pdfLowTextDensity", extractability.lowTextDensity());
-            metadata.put("pdfParseRoute", "layout");
+            metadata.put("pdfParseRoute", PdfLayoutTableDetectionRouter.resolveParseRoute(source.metadata(), usedMlLayout));
+            if (usedMlLayout) {
+                metadata.put("layoutProvider", "ollama-layout");
+                metadata.put("tableDetectionSource", "ollama-layout");
+            }
             metadata.put("blockCount", blocks.size());
             metadata.put("pageCount", countPages(blocks));
             collectPageDimensions(bytes, blocks, metadata);
             metadata.putAll(PdfParseConfidenceAggregator.toDocumentMetadata(layoutConfidence));
             metadata.putAll(generateEvidenceArtifacts(source, bytes, metadata));
             String flatText = StructureParsingSupport.blocksToText(blocks);
+            log.info(
+                    "PDF 版面解析完成: sourceUri={}, route={}, blocks={}, mlLayout={}, parseConfidence={}",
+                    source.sourceUri(),
+                    metadata.get("pdfParseRoute"),
+                    blocks.size(),
+                    usedMlLayout,
+                    metadata.get("parseConfidence")
+            );
             return new ParsedDocument(
                     source.sourceUri(),
                     source.filename(),
@@ -119,6 +158,7 @@ public final class PdfLayoutParser implements DocumentParser {
                     blocks
             );
         } catch (IOException exception) {
+            log.warn("PDF 版面解析失败: sourceUri={}", source.sourceUri(), exception);
             throw new IllegalStateException("Layout 解析 PDF 失败: " + source.sourceUri(), exception);
         }
     }

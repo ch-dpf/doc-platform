@@ -1,6 +1,8 @@
 package com.knowbase.ingestion;
 
 import com.knowbase.domain.model.DocumentProfile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -10,6 +12,8 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 public final class DocumentTextNormalizer implements DocumentNormalizer {
+
+    private static final Logger log = LoggerFactory.getLogger(DocumentTextNormalizer.class);
 
     private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]");
     private static final Pattern ZERO_WIDTH = Pattern.compile("[\\u200B-\\u200D\\uFEFF]");
@@ -65,7 +69,7 @@ public final class DocumentTextNormalizer implements DocumentNormalizer {
                 normalizedBlocks
         );
 
-        return new NormalizationResult(
+        NormalizationResult result = new NormalizationResult(
                 normalizedDocument,
                 parsed.text() == null ? 0 : parsed.text().length(),
                 normalizedText.length(),
@@ -73,6 +77,16 @@ public final class DocumentTextNormalizer implements DocumentNormalizer {
                 normalizedBlocks.size(),
                 List.copyOf(appliedRules)
         );
+        log.info(
+                "规范化完成: sourceUri={}, rawChars={}, normalizedChars={}, blocks={}->{}, rules={}",
+                parsed.sourceUri(),
+                result.rawCharCount(),
+                result.normalizedCharCount(),
+                result.rawBlockCount(),
+                result.normalizedBlockCount(),
+                appliedRules.size()
+        );
+        return result;
     }
 
     @Override

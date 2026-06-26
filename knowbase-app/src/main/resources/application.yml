@@ -1,6 +1,14 @@
 server:
   port: 8088
 
+logging:
+  level:
+    root: INFO
+    com.knowbase: INFO
+    com.knowbase.ingestion: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
 spring:
   application:
     name: knowbase-app
@@ -30,8 +38,8 @@ knowbase:
     base-url: http://localhost:11434
     embedding-model: bge-m3
     chat-model: llama3.2
-    # 官方 PaddleOCR-VL / vLLM 启用后留空；仅 Ollama 社区版 VLM 时填写
-    vision-language-model: ""
+    # ML 版面默认需要 vision 模型；官方 PaddleOCR-VL 扫描路由时可留空
+    vision-language-model: llama3.2-vision
     embedding-dimension: 1024
     timeout: 60s
     vision-language-timeout: 120s
@@ -70,8 +78,17 @@ knowbase:
       language: auto
       confidence-threshold: 0.6
       downweight-mode: downweight
+    layout:
+      default-provider: ollama-layout       # ML first; falls back to local-pdf-layout heuristic
+      ollama:
+        enabled: true
+        model: ""
+        fallback-to-heuristic: true
     reading-order:
+      provider: ollama
       endpoint: ""
+      ollama-model: knowbase-reading-order
+      fallback-to-heuristic: true
       timeout: 30s
     evidence-artifacts:
       enabled: false

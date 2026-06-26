@@ -34,7 +34,12 @@ public final class PdfAlignedColumnDetector {
                 continue;
             }
             List<String> cells = PdfTableColumnDetector.splitCells(row.content());
-            if (cells.size() != columnCount && boundaries.size() - 1 != columnCount) {
+            boolean cellsMatch = cells.size() == columnCount;
+            boolean boundariesMatch = boundaries.size() - 1 == columnCount;
+            if (!cellsMatch && !boundariesMatch) {
+                continue;
+            }
+            if (boundaries.size() < columnCount) {
                 continue;
             }
             alignedRows++;

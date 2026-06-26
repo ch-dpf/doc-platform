@@ -2,6 +2,7 @@ package com.knowbase.ingestion;
 
 import com.knowbase.ingestion.pdf.PdfLayoutRoleClassifier;
 import com.knowbase.ingestion.pdf.PdfStreamTableDetector;
+import com.knowbase.ingestion.pdf.PdfNestedTableSegmenter;
 import com.knowbase.ingestion.pdf.PdfTableCellExtractor;
 import com.knowbase.ingestion.pdf.PdfTableLayoutAnalyzer;
 import com.knowbase.ingestion.pdf.PdfTableRegionMerger;
@@ -35,6 +36,35 @@ public final class LayoutPdfTextExtractor {
             Map<Integer, Float> pageWidths = pageWidths(document);
             PositionCollectingStripper stripper = new PositionCollectingStripper();
             stripper.setSortByPosition(true);
+            stripper.getText(document);
+            List<LayoutLine> lines = enrichReadingOrderAndColumns(stripper.lines());
+            if (lines.isEmpty()) {
+                return List.of();
+            }
+            float bodyFontSize = medianFontSize(lines);
+            ExtractionContext context = new ExtractionContext(pageHeights, pageWidths, bodyFontSize);
+            List<LayoutBlock> layoutBlocks = clusterBlocks(lines, context);
+            return toStructuralBlocks(layoutBlocks, context);
+        }
+    }
+
+    /**
+     * Extracts a single PDF page via TextPosition layout (local layout model path).
+     */
+    public static List<StructuralBlock> extractPage(byte[] pdfBytes, int pageNumber) throws IOException {
+        if (pageNumber <= 0) {
+            return List.of();
+        }
+        try (PDDocument document = PDDocument.load(pdfBytes)) {
+            if (pageNumber > document.getNumberOfPages()) {
+                return List.of();
+            }
+            Map<Integer, Float> pageHeights = pageHeights(document);
+            Map<Integer, Float> pageWidths = pageWidths(document);
+            PositionCollectingStripper stripper = new PositionCollectingStripper();
+            stripper.setSortByPosition(true);
+            stripper.setStartPage(pageNumber);
+            stripper.setEndPage(pageNumber);
             stripper.getText(document);
             List<LayoutLine> lines = enrichReadingOrderAndColumns(stripper.lines());
             if (lines.isEmpty()) {
@@ -320,6 +350,55 @@ public final class LayoutPdfTextExtractor {
         String tableDetection = PdfTableLayoutAnalyzer.tableDetectionSource(tableRegion.stream()
                 .map(block -> (PdfTableLayoutAnalyzer.TableLineCandidate) new TableLineProxy(block))
                 .toList());
+        List<PdfNestedTableSegmenter.TableSegment> segments = PdfNestedTableSegmenter.segment(rows);
+        if (segments.size() <= 1) {
+            return flushSingleTableSegment(
+                    blocks, rows, tableRegionId, ordinal, tracker, context, tableDetection, segments.isEmpty() ? 0 : segments.getFirst().nestedDepth());
+        }
+        int nextOrdinal = ordinal;
+        int assignableRegionId = tableRegionId;
+        for (PdfNestedTableSegmenter.TableSegment segment : segments) {
+            if (segment.rows().isEmpty()) {
+                continue;
+            }
+            PdfTableRegionMerger.PdfTableRegionSlice slice =
+                    new PdfTableRegionMerger.PdfTableRegionSlice(assignableRegionId, segment.rows());
+            if (tracker.lastSlice != null && PdfTableRegionMerger.isContinuation(tracker.lastSlice.rows(), slice.rows())) {
+                for (int index = 0; index < tracker.lastBlockCount; index++) {
+                    blocks.remove(blocks.size() - 1);
+                }
+                List<PdfTableRowInput> combined = new ArrayList<>(tracker.lastSlice.rows());
+                combined.addAll(segment.rows());
+                int mergedId = tracker.lastSlice.tableRegionId();
+                int added = appendTableRegion(
+                        blocks, combined, mergedId, tracker.lastStartOrdinal, context, tableDetection, segment.nestedDepth());
+                tracker.lastSlice = new PdfTableRegionMerger.PdfTableRegionSlice(mergedId, combined);
+                tracker.lastBlockCount = added;
+                nextOrdinal = tracker.lastStartOrdinal + added;
+                continue;
+            }
+            int added = appendTableRegion(
+                    blocks, segment.rows(), assignableRegionId, nextOrdinal, context, tableDetection, segment.nestedDepth());
+            tracker.lastSlice = slice;
+            tracker.lastStartOrdinal = nextOrdinal;
+            tracker.lastBlockCount = added;
+            nextOrdinal += added;
+            assignableRegionId++;
+        }
+        tracker.nextAssignableRegionId = assignableRegionId;
+        return nextOrdinal;
+    }
+
+    private static int flushSingleTableSegment(
+            List<StructuralBlock> blocks,
+            List<PdfTableRowInput> rows,
+            int tableRegionId,
+            int ordinal,
+            TableRegionTracker tracker,
+            ExtractionContext context,
+            String tableDetection,
+            int nestedDepth
+    ) {
         PdfTableRegionMerger.PdfTableRegionSlice slice = new PdfTableRegionMerger.PdfTableRegionSlice(tableRegionId, rows);
         if (tracker.lastSlice != null && PdfTableRegionMerger.isContinuation(tracker.lastSlice.rows(), slice.rows())) {
             for (int index = 0; index < tracker.lastBlockCount; index++) {
@@ -328,12 +407,12 @@ public final class LayoutPdfTextExtractor {
             List<PdfTableRowInput> combined = new ArrayList<>(tracker.lastSlice.rows());
             combined.addAll(rows);
             int mergedId = tracker.lastSlice.tableRegionId();
-            int added = appendTableRegion(blocks, combined, mergedId, tracker.lastStartOrdinal, context, tableDetection);
+            int added = appendTableRegion(blocks, combined, mergedId, tracker.lastStartOrdinal, context, tableDetection, nestedDepth);
             tracker.lastSlice = new PdfTableRegionMerger.PdfTableRegionSlice(mergedId, combined);
             tracker.lastBlockCount = added;
             return tracker.lastStartOrdinal + added;
         }
-        int added = appendTableRegion(blocks, rows, tableRegionId, ordinal, context, tableDetection);
+        int added = appendTableRegion(blocks, rows, tableRegionId, ordinal, context, tableDetection, nestedDepth);
         tracker.lastSlice = slice;
         tracker.lastStartOrdinal = ordinal;
         tracker.lastBlockCount = added;
@@ -347,14 +426,35 @@ public final class LayoutPdfTextExtractor {
             int tableRegionId,
             int startOrdinal,
             ExtractionContext context,
-            String tableDetection
+            String tableDetection,
+            int nestedDepth
     ) {
         List<StructuralBlock> tableBlocks = PdfTableCellExtractor.toStructuralBlocks(rows, tableRegionId, startOrdinal, tableDetection);
         for (int index = 0; index < tableBlocks.size(); index++) {
-            tableBlocks.set(index, enrichTableBlockPageDimensions(tableBlocks.get(index), context));
+            StructuralBlock block = tableBlocks.get(index);
+            Map<String, Object> metadata = new HashMap<>(block.metadata());
+            if (nestedDepth > 0) {
+                metadata.put("nestedTableDepth", nestedDepth);
+                metadata.put("nestedTable", true);
+            }
+            tableBlocks.set(index, enrichTableBlockPageDimensions(
+                    new StructuralBlock(block.blockType(), block.level(), block.content(), block.ordinal(), Map.copyOf(metadata)),
+                    context
+            ));
         }
         blocks.addAll(tableBlocks);
         return tableBlocks.size();
+    }
+
+    private static int appendTableRegion(
+            List<StructuralBlock> blocks,
+            List<PdfTableRowInput> rows,
+            int tableRegionId,
+            int startOrdinal,
+            ExtractionContext context,
+            String tableDetection
+    ) {
+        return appendTableRegion(blocks, rows, tableRegionId, startOrdinal, context, tableDetection, 0);
     }
 
     private static StructuralBlock enrichTableBlockPageDimensions(StructuralBlock block, ExtractionContext context) {

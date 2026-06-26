@@ -73,6 +73,159 @@
       "notes": "sample-documents/ocr/sample-scan.hocr",
       "category": "ocr",
       "enabled": true
+    },
+    {
+      "question": "TSV OCR 是否保留 bbox 与 confidence？",
+      "expectedSourceUris": ["sample-scan.tsv"],
+      "groundTruthContexts": ["confidence"],
+      "hitRank": 8,
+      "notes": "sample-documents/ocr/sample-scan.tsv",
+      "category": "ocr",
+      "enabled": true
+    },
+    {
+      "question": "备用 TSV OCR 样例是否可解析？",
+      "expectedSourceUris": ["sample-scan-alt.tsv"],
+      "groundTruthContexts": ["Invoice"],
+      "hitRank": 8,
+      "notes": "sample-documents/ocr/sample-scan-alt.tsv",
+      "category": "ocr",
+      "enabled": true
+    },
+    {
+      "question": "区域 CSV 中 APAC Q1 指标是多少？",
+      "expectedSourceUris": ["regions.csv"],
+      "groundTruthContexts": ["APAC"],
+      "hitRank": 8,
+      "notes": "sample-documents/table/regions.csv",
+      "category": "table",
+      "enabled": true
+    },
+    {
+      "question": "HTML 合并单元格是否暴露 rowSpan/columnSpan？",
+      "expectedSourceUris": ["merged-cells.html"],
+      "groundTruthContexts": ["rowSpan"],
+      "hitRank": 8,
+      "notes": "sample-documents/html/merged-cells.html",
+      "category": "html",
+      "enabled": true
+    },
+    {
+      "question": "简单 HTML 表格是否输出 table_row？",
+      "expectedSourceUris": ["simple-table.html"],
+      "groundTruthContexts": ["Alpha"],
+      "hitRank": 8,
+      "notes": "sample-documents/html/simple-table.html",
+      "category": "html",
+      "enabled": true
+    },
+    {
+      "question": "长段落纯文本是否按 token 窗口切分？",
+      "expectedSourceUris": ["long-paragraph.txt"],
+      "groundTruthContexts": ["token window"],
+      "hitRank": 8,
+      "notes": "sample-documents/plain/long-paragraph.txt",
+      "category": "plain",
+      "enabled": true
+    },
+    {
+      "question": "短笔记纯文本是否可索引？",
+      "expectedSourceUris": ["short-note.txt"],
+      "groundTruthContexts": ["plain text token window"],
+      "hitRank": 8,
+      "notes": "sample-documents/plain/short-note.txt",
+      "category": "plain",
+      "enabled": true
+    },
+    {
+      "question": "发布清单纯文本包含哪些条目？",
+      "expectedSourceUris": ["bullet-list.txt"],
+      "groundTruthContexts": ["citation bbox"],
+      "hitRank": 8,
+      "notes": "sample-documents/plain/bullet-list.txt",
+      "category": "plain",
+      "enabled": true
+    },
+    {
+      "question": "YAML 配置解析是否保留键路径？",
+      "expectedSourceUris": ["application-sample.yml"],
+      "groundTruthContexts": ["knowbase"],
+      "hitRank": 8,
+      "notes": "sample-documents/config/application-sample.yml",
+      "category": "config",
+      "enabled": true
+    },
+    {
+      "question": "Properties 配置是否分段解析？",
+      "expectedSourceUris": ["sample.properties"],
+      "groundTruthContexts": ["app.retrieval.enabled"],
+      "hitRank": 8,
+      "notes": "sample-documents/config/sample.properties",
+      "category": "config",
+      "enabled": true
+    },
+    {
+      "question": "JSON 配置是否输出 code/config 结构块？",
+      "expectedSourceUris": ["sample.json"],
+      "groundTruthContexts": ["ingestion"],
+      "hitRank": 8,
+      "notes": "sample-documents/config/sample.json",
+      "category": "config",
+      "enabled": true
+    },
+    {
+      "question": "PDF 表格样例是否输出 tableGrid 与 citation bbox？",
+      "expectedSourceUris": ["metrics.pdf"],
+      "groundTruthContexts": ["Bob"],
+      "hitRank": 8,
+      "notes": "SamplePdfParseRegressionTest programmatic fixture",
+      "category": "pdf-programmatic",
+      "enabled": true
+    },
+    {
+      "question": "PDF 解析是否包含 pageWidths/pageHeights？",
+      "expectedSourceUris": ["metrics.pdf"],
+      "groundTruthContexts": ["pageWidths"],
+      "hitRank": 8,
+      "notes": "SamplePdfParseRegressionTest programmatic fixture",
+      "category": "pdf-programmatic",
+      "enabled": true
+    },
+    {
+      "question": "PDF 公式行是否识别为 formula block？",
+      "expectedSourceUris": ["formula.pdf"],
+      "groundTruthContexts": ["formulaLatex"],
+      "hitRank": 8,
+      "notes": "SamplePdfParseRegressionTest formula fixture",
+      "category": "pdf-programmatic",
+      "enabled": true
+    },
+    {
+      "question": "XLSX 报表是否输出 sheetName 与 headerPath？",
+      "expectedSourceUris": ["metrics.xlsx"],
+      "groundTruthContexts": ["sheet"],
+      "hitRank": 8,
+      "notes": "SampleXlsxParseRegressionTest programmatic fixture",
+      "category": "xlsx-programmatic",
+      "enabled": true
+    },
+    {
+      "question": "XLSX 自适应解析是否识别 DATA 行？",
+      "expectedSourceUris": ["metrics.xlsx"],
+      "groundTruthContexts": ["rowRole"],
+      "hitRank": 8,
+      "notes": "SampleXlsxParseRegressionTest programmatic fixture",
+      "category": "xlsx-programmatic",
+      "enabled": true
+    },
+    {
+      "question": "XLSX 解析是否保留 parseConfidence？",
+      "expectedSourceUris": ["metrics.xlsx"],
+      "groundTruthContexts": ["parseConfidence"],
+      "hitRank": 8,
+      "notes": "SampleXlsxParseRegressionTest programmatic fixture",
+      "category": "xlsx-programmatic",
+      "enabled": true
     }
   ]
 }

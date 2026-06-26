@@ -1,0 +1,7 @@
+{
+  "service": "knowbase",
+  "features": {
+    "ingestion": true,
+    "retrieval": true
+  }
+}
