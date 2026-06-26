@@ -112,7 +112,22 @@ knowbase:
 knowbase:
   persistence:
     enabled: true
+    schema: knowbase          # 可选；嵌入宿主时建议独立 PostgreSQL schema
+  flyway:
+    enabled: true
+    table: knowbase_flyway_schema_history
 ```
+
+宿主需将 `spring.flyway.locations` 限定为自身业务脚本目录（如 `classpath:db/flyway`），避免与 KnowBase 的 `classpath:db/migration` 混用同一 Flyway 历史表。KnowBase 在宿主模式下默认使用独立 history 表；若库中已存在 `kb_*` 表但无 history 记录，会自动 baseline 到最新脚本版本。
+
+宿主需声明自身 Mapper 扫描包（与 KnowBase 的 `@MapperScan` 并存），例如：
+
+```yaml
+mybatis-plus:
+  mapper-packages: org.example.app.mapper
+```
+
+或通过 `@MapperScan("org.example.app.mapper")` 注册宿主 Mapper。可选：实现 `KnowbaseTenantResolver` Bean 覆盖默认租户解析（否则使用 `knowbase.tenant.default-tenant-id`）。
 
 宿主需要直接暴露 KnowBase REST API 时，显式引入 `knowbase-web` 并开启：
 

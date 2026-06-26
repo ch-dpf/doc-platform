@@ -13,6 +13,8 @@ public class KnowbaseProperties {
 
     private Persistence persistence = new Persistence();
 
+    private Flyway flyway = new Flyway();
+
     private Ollama ollama = new Ollama();
 
     private VisionDocument visionDocument = new VisionDocument();
@@ -57,6 +59,14 @@ public class KnowbaseProperties {
 
     public void setPersistence(Persistence persistence) {
         this.persistence = persistence;
+    }
+
+    public Flyway getFlyway() {
+        return flyway;
+    }
+
+    public void setFlyway(Flyway flyway) {
+        this.flyway = flyway == null ? new Flyway() : flyway;
     }
 
     public Ollama getOllama() {
@@ -141,6 +151,8 @@ public class KnowbaseProperties {
 
     public static class Persistence {
         private boolean enabled = false;
+        /** PostgreSQL schema for KnowBase tables; empty uses the connection default (typically public). */
+        private String schema = "";
 
         public boolean isEnabled() {
             return enabled;
@@ -148,6 +160,120 @@ public class KnowbaseProperties {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+
+        public String getSchema() {
+            return schema;
+        }
+
+        public void setSchema(String schema) {
+            this.schema = schema == null ? "" : schema;
+        }
+    }
+
+    /**
+     * Host-embedding Flyway settings. Disabled in standalone {@code knowbase-app} where
+     * {@code spring.flyway} owns schema migration.
+     */
+    public static class Flyway {
+        private boolean enabled = true;
+        private boolean autoconfigure = true;
+        private String table = "knowbase_flyway_schema_history";
+        private String locations = "classpath:db/migration";
+        private boolean baselineOnMigrate = true;
+        private String baselineVersion = "0";
+        private boolean outOfOrder = true;
+        private boolean validateOnMigrate = true;
+        private boolean cleanDisabled = true;
+        private boolean baselineExistingSchema = true;
+        private String existingSchemaProbeTable = "kb_library";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public boolean isAutoconfigure() {
+            return autoconfigure;
+        }
+
+        public void setAutoconfigure(boolean autoconfigure) {
+            this.autoconfigure = autoconfigure;
+        }
+
+        public String getTable() {
+            return table;
+        }
+
+        public void setTable(String table) {
+            this.table = table;
+        }
+
+        public String getLocations() {
+            return locations;
+        }
+
+        public void setLocations(String locations) {
+            this.locations = locations;
+        }
+
+        public boolean isBaselineOnMigrate() {
+            return baselineOnMigrate;
+        }
+
+        public void setBaselineOnMigrate(boolean baselineOnMigrate) {
+            this.baselineOnMigrate = baselineOnMigrate;
+        }
+
+        public String getBaselineVersion() {
+            return baselineVersion;
+        }
+
+        public void setBaselineVersion(String baselineVersion) {
+            this.baselineVersion = baselineVersion;
+        }
+
+        public boolean isOutOfOrder() {
+            return outOfOrder;
+        }
+
+        public void setOutOfOrder(boolean outOfOrder) {
+            this.outOfOrder = outOfOrder;
+        }
+
+        public boolean isValidateOnMigrate() {
+            return validateOnMigrate;
+        }
+
+        public void setValidateOnMigrate(boolean validateOnMigrate) {
+            this.validateOnMigrate = validateOnMigrate;
+        }
+
+        public boolean isCleanDisabled() {
+            return cleanDisabled;
+        }
+
+        public void setCleanDisabled(boolean cleanDisabled) {
+            this.cleanDisabled = cleanDisabled;
+        }
+
+        public boolean isBaselineExistingSchema() {
+            return baselineExistingSchema;
+        }
+
+        public void setBaselineExistingSchema(boolean baselineExistingSchema) {
+            this.baselineExistingSchema = baselineExistingSchema;
+        }
+
+        public String getExistingSchemaProbeTable() {
+            return existingSchemaProbeTable;
+        }
+
+        public void setExistingSchemaProbeTable(String existingSchemaProbeTable) {
+            this.existingSchemaProbeTable = existingSchemaProbeTable;
         }
     }
 

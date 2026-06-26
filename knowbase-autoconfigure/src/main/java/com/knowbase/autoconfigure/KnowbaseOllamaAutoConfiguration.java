@@ -17,9 +17,9 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnProperty(prefix = "knowbase.ollama", name = "enabled", havingValue = "true")
 public class KnowbaseOllamaAutoConfiguration {
 
-    @Bean
-    @ConditionalOnMissingBean
-    OllamaClient ollamaClient(KnowbaseProperties properties) {
+    @Bean("knowbaseOllamaClient")
+    @ConditionalOnMissingBean(name = "knowbaseOllamaClient")
+    OllamaClient knowbaseOllamaClient(KnowbaseProperties properties) {
         KnowbaseProperties.Ollama ollama = properties.getOllama();
         return new OllamaClient(ollama.getBaseUrl(), ollama.getTimeout());
     }

@@ -1,4 +1,5 @@
 com.knowbase.autoconfigure.KnowbaseAutoConfiguration
 com.knowbase.autoconfigure.KnowbaseOllamaAutoConfiguration
+com.knowbase.autoconfigure.KnowbaseFlywayAutoConfiguration
 com.knowbase.autoconfigure.KnowbasePersistenceAutoConfiguration
 com.knowbase.autoconfigure.KnowbaseWebAutoConfiguration
