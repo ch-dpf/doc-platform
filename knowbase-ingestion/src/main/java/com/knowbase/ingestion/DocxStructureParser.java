@@ -3,6 +3,7 @@ package com.knowbase.ingestion;
 import com.knowbase.domain.status.ContentFamily;
 import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFHeaderFooter;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 
@@ -17,6 +18,7 @@ import java.util.Map;
 public final class DocxStructureParser implements DocumentParser {
 
     public static final String PARSER_CODE = "docx-structure";
+    private static final String OPTION_INDEX_DOCX_HEADER_FOOTER = "indexDocxHeaderFooter";
 
     @Override
     public boolean supports(String sourceUri, String mimeType) {
@@ -28,33 +30,17 @@ public final class DocxStructureParser implements DocumentParser {
 
     @Override
     public ParsedDocument parse(DocumentSource source) {
+        boolean indexHeaderFooter = indexDocxHeaderFooter(source);
         try (InputStream inputStream = source.inputStream();
              XWPFDocument document = new XWPFDocument(inputStream)) {
             List<StructuralBlock> blocks = new ArrayList<>();
             int ordinal = 0;
+            ordinal = appendHeaderFooterBlocks(document.getHeaderList(), "header", blocks, ordinal, indexHeaderFooter);
             for (IBodyElement element : document.getBodyElements()) {
                 if (element instanceof XWPFParagraph paragraph) {
-                    String text = paragraph.getText().trim();
-                    if (text.isBlank()) {
-                        continue;
-                    }
-                    if (paragraph.getNumID() != null && paragraph.getNumID().intValue() > 0) {
-                        int listLevel = paragraph.getNumIlvl() == null ? 1 : paragraph.getNumIlvl().intValue() + 1;
-                        blocks.add(StructuralBlock.listItem(text, ordinal++, Math.max(1, listLevel)));
-                        continue;
-                    }
-                    if (HeadingPatternDetector.isListParagraphStyle(paragraph.getStyle())) {
-                        blocks.add(StructuralBlock.listItem(text, ordinal++, 1));
-                        continue;
-                    }
-                    int headingLevel = headingLevel(paragraph.getStyle());
-                    if (headingLevel <= 0) {
-                        headingLevel = HeadingPatternDetector.detectLevel(text).orElse(0);
-                    }
-                    if (headingLevel > 0) {
-                        blocks.add(StructuralBlock.heading(headingLevel, text, ordinal++));
-                    } else {
-                        blocks.add(StructuralBlock.paragraph(text, ordinal++));
+                    StructuralBlock block = paragraphBlock(paragraph, ordinal++);
+                    if (block != null) {
+                        blocks.add(block);
                     }
                 } else if (element instanceof XWPFTable table) {
                     var models = com.knowbase.ingestion.office.DocxTableStructureExtractor.extractTables(List.of(table));
@@ -65,6 +51,7 @@ public final class DocxStructureParser implements DocumentParser {
                     }
                 }
             }
+            ordinal = appendHeaderFooterBlocks(document.getFooterList(), "footer", blocks, ordinal, indexHeaderFooter);
 
             Map<String, Object> metadata = new HashMap<>();
             if (source.metadata() != null) {
@@ -86,6 +73,66 @@ public final class DocxStructureParser implements DocumentParser {
         } catch (IOException exception) {
             throw new IllegalStateException("读取 DOCX 文档失败: " + source.sourceUri(), exception);
         }
+    }
+
+    private static int appendHeaderFooterBlocks(
+            List<? extends XWPFHeaderFooter> sections,
+            String layoutRole,
+            List<StructuralBlock> blocks,
+            int ordinal,
+            boolean indexable
+    ) {
+        if (sections == null || sections.isEmpty()) {
+            return ordinal;
+        }
+        for (XWPFHeaderFooter section : sections) {
+            for (XWPFParagraph paragraph : section.getParagraphs()) {
+                String text = paragraph.getText().trim();
+                if (text.isBlank()) {
+                    continue;
+                }
+                Map<String, Object> metadata = new HashMap<>();
+                metadata.put("layoutRole", layoutRole);
+                metadata.put("boundaryType", layoutRole);
+                metadata.put("indexableHint", indexable);
+                metadata.put("docxSection", layoutRole);
+                blocks.add(new StructuralBlock("paragraph", 0, text, ordinal++, Map.copyOf(metadata)));
+            }
+        }
+        return ordinal;
+    }
+
+    private static StructuralBlock paragraphBlock(XWPFParagraph paragraph, int ordinal) {
+        String text = paragraph.getText().trim();
+        if (text.isBlank()) {
+            return null;
+        }
+        if (paragraph.getNumID() != null && paragraph.getNumID().intValue() > 0) {
+            int listLevel = paragraph.getNumIlvl() == null ? 1 : paragraph.getNumIlvl().intValue() + 1;
+            return StructuralBlock.listItem(text, ordinal, Math.max(1, listLevel));
+        }
+        if (HeadingPatternDetector.isListParagraphStyle(paragraph.getStyle())) {
+            return StructuralBlock.listItem(text, ordinal, 1);
+        }
+        int headingLevel = headingLevel(paragraph.getStyle());
+        if (headingLevel <= 0) {
+            headingLevel = HeadingPatternDetector.detectLevel(text).orElse(0);
+        }
+        if (headingLevel > 0) {
+            return StructuralBlock.heading(headingLevel, text, ordinal);
+        }
+        return StructuralBlock.paragraph(text, ordinal);
+    }
+
+    private static boolean indexDocxHeaderFooter(DocumentSource source) {
+        if (source.metadata() == null) {
+            return false;
+        }
+        Object value = source.metadata().get(OPTION_INDEX_DOCX_HEADER_FOOTER);
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return "true".equalsIgnoreCase(String.valueOf(value));
     }
 
     private static int headingLevel(String style) {

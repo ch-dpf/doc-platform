@@ -32,7 +32,8 @@ class ExternalDocumentParserFallbackTest {
                 Map.of("externalParserFallback", true)
         ));
         assertNotNull(parsed);
-        assertTrue(Boolean.TRUE.equals(parsed.metadata().get("externalParserFallback"))
+        assertTrue(Boolean.TRUE.equals(parsed.metadata().get("externalParserFallbackUsed"))
+                || Boolean.TRUE.equals(parsed.metadata().get("externalParserFallback"))
                 || parsed.metadata().containsKey("layoutParsing"));
     }
 

@@ -30,6 +30,9 @@ class SampleHtmlMergedCellsParseRegressionTest {
         assertTrue(parsed.structureAware());
         assertTrue(parsed.blocks().stream().anyMatch(block -> "table_row".equals(block.blockType())));
         assertTrue(parsed.blocks().stream().anyMatch(block -> hasMergedSpan(block.metadata())));
+        assertTrue(parsed.blocks().stream()
+                .filter(block -> "table_row".equals(block.blockType()))
+                .anyMatch(block -> block.metadata().containsKey("cellCoordinates")));
         assertTrue(parsed.blocks().stream().allMatch(block -> block.metadata().containsKey("readingOrder")));
         assertTrue(parsed.blocks().stream().anyMatch(block -> "table_summary".equals(block.blockType())));
     }

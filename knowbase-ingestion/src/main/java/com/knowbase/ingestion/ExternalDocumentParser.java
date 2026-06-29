@@ -1,14 +1,17 @@
 package com.knowbase.ingestion;
 
+import com.knowbase.ingestion.external.ExternalParserClientOptions;
+import com.knowbase.ingestion.external.ExternalParserFallbackReason;
 import com.knowbase.ingestion.external.ExternalParserFallbackResolver;
+import com.knowbase.ingestion.external.ExternalParserHttpInvoker;
 import com.knowbase.ingestion.external.ExternalParserResponseMapper;
 import com.knowbase.ingestion.parse.ParsedDocumentParseEnricher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.URI;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -19,7 +22,7 @@ import java.util.Map;
  */
 public final class ExternalDocumentParser implements DocumentParser {
 
-    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(60);
+    private static final Logger log = LoggerFactory.getLogger(ExternalDocumentParser.class);
 
     private final HttpClient httpClient;
     private final String defaultEndpoint;
@@ -50,51 +53,66 @@ public final class ExternalDocumentParser implements DocumentParser {
         if (endpoint == null || endpoint.isBlank()) {
             throw new IllegalStateException("外部解析器未配置 endpoint");
         }
+        ExternalParserClientOptions options = ExternalParserClientOptions.from(source.metadata());
         final byte[] content;
         try {
             content = source.inputStream().readAllBytes();
         } catch (IOException exception) {
             throw new IllegalStateException("读取文档失败: " + source.sourceUri(), exception);
         }
+        String parserCode = parserCode(source.metadata());
         try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint))
-                    .timeout(resolveTimeout(source.metadata()))
-                    .header("Content-Type", source.mimeType() == null || source.mimeType().isBlank()
-                            ? "application/octet-stream"
-                            : source.mimeType())
-                    .header("X-KnowBase-Source-Uri", source.sourceUri() == null ? "" : source.sourceUri())
-                    .header("X-KnowBase-Parser", parserCode(source.metadata()))
-                    .header("X-KnowBase-Schema-Version", ExternalParserResponseMapper.SCHEMA_VERSION)
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(content))
-                    .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("外部解析器返回状态码: " + response.statusCode());
+            ExternalParserHttpInvoker.InvokeResult invokeResult = ExternalParserHttpInvoker.invoke(
+                    httpClient,
+                    endpoint,
+                    content,
+                    source,
+                    parserCode,
+                    source.metadata(),
+                    options
+            );
+            if (invokeResult.statusCode() < 200 || invokeResult.statusCode() >= 300) {
+                throw new IllegalStateException("外部解析器返回状态码: " + invokeResult.statusCode());
             }
-            Map<String, Object> metadata = new HashMap<>();
-            if (source.metadata() != null) {
-                metadata.putAll(source.metadata());
-            }
-            metadata.put("externalParserEndpoint", endpoint);
-            metadata.put("externalParserStatus", response.statusCode());
+            Map<String, Object> metadata = baseMetadata(source, endpoint, invokeResult, options);
             ParsedDocument parsed = ExternalParserResponseMapper.map(
                     source.sourceUri(),
                     firstNonBlank(source.filename(), source.sourceUri()),
-                    response.body(),
-                    parserCode(source.metadata()),
+                    invokeResult.body(),
+                    parserCode,
                     Map.copyOf(metadata)
             );
-            return ParsedDocumentParseEnricher.enrich(parsed);
+            parsed = ParsedDocumentParseEnricher.enrich(parsed);
+            log.info(
+                    "外部解析完成: sourceUri={}, endpoint={}, externalParseMs={}, attempts={}, fallbackUsed=false",
+                    source.sourceUri(),
+                    endpoint,
+                    invokeResult.durationMs(),
+                    invokeResult.attempts()
+            );
+            return attachTiming(parsed, invokeResult, false, null);
         } catch (IOException | RuntimeException exception) {
-            return fallbackParse(source, content, exception);
+            return fallbackParse(source, content, options, exception);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            return fallbackParse(source, content, exception);
+            return fallbackParse(source, content, options, exception);
         }
     }
 
-    private ParsedDocument fallbackParse(DocumentSource source, byte[] content, Exception cause) {
-        if (!ExternalParserFallbackResolver.isFallbackEnabled(source.metadata())) {
+    private ParsedDocument fallbackParse(
+            DocumentSource source,
+            byte[] content,
+            ExternalParserClientOptions options,
+            Exception cause
+    ) {
+        String reasonCode = ExternalParserFallbackReason.classify(cause, extractStatusCode(cause));
+        if (options.failOnExternalError() || !options.fallbackEnabled()) {
+            log.warn(
+                    "外部解析失败且未启用 fallback: sourceUri={}, reasonCode={}, message={}",
+                    source.sourceUri(),
+                    reasonCode,
+                    cause.getMessage()
+            );
             if (cause instanceof RuntimeException runtime) {
                 throw runtime;
             }
@@ -109,41 +127,96 @@ public final class ExternalDocumentParser implements DocumentParser {
             metadata.putAll(source.metadata());
         }
         metadata.put("externalParserFallback", true);
-        metadata.put("externalParserFallbackReason", cause.getMessage() == null
+        metadata.put("externalParserFallbackUsed", true);
+        metadata.put("externalParserFallbackReason", reasonCode);
+        metadata.put("externalParserFallbackDetail", cause.getMessage() == null
                 ? cause.getClass().getSimpleName()
                 : cause.getMessage());
         metadata.put("externalParserFallbackParser", fallback.getClass().getSimpleName());
+        log.warn(
+                "外部解析回退内置 parser: sourceUri={}, reasonCode={}, fallbackParser={}",
+                source.sourceUri(),
+                reasonCode,
+                fallback.getClass().getSimpleName()
+        );
         DocumentSource retrySource = new DocumentSource(
                 source.sourceUri(),
                 source.filename(),
                 source.mimeType(),
-                new java.io.ByteArrayInputStream(content),
+                new ByteArrayInputStream(content),
                 Map.copyOf(metadata)
         );
         return fallback.parse(retrySource);
     }
 
+    private static ParsedDocument attachTiming(
+            ParsedDocument parsed,
+            ExternalParserHttpInvoker.InvokeResult invokeResult,
+            boolean fallbackUsed,
+            String fallbackReason
+    ) {
+        Map<String, Object> metadata = new HashMap<>(parsed.metadata());
+        metadata.put("externalParseMs", invokeResult.durationMs());
+        metadata.put("externalParserAttempts", invokeResult.attempts());
+        metadata.put("externalParserFallbackUsed", fallbackUsed);
+        if (fallbackReason != null) {
+            metadata.put("externalParserFallbackReason", fallbackReason);
+        }
+        return new ParsedDocument(
+                parsed.sourceUri(),
+                parsed.title(),
+                parsed.text(),
+                parsed.contentFamily(),
+                Map.copyOf(metadata),
+                parsed.blocks()
+        );
+    }
+
+    private static Map<String, Object> baseMetadata(
+            DocumentSource source,
+            String endpoint,
+            ExternalParserHttpInvoker.InvokeResult invokeResult,
+            ExternalParserClientOptions options
+    ) {
+        Map<String, Object> metadata = new HashMap<>();
+        if (source.metadata() != null) {
+            metadata.putAll(source.metadata());
+        }
+        metadata.put("externalParserEndpoint", endpoint);
+        metadata.put("externalParserStatus", invokeResult.statusCode());
+        metadata.put("externalParseMs", invokeResult.durationMs());
+        metadata.put("externalParserAttempts", invokeResult.attempts());
+        metadata.put("externalParserFallbackUsed", false);
+        metadata.put("externalParserUseJsonRequest", options.useJsonRequest());
+        return metadata;
+    }
+
+    private static int extractStatusCode(Throwable cause) {
+        if (cause == null || cause.getMessage() == null) {
+            return 0;
+        }
+        String message = cause.getMessage();
+        int index = message.indexOf("状态码:");
+        if (index < 0) {
+            index = message.indexOf("status code:");
+        }
+        if (index < 0) {
+            return 0;
+        }
+        String tail = message.substring(index).replaceAll("[^0-9]", " ").trim();
+        if (tail.isBlank()) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(tail.split("\\s+")[0]);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
     private String endpoint(Map<String, Object> metadata) {
         Object endpoint = metadata == null ? null : metadata.get("externalParserEndpoint");
         return endpoint == null || String.valueOf(endpoint).isBlank() ? defaultEndpoint : String.valueOf(endpoint);
-    }
-
-    private static Duration resolveTimeout(Map<String, Object> metadata) {
-        if (metadata == null) {
-            return DEFAULT_TIMEOUT;
-        }
-        Object raw = metadata.get("externalParserTimeoutSeconds");
-        if (raw instanceof Number number) {
-            return Duration.ofSeconds(Math.max(1, number.longValue()));
-        }
-        if (raw != null) {
-            try {
-                return Duration.ofSeconds(Math.max(1, Long.parseLong(String.valueOf(raw).trim())));
-            } catch (NumberFormatException ignored) {
-                return DEFAULT_TIMEOUT;
-            }
-        }
-        return DEFAULT_TIMEOUT;
     }
 
     private static HttpClient defaultHttpClient() {

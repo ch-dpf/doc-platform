@@ -20,6 +20,7 @@ import java.util.stream.Collectors;
 public final class ExternalParserResponseMapper {
 
     public static final String SCHEMA_VERSION = "1.0";
+    private static final List<String> SUPPORTED_SCHEMA_VERSIONS = List.of("1.0", "1.1");
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -39,8 +40,12 @@ public final class ExternalParserResponseMapper {
         try {
             JsonNode root = MAPPER.readTree(responseBody);
             if (root.isObject()) {
+                validateServiceError(root);
+                validateSchemaVersion(root);
                 return mapJsonObject(sourceUri, title, root, parserCode, requestMetadata);
             }
+        } catch (ExternalParserServiceException exception) {
+            throw exception;
         } catch (Exception ignored) {
             // fall through to legacy text extraction
         }
@@ -151,6 +156,7 @@ public final class ExternalParserResponseMapper {
             }
             List<Double> tableRegionBbox = table.has("bbox") ? readBbox(table.get("bbox")) : List.of();
             int pageNumber = table.path("pageNumber").asInt(1);
+            int rowIndex = 0;
             for (JsonNode row : rows) {
                 String content = rowContent(row);
                 if (content.isBlank()) {
@@ -163,6 +169,7 @@ public final class ExternalParserResponseMapper {
                 metadata.put("tableRegionId", tableRegionId);
                 metadata.put("tableRegionLabel", tableRegionLabel);
                 metadata.put("pageNumber", pageNumber);
+                metadata.put("tableRegionRowIndex", rowIndex);
                 metadata.put("rowRole", row.path("rowRole").asText("DATA"));
                 metadata.put("layoutParsing", true);
                 if (!tableRegionBbox.isEmpty()) {
@@ -171,17 +178,82 @@ public final class ExternalParserResponseMapper {
                 if (row.has("bbox")) {
                     metadata.put("bbox", readBbox(row.get("bbox")));
                     metadata.put("bboxSource", "engine");
+                } else {
+                    metadata.put("bboxSource", "unavailable");
                 }
                 if (row.has("headerPath") && row.get("headerPath").isArray()) {
                     List<String> headerPath = new ArrayList<>();
                     row.get("headerPath").forEach(item -> headerPath.add(item.asText()));
                     metadata.put("headerPath", headerPath);
                 }
+                metadata.put("cellCoordinates", buildExternalCellCoordinates(row, rowIndex));
                 metadata.put("indexableHint", !"HEADER".equalsIgnoreCase(String.valueOf(metadata.get("rowRole"))));
                 blocks.add(new StructuralBlock("table_row", 0, content, ordinal++, Map.copyOf(metadata)));
+                rowIndex++;
             }
         }
         return blocks;
+    }
+
+    private static List<Map<String, Object>> buildExternalCellCoordinates(JsonNode row, int rowIndex) {
+        JsonNode cells = row.get("cells");
+        if (cells == null || !cells.isArray() || cells.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> coordinates = new ArrayList<>();
+        for (int columnIndex = 0; columnIndex < cells.size(); columnIndex++) {
+            JsonNode cell = cells.get(columnIndex);
+            Map<String, Object> coordinate = new HashMap<>();
+            coordinate.put("rowIndex", rowIndex);
+            coordinate.put("columnIndex", columnIndex);
+            coordinate.put("coordinate", "R" + (rowIndex + 1) + "C" + (columnIndex + 1));
+            if (cell.isObject()) {
+                coordinate.put("value", cell.path("text").asText(cell.path("value").asText("")));
+                if (cell.has("rowSpan")) {
+                    coordinate.put("rowSpan", cell.get("rowSpan").asInt());
+                }
+                if (cell.has("columnSpan")) {
+                    coordinate.put("columnSpan", cell.get("columnSpan").asInt());
+                }
+                if (cell.has("merged")) {
+                    coordinate.put("merged", cell.get("merged").asBoolean());
+                }
+                if (cell.has("bbox")) {
+                    coordinate.put("bbox", readBbox(cell.get("bbox")));
+                    coordinate.put("bboxSource", "engine");
+                }
+            } else {
+                coordinate.put("value", cell.asText(""));
+            }
+            if (!coordinate.containsKey("merged")) {
+                coordinate.put("merged", false);
+            }
+            coordinates.add(Map.copyOf(coordinate));
+        }
+        return coordinates;
+    }
+
+    private static void validateSchemaVersion(JsonNode root) {
+        if (!root.has("schemaVersion")) {
+            return;
+        }
+        String version = root.path("schemaVersion").asText(SCHEMA_VERSION);
+        if (!SUPPORTED_SCHEMA_VERSIONS.contains(version)) {
+            throw new ExternalParserServiceException(
+                    ExternalParserFallbackReason.SCHEMA_UNSUPPORTED,
+                    "Unsupported external parser schemaVersion: " + version
+            );
+        }
+    }
+
+    private static void validateServiceError(JsonNode root) {
+        JsonNode error = root.get("error");
+        if (error == null || error.isNull()) {
+            return;
+        }
+        String code = error.path("code").asText(ExternalParserFallbackReason.SERVICE_ERROR);
+        String message = error.path("message").asText("external parser service error");
+        throw new ExternalParserServiceException(code, message);
     }
 
     private static String rowContent(JsonNode row) {
@@ -191,11 +263,21 @@ public final class ExternalParserResponseMapper {
         JsonNode cells = row.get("cells");
         if (cells != null && cells.isArray()) {
             return java.util.stream.StreamSupport.stream(cells.spliterator(), false)
-                    .map(JsonNode::asText)
+                    .map(ExternalParserResponseMapper::cellText)
                     .filter(value -> value != null && !value.isBlank())
                     .collect(Collectors.joining(" | "));
         }
         return "";
+    }
+
+    private static String cellText(JsonNode cell) {
+        if (cell == null || cell.isNull()) {
+            return "";
+        }
+        if (cell.isObject()) {
+            return cell.path("text").asText(cell.path("value").asText("")).trim();
+        }
+        return cell.asText("").trim();
     }
 
     private static void attachImages(Map<String, Object> metadata, JsonNode imagesNode) {

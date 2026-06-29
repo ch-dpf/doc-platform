@@ -200,8 +200,10 @@ public final class StructureParsingSupport {
         String tableRegionLabel = "md-table-" + tableRegionId;
         List<StructuralBlock> blocks = new ArrayList<>(rows.size());
         int rowOrdinal = ordinal;
+        String[] previousDataRow = null;
         for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
             boolean headerRow = hasSeparator && rowIndex == 0;
+            String[] cells = rows.get(rowIndex);
             Map<String, Object> metadata = new java.util.HashMap<>();
             metadata.put("boundaryType", "table_row");
             metadata.put("layoutRole", "table");
@@ -211,15 +213,68 @@ public final class StructureParsingSupport {
             metadata.put("rowRole", headerRow ? "HEADER" : "DATA");
             metadata.put("rowIndex", rowIndex);
             metadata.put("indexableHint", !headerRow);
+            metadata.put("cellCoordinates", buildMarkdownCellCoordinates(
+                    rowIndex,
+                    cells,
+                    headerRow,
+                    previousDataRow
+            ));
+            if (!headerRow) {
+                previousDataRow = cells;
+            }
             blocks.add(new StructuralBlock(
                     "table_row",
                     0,
-                    joinPipeCells(rows.get(rowIndex)),
+                    joinPipeCells(cells),
                     rowOrdinal++,
                     Map.copyOf(metadata)
             ));
         }
         return new MarkdownTableSlice(List.copyOf(blocks), index, rowOrdinal);
+    }
+
+    private static List<Map<String, Object>> buildMarkdownCellCoordinates(
+            int rowIndex,
+            String[] cells,
+            boolean headerRow,
+            String[] previousDataRow
+    ) {
+        List<Map<String, Object>> coordinates = new ArrayList<>(cells.length);
+        for (int columnIndex = 0; columnIndex < cells.length; columnIndex++) {
+            String value = cells[columnIndex] == null ? "" : cells[columnIndex].trim();
+            Map<String, Object> cell = new java.util.HashMap<>();
+            cell.put("rowIndex", rowIndex);
+            cell.put("columnIndex", columnIndex);
+            cell.put("coordinate", "R" + (rowIndex + 1) + "C" + (columnIndex + 1));
+            cell.put("value", value);
+            if (isMarkdownMergePlaceholder(value)) {
+                cell.put("merged", true);
+                cell.put("mergeContinuation", true);
+                cell.put("columnSpan", 0);
+                if (previousDataRow != null && columnIndex < previousDataRow.length) {
+                    cell.put("mergeSourceValue", previousDataRow[columnIndex].trim());
+                }
+            } else if (isMarkdownColspanPlaceholder(value)) {
+                cell.put("merged", true);
+                cell.put("columnSpan", 0);
+                cell.put("mergeContinuation", true);
+            } else {
+                cell.put("merged", false);
+            }
+            if (headerRow) {
+                cell.put("headerPath", List.of(value.isBlank() ? "Col" + (columnIndex + 1) : value));
+            }
+            coordinates.add(Map.copyOf(cell));
+        }
+        return coordinates;
+    }
+
+    private static boolean isMarkdownMergePlaceholder(String value) {
+        return "^".equals(value) || "↑".equals(value) || "«".equals(value);
+    }
+
+    private static boolean isMarkdownColspanPlaceholder(String value) {
+        return ">>".equals(value) || "→".equals(value);
     }
 
     static List<StructuralBlock> parsePlainText(String text) {
@@ -258,11 +313,8 @@ public final class StructureParsingSupport {
             String text = element.text().trim();
             if ("table".equals(tag)) {
                 List<com.knowbase.ingestion.office.HtmlTableStructureExtractor.HtmlTableModel> models =
-                        List.of(com.knowbase.ingestion.office.HtmlTableStructureExtractor.parseTable(
-                                element,
-                                tableIndex++,
-                                false
-                        ));
+                        com.knowbase.ingestion.office.HtmlTableStructureExtractor.extractTableTree(element, tableIndex);
+                tableIndex += models.size();
                 for (com.knowbase.ingestion.office.HtmlTableStructureExtractor.HtmlTableModel model : models) {
                     List<StructuralBlock> tableBlocks = com.knowbase.ingestion.office.OfficeTableBlockMapper.fromHtmlTable(model, ordinal);
                     blocks.addAll(tableBlocks);

@@ -31,8 +31,35 @@ class ExternalParserResponseMapperTest {
         assertEquals("blocks", parsed.metadata().get("externalParserMapping"));
         assertTrue(parsed.blocks().stream().anyMatch(block -> block.content().contains("Quarterly Report")));
         assertTrue(parsed.blocks().stream().anyMatch(block -> "table_row".equals(block.blockType())));
+        assertTrue(parsed.blocks().stream()
+                .filter(block -> "table_row".equals(block.blockType()))
+                .anyMatch(block -> block.metadata().containsKey("cellCoordinates")));
         assertTrue(parsed.blocks().stream().anyMatch(block -> block.metadata().containsKey("evidenceAssetHint")));
         assertNotNull(parsed.metadata().get("externalParserImages"));
         assertNotNull(parsed.metadata().get("externalParserPages"));
+    }
+
+    @Test
+    void rejectsUnsupportedSchemaVersion() {
+        String json = """
+                {"schemaVersion":"9.9","text":"ignored"}
+                """;
+        ExternalParserServiceException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                ExternalParserServiceException.class,
+                () -> ExternalParserResponseMapper.map("memory://x", "x", json, "docling", Map.of())
+        );
+        assertEquals(ExternalParserFallbackReason.SCHEMA_UNSUPPORTED, failure.errorCode());
+    }
+
+    @Test
+    void rejectsStructuredServiceError() {
+        String json = """
+                {"error":{"code":"unsupported_format","message":"cannot parse"}}
+                """;
+        ExternalParserServiceException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                ExternalParserServiceException.class,
+                () -> ExternalParserResponseMapper.map("memory://x", "x", json, "docling", Map.of())
+        );
+        assertEquals("unsupported_format", failure.errorCode());
     }
 }

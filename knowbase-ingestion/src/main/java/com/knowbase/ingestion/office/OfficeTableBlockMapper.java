@@ -26,11 +26,16 @@ public final class OfficeTableBlockMapper {
                                 .toList(),
                         row.headerRow()
                 )).toList(),
-                startOrdinal
+                startOrdinal,
+                null,
+                TableRegionContext.root(model.floating())
         );
     }
 
     public static List<StructuralBlock> fromHtmlTable(HtmlTableStructureExtractor.HtmlTableModel model, int startOrdinal) {
+        TableRegionContext context = model.nested()
+                ? TableRegionContext.nested(model.parentTableRegionId())
+                : TableRegionContext.root(model.floating());
         return mapRows(
                 OfficeTableSource.HTML,
                 model.tableIndex(),
@@ -42,7 +47,8 @@ public final class OfficeTableBlockMapper {
                         row.headerRow()
                 )).toList(),
                 startOrdinal,
-                null
+                null,
+                context
         );
     }
 
@@ -63,8 +69,19 @@ public final class OfficeTableBlockMapper {
                         row.headerRow()
                 )).toList(),
                 startOrdinal,
-                slideNumber
+                slideNumber,
+                TableRegionContext.root(false)
         );
+    }
+
+    private record TableRegionContext(boolean nested, Integer parentTableRegionId, boolean floating) {
+        static TableRegionContext root(boolean floating) {
+            return new TableRegionContext(false, null, floating);
+        }
+
+        static TableRegionContext nested(Integer parentTableRegionId) {
+            return new TableRegionContext(true, parentTableRegionId, false);
+        }
     }
 
     private static List<StructuralBlock> mapRows(
@@ -73,7 +90,7 @@ public final class OfficeTableBlockMapper {
             List<GenericRow> rows,
             int startOrdinal
     ) {
-        return mapRows(source, tableIndex, rows, startOrdinal, null);
+        return mapRows(source, tableIndex, rows, startOrdinal, null, TableRegionContext.root(false));
     }
 
     private static List<StructuralBlock> mapRows(
@@ -82,6 +99,17 @@ public final class OfficeTableBlockMapper {
             List<GenericRow> rows,
             int startOrdinal,
             Integer slideNumber
+    ) {
+        return mapRows(source, tableIndex, rows, startOrdinal, slideNumber, TableRegionContext.root(false));
+    }
+
+    private static List<StructuralBlock> mapRows(
+            OfficeTableSource source,
+            int tableIndex,
+            List<GenericRow> rows,
+            int startOrdinal,
+            Integer slideNumber,
+            TableRegionContext regionContext
     ) {
         MultiLevelHeaderStack headerStack = new MultiLevelHeaderStack();
         String[] activeHeaders = null;
@@ -119,6 +147,16 @@ public final class OfficeTableBlockMapper {
             metadata.put("indexableHint", AdaptiveTableTextSerializer.defaultIndexable(role));
             metadata.put("headerPath", headerStack.columnKeys(columnCount));
             metadata.put("cellCoordinates", buildCellCoordinates(row.rowIndex(), row.cells(), headerStack, columnCount));
+            if (regionContext.nested()) {
+                metadata.put("nestedTable", true);
+                metadata.put("nestedTableDepth", 1);
+                if (regionContext.parentTableRegionId() != null) {
+                    metadata.put("parentTableRegionId", regionContext.parentTableRegionId());
+                }
+            }
+            if (regionContext.floating()) {
+                metadata.put("tableLayout", "floating");
+            }
             blocks.add(new StructuralBlock("table_row", 0, content, ordinal++, Map.copyOf(metadata)));
         }
         return blocks;

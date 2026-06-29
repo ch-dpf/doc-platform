@@ -8,11 +8,22 @@
   "properties": {
     "schemaVersion": {
       "type": "string",
-      "const": "1.0"
+      "enum": ["1.0", "1.1"]
     },
     "text": {
       "type": "string",
       "description": "Flat text fallback when blocks are absent."
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Machine-readable error code (e.g. service_error, schema_unsupported, unsupported_format)."
+        },
+        "message": { "type": "string" }
+      }
     },
     "metadata": {
       "type": "object",
@@ -79,7 +90,27 @@
                 "content": { "type": "string" },
                 "cells": {
                   "type": "array",
-                  "items": { "type": "string" }
+                  "items": {
+                    "oneOf": [
+                      { "type": "string" },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "text": { "type": "string" },
+                          "value": { "type": "string" },
+                          "rowSpan": { "type": "integer", "minimum": 1 },
+                          "columnSpan": { "type": "integer", "minimum": 1 },
+                          "merged": { "type": "boolean" },
+                          "bbox": {
+                            "type": "array",
+                            "items": { "type": "number" },
+                            "minItems": 4,
+                            "maxItems": 4
+                          }
+                        }
+                      }
+                    ]
+                  }
                 },
                 "bbox": {
                   "type": "array",

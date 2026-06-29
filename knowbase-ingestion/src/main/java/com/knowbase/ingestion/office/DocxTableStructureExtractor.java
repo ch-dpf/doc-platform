@@ -18,7 +18,10 @@ public final class DocxTableStructureExtractor {
     public record DocxRowModel(int rowIndex, List<DocxCellModel> cells, boolean headerRow) {
     }
 
-    public record DocxTableModel(int tableIndex, List<DocxRowModel> rows) {
+    public record DocxTableModel(int tableIndex, List<DocxRowModel> rows, boolean floating) {
+        public DocxTableModel(int tableIndex, List<DocxRowModel> rows) {
+            this(tableIndex, rows, false);
+        }
     }
 
     public static List<DocxTableModel> extractTables(List<XWPFTable> tables) {
@@ -47,9 +50,20 @@ public final class DocxTableStructureExtractor {
                 boolean headerRow = rowIndex == 0 || cells.stream().anyMatch(cell -> isHeaderCell(cell.text()));
                 rows.add(new DocxRowModel(rowIndex++, cells, headerRow));
             }
-            models.add(new DocxTableModel(tableIndex, rows));
+            models.add(new DocxTableModel(tableIndex, rows, isFloatingTable(table)));
         }
         return models;
+    }
+
+    private static boolean isFloatingTable(XWPFTable table) {
+        try {
+            if (table.getCTTbl().getTblPr() != null && table.getCTTbl().getTblPr().getTblpPr() != null) {
+                return true;
+            }
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+        return false;
     }
 
     private static boolean isHeaderCell(String text) {
