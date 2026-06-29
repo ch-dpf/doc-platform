@@ -1,10 +1,12 @@
 package com.knowbase.ingestion;
 
-import com.knowbase.ingestion.parse.ParsedDocumentParseEnricher;
 import com.knowbase.domain.model.DocumentChunk;
 import com.knowbase.domain.model.DocumentProfile;
 import com.knowbase.domain.model.LibraryProfile;
 import com.knowbase.domain.status.ContentFamily;
+import com.knowbase.ingestion.parse.ParsedDocumentParseEnricher;
+import com.knowbase.ingestion.testsupport.IngestionEvalFixtureFactory;
+import com.knowbase.ingestion.testsupport.IngestionEvalHarness;
 import com.knowbase.tokenizer.ApproximateTokenizer;
 import com.knowbase.tokenizer.DefaultTokenWindowChunker;
 import com.knowbase.tokenizer.DefaultTokenizerRegistry;
@@ -18,7 +20,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -56,6 +57,45 @@ class SampleDocumentChunkSnapshotTest {
         ChunkSnapshot snapshot = snapshotTableSample("sample-documents/table/metrics.csv", "text/csv");
         assertTrue(snapshot.indexableCount() >= 1);
         assertTrue(snapshot.indexableChunks().stream().anyMatch(chunk -> chunk.content().contains("张三")));
+    }
+
+    @Test
+    void pdfTableProducesStableChunkSignature() {
+        IngestionEvalHarness.DocumentMetrics metrics = IngestionEvalHarness.evaluatePdfFixture(
+                IngestionEvalFixtureFactory.PDF_TABLE);
+        assertEquals(4, metrics.blockCount());
+        assertEquals(2, metrics.tableRowCount());
+        assertEquals(3, metrics.chunkSignature().indexableChunks());
+        assertEquals(4, metrics.chunkSignature().totalChunks());
+    }
+
+    @Test
+    void pdfMultiColumnProducesStableChunkSignature() {
+        IngestionEvalHarness.DocumentMetrics metrics = IngestionEvalHarness.evaluatePdfFixture(
+                IngestionEvalFixtureFactory.PDF_MULTI_COLUMN);
+        assertEquals(4, metrics.blockCount());
+        assertEquals(1, metrics.chunkSignature().indexableChunks());
+        assertTrue(metrics.chunkSignature().indexableFingerprints().getFirst().contains("Left column line one"));
+    }
+
+    @Test
+    void xlsxMetricsProducesStableChunkSignature() {
+        IngestionEvalHarness.DocumentMetrics metrics = IngestionEvalHarness.evaluateXlsxFixture(
+                IngestionEvalFixtureFactory.XLSX_METRICS);
+        assertEquals(3, metrics.blockCount());
+        assertEquals(2, metrics.tableRowCount());
+        assertEquals(1, metrics.chunkSignature().indexableChunks());
+        assertTrue(metrics.chunkSignature().indexableFingerprints().getFirst().contains("张三"));
+    }
+
+    @Test
+    void xlsxMultiHeaderProducesStableChunkSignature() {
+        IngestionEvalHarness.DocumentMetrics metrics = IngestionEvalHarness.evaluateXlsxFixture(
+                IngestionEvalFixtureFactory.XLSX_MULTI_HEADER);
+        assertEquals(4, metrics.blockCount());
+        assertEquals(3, metrics.tableRowCount());
+        assertEquals(1, metrics.chunkSignature().indexableChunks());
+        assertTrue(metrics.chunkSignature().indexableFingerprints().getFirst().contains("Q1: 10"));
     }
 
     @Test
@@ -99,10 +139,6 @@ class SampleDocumentChunkSnapshotTest {
         }
     }
 
-    private static ChunkSnapshot snapshotFromParsed(ParsedDocument parsed, String sourceUri) {
-        return snapshotFromParsed(parsed, sourceUri, ContentFamily.PLAIN_TEXT, "markdown-structure", "paragraph_token_window");
-    }
-
     private static ChunkSnapshot snapshotFromParsed(
             ParsedDocument parsed,
             String sourceUri,
@@ -142,10 +178,6 @@ class SampleDocumentChunkSnapshotTest {
             List<DocumentChunk> indexable = allChunks.stream().filter(SampleDocumentChunkSnapshotTest::isIndexable).toList();
             return new ChunkSnapshot(allChunks, indexable, prepared.parsed().text());
         }
-    }
-
-    private static List<DocumentChunk> chunkSample(String resourcePath, String mimeType) throws Exception {
-        return snapshotSample(resourcePath, mimeType).allChunks();
     }
 
     private static DocumentPreparationResult prepareParsed(ParsedDocument parsed, String sourceUri) {

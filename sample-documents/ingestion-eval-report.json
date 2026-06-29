@@ -1,0 +1,60 @@
+{
+    "status":  "passed",
+    "ranAt":  "2026-06-29T15:18:44.2096430+08:00",
+    "suites":  [
+                   {
+                       "name":  "parse-regression",
+                       "modules":  [
+                                       "knowbase-ingestion",
+                                       "knowbase-retrieval"
+                                   ],
+                       "tests":  [
+                                     "SampleTableParseRegressionTest",
+                                     "SampleHtmlTableParseRegressionTest",
+                                     "SampleHtmlMergedCellsParseRegressionTest",
+                                     "SamplePdfParseRegressionTest",
+                                     "SampleXlsxParseRegressionTest",
+                                     "SampleOcrHocrRegressionTest",
+                                     "SampleOcrTsvRegressionTest",
+                                     "SampleMarkdownParseRegressionTest",
+                                     "SampleConfigParseRegressionTest",
+                                     "SampleMultiHeaderTableParseRegressionTest",
+                                     "SampleDocumentChunkSnapshotTest",
+                                     "SampleDocumentCatalogCoverageTest",
+                                     "IngestionEvalBaselineTest",
+                                     "IngestionCitationCompletenessEvaluatorTest",
+                                     "FormulaBlockParseEnricherTest",
+                                     "PdfFormulaDetectorTest",
+                                     "PdfTableCellSpanInferrerTest",
+                                     "LayoutBboxSupportTest",
+                                     "PaddleOcrVlPrunedResultMapperTest",
+                                     "TableGridModelTest",
+                                     "TableGridParseEnricherTest",
+                                     "OcrHocrParserTest",
+                                     "OcrRetrievalDownweightSupportTest",
+                                     "DefaultEvidenceBuilderTest"
+                                 ]
+                   }
+               ],
+    "retrievalEvalSamples":  {
+                                 "version":  "2",
+                                 "enabledCount":  25,
+                                 "categoryCounts":  {
+                                                        "table":  3,
+                                                        "config":  3,
+                                                        "plain":  3,
+                                                        "html":  3,
+                                                        "xlsx-programmatic":  3,
+                                                        "ocr":  3,
+                                                        "markdown":  4,
+                                                        "pdf-programmatic":  3
+                                                    }
+                             },
+    "citationEval":  {
+                         "evaluator":  "IngestionCitationCompletenessEvaluator",
+                         "baselineVersion":  "1",
+                         "minimumAverageCitationScore":  0.94,
+                         "note":  "Baseline gate enforced by IngestionEvalBaselineTest against ingestion-eval-baseline.json"
+                     },
+    "notes":  "Offline parse/chunk/citation-metadata regression. Live retrieval eval uses scripts/verify-sample-documents.ps1 against a running backend."
+}

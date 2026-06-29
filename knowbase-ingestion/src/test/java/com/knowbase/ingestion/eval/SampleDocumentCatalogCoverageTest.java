@@ -2,6 +2,7 @@ package com.knowbase.ingestion.eval;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.knowbase.ingestion.testsupport.IngestionEvalFixtureFactory;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -14,6 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SampleDocumentCatalogCoverageTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    @Test
+    void programmaticPdfAndXlsxFixturesAreRegistered() {
+        assertTrue(IngestionEvalFixtureFactory.pdfFixtureIds().size() >= 3);
+        assertTrue(IngestionEvalFixtureFactory.xlsxFixtureIds().size() >= 2);
+    }
 
     @Test
     void testResourceCatalogHasMinimumSamplesPerCategory() throws Exception {
@@ -61,14 +68,6 @@ class SampleDocumentCatalogCoverageTest {
     }
 
     private static Path repoRoot() {
-        Path cwd = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
-        if (Files.isDirectory(cwd.resolve("sample-documents"))) {
-            return cwd;
-        }
-        Path parent = cwd.getParent();
-        if (parent != null && Files.isDirectory(parent.resolve("sample-documents"))) {
-            return parent;
-        }
-        return cwd;
+        return IngestionEvalBaselineLoader.repoRoot();
     }
 }

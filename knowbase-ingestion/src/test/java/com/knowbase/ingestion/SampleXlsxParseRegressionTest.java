@@ -1,14 +1,12 @@
 package com.knowbase.ingestion;
 
 import com.knowbase.ingestion.parse.ParsedDocumentParseEnricher;
-import org.apache.poi.ss.usermodel.Row;
-import org.apache.poi.ss.usermodel.Sheet;
-import org.apache.poi.ss.usermodel.Workbook;
-import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import com.knowbase.ingestion.testsupport.IngestionEvalFixtureFactory;
+import com.knowbase.ingestion.testsupport.ParserOutputSnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -19,14 +17,7 @@ class SampleXlsxParseRegressionTest {
 
     @Test
     void xlsxProducesAdaptiveTableRowsWithSheetMetadata() throws Exception {
-        byte[] bytes = buildMetricsWorkbook();
-        ParsedDocument parsed = ParsedDocumentParseEnricher.enrich(new StructuredTableDocumentParser().parse(new DocumentSource(
-                "memory://metrics.xlsx",
-                "metrics.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                new ByteArrayInputStream(bytes),
-                Map.of()
-        )));
+        ParsedDocument parsed = parseXlsxFixture(IngestionEvalFixtureFactory.XLSX_METRICS);
 
         assertTrue(parsed.structureAware());
         assertNotNull(parsed.metadata().get("parseConfidence"));
@@ -36,22 +27,33 @@ class SampleXlsxParseRegressionTest {
         assertTrue(parsed.blocks().stream().anyMatch(block -> block.metadata().containsKey("evidenceAssetHint")));
         assertTrue(parsed.blocks().stream().anyMatch(block -> "table_summary".equals(block.blockType())));
         assertEquals("table-deep", parsed.metadata().get("parser"));
+
+        ParserOutputSnapshot.Signature signature = ParserOutputSnapshot.capture(parsed);
+        assertEquals(3, signature.blockCount());
+        assertTrue(signature.rowRoles().stream().anyMatch("DATA"::equals));
     }
 
-    private static byte[] buildMetricsWorkbook() throws Exception {
-        try (Workbook workbook = new XSSFWorkbook()) {
-            Sheet sheet = workbook.createSheet("Metrics");
-            Row header = sheet.createRow(0);
-            header.createCell(0).setCellValue("姓名");
-            header.createCell(1).setCellValue("部门");
-            header.createCell(2).setCellValue("得分");
-            Row data = sheet.createRow(1);
-            data.createCell(0).setCellValue("张三");
-            data.createCell(1).setCellValue("研发");
-            data.createCell(2).setCellValue(95);
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            workbook.write(outputStream);
-            return outputStream.toByteArray();
-        }
+    @Test
+    void xlsxMultiHeaderProducesHeaderPathOnDataRows() throws Exception {
+        ParsedDocument parsed = parseXlsxFixture(IngestionEvalFixtureFactory.XLSX_MULTI_HEADER);
+        assertTrue(parsed.blocks().stream().anyMatch(block -> "DATA".equals(block.metadata().get("rowRole"))));
+        assertTrue(parsed.blocks().stream()
+                .filter(block -> "DATA".equals(block.metadata().get("rowRole")))
+                .anyMatch(block -> {
+                    Object headerPath = block.metadata().get("headerPath");
+                    return headerPath instanceof List<?> paths && paths.size() >= 2;
+                }));
+        assertTrue(parsed.blocks().stream().anyMatch(block -> block.content().contains("张三")));
+        assertEquals(4, ParserOutputSnapshot.capture(parsed).blockCount());
+    }
+
+    private static ParsedDocument parseXlsxFixture(String fixtureId) {
+        return ParsedDocumentParseEnricher.enrich(new StructuredTableDocumentParser().parse(new DocumentSource(
+                "memory://" + IngestionEvalFixtureFactory.filename(fixtureId),
+                IngestionEvalFixtureFactory.filename(fixtureId),
+                IngestionEvalFixtureFactory.mimeType(fixtureId),
+                new ByteArrayInputStream(IngestionEvalFixtureFactory.bytes(fixtureId)),
+                Map.of()
+        )));
     }
 }
