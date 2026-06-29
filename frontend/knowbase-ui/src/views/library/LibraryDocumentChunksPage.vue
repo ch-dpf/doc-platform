@@ -61,7 +61,7 @@
                 :name="String(index)"
               />
             </el-tabs>
-            <div class="preview-excel" v-html="currentExcelHtml" />
+            <div ref="excelPreviewRef" class="preview-excel" v-html="currentExcelHtml" />
           </div>
           <div v-else class="preview-fallback">
             <el-alert
@@ -82,7 +82,7 @@
 
       <el-tab-pane label="分块" name="chunks">
         <p v-if="chunks.length" class="chunks-hint muted">
-          点击分块可定位原文（PDF 跳页）；带页码/bbox 的块会高亮显示定位标签。
+          点击分块可定位原文：PDF 跳页并高亮 bbox；Excel 跳转 Sheet 并高亮单元格；Word 滚动并高亮匹配片段。
         </p>
         <div v-if="chunks.length" class="chunk-list">
           <div
@@ -123,7 +123,7 @@
             <div class="chunk-card__actions" @click.stop>
               <el-button link type="primary" @click="openEditDialog(chunk)">编辑</el-button>
               <el-button
-                v-if="chunkPageNumber(chunk)"
+                v-if="canLocateChunk(chunk.metadata)"
                 link
                 type="primary"
                 @click="locateChunk(chunk)"
@@ -228,6 +228,14 @@ import {
   DOCUMENT_PIPELINE_STAGES,
   filterDocumentPipelineSpans
 } from '../../format';
+import {
+  canLocateChunk,
+  clearDocxHighlights,
+  clearExcelHighlights,
+  highlightDocxSnippet,
+  highlightExcelCells,
+  primaryCellRef
+} from '../../citationLocate';
 
 const documentPipelineStages = DOCUMENT_PIPELINE_STAGES;
 
@@ -256,6 +264,7 @@ const previewError = ref('');
 const pdfPage = ref(null);
 const selectedChunkId = ref(null);
 const docxPreviewRef = ref(null);
+const excelPreviewRef = ref(null);
 
 const editDialogVisible = ref(false);
 const editSaving = ref(false);
@@ -374,6 +383,8 @@ function revokePreviewUrl() {
 
 function resetPreviewState() {
   revokePreviewUrl();
+  clearDocxHighlights(docxPreviewRef.value);
+  clearExcelHighlights(excelPreviewRef.value);
   preview.value = null;
   previewText.value = '';
   docxHtml.value = '';
@@ -444,32 +455,6 @@ function downloadPreview() {
   URL.revokeObjectURL(url);
 }
 
-async function highlightDocxSnippet(content) {
-  await nextTick();
-  const container = docxPreviewRef.value;
-  if (!container || !content) {
-    return;
-  }
-  const snippet = String(content).trim().slice(0, 48);
-  if (!snippet) {
-    return;
-  }
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  let node = walker.nextNode();
-  while (node) {
-    const text = node.textContent || '';
-    const index = text.indexOf(snippet.slice(0, Math.min(snippet.length, 24)));
-    if (index >= 0) {
-      const range = document.createRange();
-      range.setStart(node, index);
-      range.setEnd(node, Math.min(text.length, index + snippet.length));
-      range.startContainer.parentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
-    }
-    node = walker.nextNode();
-  }
-}
-
 async function locateChunk(chunk) {
   selectedChunkId.value = chunk.chunkId;
   const page = chunkPageNumber(chunk);
@@ -479,7 +464,19 @@ async function locateChunk(chunk) {
     const index = excelSheets.value.findIndex((sheet) => sheet.name === String(sheetName));
     if (index >= 0) {
       activeExcelSheet.value = String(index);
-      showMessage(`已定位 Sheet：${sheetName}`, 'success');
+      await nextTick();
+      const highlighted = highlightExcelCells(excelPreviewRef.value, chunk.metadata);
+      const cellLabel = primaryCellRef(chunk.metadata);
+      if (highlighted.length) {
+        showMessage(
+          cellLabel
+            ? `已定位 ${sheetName} · ${cellLabel}（高亮 ${highlighted.length} 个单元格）`
+            : `已定位 ${sheetName}（高亮 ${highlighted.length} 个单元格）`,
+          'success'
+        );
+      } else {
+        showMessage(`已定位 Sheet：${sheetName}，未匹配到可高亮单元格`, 'info');
+      }
       return;
     }
     showMessage(`未找到 Sheet：${sheetName}`, 'info');
@@ -493,13 +490,24 @@ async function locateChunk(chunk) {
   }
   if (previewMode.value === 'docx-html') {
     activeTab.value = 'preview';
-    await highlightDocxSnippet(chunk.content);
-    showMessage('已在 Word 预览中滚动到匹配片段', 'success');
+    await nextTick();
+    const highlighted = highlightDocxSnippet(docxPreviewRef.value, chunk.content);
+    const sectionPath = chunk.metadata?.wordSectionPath;
+    if (highlighted) {
+      showMessage(
+        sectionPath
+          ? `已在 Word 预览中高亮片段（${Array.isArray(sectionPath) ? sectionPath.join(' > ') : sectionPath}）`
+          : '已在 Word 预览中高亮匹配片段',
+        'success'
+      );
+    } else {
+      showMessage('已在 Word 预览中滚动到匹配片段', 'success');
+    }
     return;
   }
   if (previewMode.value === 'excel') {
     activeTab.value = 'preview';
-    showMessage('Excel 预览暂不支持按分块内容定位', 'info');
+    showMessage('Excel 预览缺少 Sheet 元数据，无法定位单元格', 'info');
     return;
   }
   if (page != null) {
@@ -507,7 +515,7 @@ async function locateChunk(chunk) {
     showMessage(`该块位于第 ${page} 页，当前格式暂不支持自动跳页`, 'info');
     return;
   }
-  showMessage('该块暂无页码/bbox 定位信息', 'info');
+  showMessage('该块暂无页码/bbox/单元格定位信息', 'info');
 }
 
 function openEditDialog(chunk) {
@@ -655,6 +663,18 @@ async function applyRouteLocate() {
     }
   }
 }
+
+watch(activeExcelSheet, async () => {
+  if (!selectedChunkId.value || previewMode.value !== 'excel') {
+    return;
+  }
+  const chunk = chunks.value.find((item) => item.chunkId === selectedChunkId.value);
+  if (!chunk) {
+    return;
+  }
+  await nextTick();
+  highlightExcelCells(excelPreviewRef.value, chunk.metadata);
+});
 
 onMounted(async () => {
   await loadPreview();
@@ -822,6 +842,19 @@ onBeforeUnmount(revokePreviewUrl);
 
 .preview-excel :deep(tr:nth-child(even)) {
   background: #f8fafc;
+}
+
+.preview-excel :deep(.citation-cell-highlight) {
+  background: #fff3cd !important;
+  box-shadow: inset 0 0 0 2px #e6a23c;
+  outline: 2px solid rgba(230, 162, 60, 0.35);
+}
+
+.preview-docx :deep(mark.docx-citation-highlight) {
+  background: #fff3cd;
+  padding: 0 2px;
+  border-radius: 2px;
+  box-shadow: inset 0 -2px 0 #e6a23c;
 }
 
 .preview-fallback,

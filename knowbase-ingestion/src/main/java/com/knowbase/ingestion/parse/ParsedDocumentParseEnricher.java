@@ -38,6 +38,7 @@ public final class ParsedDocumentParseEnricher {
         blocks = TableRegionIdParseEnricher.enrich(blocks);
         blocks = TableGridParseEnricher.enrich(blocks);
         blocks = TableSemanticParseEnricher.enrich(blocks);
+        blocks = CitationLocationMetadataEnricher.enrich(blocks);
         blocks = TableRegionSummaryParseEnricher.enrich(blocks);
         blocks = FormulaBlockParseEnricher.enrich(blocks);
         blocks = ReadingOrderParseEnricher.enrich(blocks, documentMetadata);

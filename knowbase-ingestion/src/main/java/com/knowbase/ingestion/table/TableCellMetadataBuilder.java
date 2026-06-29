@@ -39,6 +39,7 @@ public final class TableCellMetadataBuilder {
             cell.put("coordinate", "R" + (rowIndex + 1) + "C" + (columnIndex + 1));
             cell.put("columnKey", columnKey);
             cell.put("headerPath", List.of(columnKey));
+            cell.put("cellRef", CellReference.convertNumToColString(columnIndex) + (rowIndex + 1));
             cell.put("value", value.trim());
             if (formulaCells != null && formulaCells.containsKey(columnIndex)) {
                 cell.put("formula", formulaCells.get(columnIndex));
@@ -83,6 +84,7 @@ public final class TableCellMetadataBuilder {
             cell.put("coordinate", "R" + (rowIndex + 1) + "C" + (columnIndex + 1));
             cell.put("columnKey", columnKey);
             cell.put("headerPath", headerPath);
+            cell.put("cellRef", CellReference.convertNumToColString(columnIndex) + (rowIndex + 1));
             cell.put("value", value.trim());
             if (formulaCells != null && formulaCells.containsKey(columnIndex)) {
                 cell.put("formula", formulaCells.get(columnIndex));

@@ -216,6 +216,11 @@ export function formatLocationMeta(metadata) {
   if (metadata.sheetName) {
     parts.push(String(metadata.sheetName));
   }
+  const cellRef = metadata.primaryCellRef
+    || (Array.isArray(metadata.cellRefs) && metadata.cellRefs.length ? metadata.cellRefs[0] : null);
+  if (cellRef) {
+    parts.push(String(cellRef));
+  }
   if (metadata.tableRegionLabel) {
     parts.push(String(metadata.tableRegionLabel));
   } else if (metadata.tableRegionId) {
@@ -255,6 +260,11 @@ export function formatChunkLocationTags(metadata) {
   }
   if (metadata.sheetName) {
     tags.push({ key: 'sheet', label: String(metadata.sheetName) });
+  }
+  const cellRef = metadata.primaryCellRef
+    || (Array.isArray(metadata.cellRefs) && metadata.cellRefs.length ? metadata.cellRefs[0] : null);
+  if (cellRef) {
+    tags.push({ key: 'cellRef', label: String(cellRef) });
   }
   if (metadata.tableRegionLabel) {
     tags.push({ key: 'tableRegion', label: String(metadata.tableRegionLabel) });
@@ -305,6 +315,17 @@ export function buildLibraryDocumentLocateRoute(libraryId, documentId, metadata 
   if (metadata.sheetName) {
     query.sheet = String(metadata.sheetName);
   }
+  if (metadata.rowIndex != null) {
+    query.row = String(metadata.rowIndex);
+  }
+  if (metadata.columnIndex != null) {
+    query.col = String(metadata.columnIndex);
+  }
+  const cellRef = metadata.primaryCellRef
+    || (Array.isArray(metadata.cellRefs) && metadata.cellRefs.length ? metadata.cellRefs[0] : null);
+  if (cellRef) {
+    query.cellRef = String(cellRef);
+  }
   return {
     name: 'library-document-detail',
     params: { libraryId: String(libraryId), documentId: String(documentId) },
@@ -316,10 +337,15 @@ export function canLocateCitation(metadata) {
   if (!metadata || typeof metadata !== 'object') {
     return false;
   }
+  const hasExcelLocate = metadata.sheetName != null
+    && (metadata.rowIndex != null
+      || metadata.primaryCellRef != null
+      || (Array.isArray(metadata.cellCoordinates) && metadata.cellCoordinates.length > 0));
   return metadata.pageNumber != null
-    || metadata.sheetName != null
+    || hasExcelLocate
     || metadata.tableRegionLabel != null
-    || metadata.bbox != null;
+    || metadata.bbox != null
+    || metadata.wordSectionPath != null;
 }
 
 export function isChunkRetrievalEnabled(metadata) {

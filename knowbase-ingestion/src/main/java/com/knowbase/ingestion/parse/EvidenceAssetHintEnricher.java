@@ -97,8 +97,31 @@ public final class EvidenceAssetHintEnricher {
             if (metadata.get("rowIndex") != null) {
                 hint.put("rowIndex", metadata.get("rowIndex"));
             }
+            if (metadata.get("primaryCellRef") != null) {
+                hint.put("primaryCellRef", metadata.get("primaryCellRef"));
+            }
+            if (metadata.get("cellRefs") != null) {
+                hint.put("cellRefs", metadata.get("cellRefs"));
+            }
+            if (metadata.get("columnIndex") != null) {
+                hint.put("columnIndex", metadata.get("columnIndex"));
+            }
             if (metadata.get("tableRegionLabel") != null) {
                 hint.put("tableRegionLabel", metadata.get("tableRegionLabel"));
+            }
+            return hint;
+        }
+        if (metadata.get("wordSectionPath") != null) {
+            hint.put("kind", "word_section");
+            hint.put("wordSectionPath", metadata.get("wordSectionPath"));
+            if (metadata.get("tableRegionId") != null) {
+                hint.put("tableRegionId", metadata.get("tableRegionId"));
+            }
+            if (metadata.get("rowIndex") != null) {
+                hint.put("rowIndex", metadata.get("rowIndex"));
+            }
+            if (metadata.get("primaryCellRef") != null) {
+                hint.put("primaryCellRef", metadata.get("primaryCellRef"));
             }
             return hint;
         }

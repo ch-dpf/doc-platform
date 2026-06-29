@@ -176,6 +176,7 @@ public final class OfficeTableBlockMapper {
             coordinate.put("rowIndex", rowIndex);
             coordinate.put("columnIndex", columnIndex);
             coordinate.put("coordinate", "R" + (rowIndex + 1) + "C" + (columnIndex + 1));
+            coordinate.put("cellRef", coordinate.get("coordinate"));
             coordinate.put("columnKey", headerPath.getLast());
             coordinate.put("headerPath", headerPath);
             coordinate.put("value", cell.text() == null ? "" : cell.text().trim());
