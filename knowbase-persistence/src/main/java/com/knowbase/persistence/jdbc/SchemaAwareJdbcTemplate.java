@@ -2,6 +2,7 @@ package com.knowbase.persistence.jdbc;
 
 import com.knowbase.persistence.support.KnowbaseSchemaSupport;
 import org.springframework.dao.DataAccessException;
+import org.springframework.jdbc.core.ArgumentPreparedStatementSetter;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.PreparedStatementSetter;
@@ -15,7 +16,7 @@ import java.util.List;
 /**
  * Qualifies raw {@code kb_*} SQL and temporarily sets {@code search_path} for connection callbacks.
  */
-public final class SchemaAwareJdbcTemplate extends JdbcTemplate {
+public final class SchemaAwareJdbcTemplate extends JdbcTemplate implements KnowbaseSchemaJdbcTemplate {
 
     private final KnowbaseSchemaSupport schemaSupport;
 
@@ -35,7 +36,7 @@ public final class SchemaAwareJdbcTemplate extends JdbcTemplate {
 
     @Override
     public int update(String sql, @Nullable Object... args) throws DataAccessException {
-        return super.update(qualify(sql), args);
+        return update(sql, new ArgumentPreparedStatementSetter(args));
     }
 
     @Override

@@ -17,7 +17,7 @@ class CrossPageReadingOrderAdjusterTest {
         List<StructuralBlock> blocks = List.of(
                 paragraph("Intro", 0, 1),
                 tableRow("row-a", 1, 1, 0),
-                paragraph("Footer page 1", 2, 1),
+                footerBlock("Footer page 1", 2, 1),
                 tableRow("row-b", 3, 2, 1),
                 paragraph("After table", 4, 1)
         );
@@ -44,6 +44,16 @@ class CrossPageReadingOrderAdjusterTest {
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("readingOrder", order);
         metadata.put("pageNumber", page);
+        metadata.put("columnIndex", 0);
+        metadata.put("columnCount", 1);
+        return new StructuralBlock("paragraph", 0, content, order, Map.copyOf(metadata));
+    }
+
+    private static StructuralBlock footerBlock(String content, int order, int page) {
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("readingOrder", order);
+        metadata.put("pageNumber", page);
+        metadata.put("layoutRole", "footer");
         metadata.put("columnIndex", 0);
         metadata.put("columnCount", 1);
         return new StructuralBlock("paragraph", 0, content, order, Map.copyOf(metadata));

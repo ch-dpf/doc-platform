@@ -202,11 +202,8 @@ public final class PostgresKnowbaseRepository implements KnowbaseRepository {
 
     @Override
     public boolean isLibraryReferencedByAgent(UUID libraryId) {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM kb_agent_version WHERE library_ids @> ?::jsonb",
-                Integer.class,
-                "[\"" + libraryId + "\"]"
-        );
+        Long count = agentVersionMapper.selectCount(new LambdaQueryWrapper<AgentVersionEntity>()
+                .apply("library_ids @> {0}::jsonb", "[\"" + libraryId + "\"]"));
         return count != null && count > 0;
     }
 

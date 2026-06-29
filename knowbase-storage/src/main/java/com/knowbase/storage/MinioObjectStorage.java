@@ -38,7 +38,11 @@ public final class MinioObjectStorage implements ObjectStorage {
                     .build());
             return new StoredObject(bucket, objectKey, "minio://" + bucket + "/" + objectKey, contentType, bytes.length);
         } catch (Exception exception) {
-            throw new IllegalStateException("MinIO 上传失败: " + bucket + "/" + objectKey, exception);
+            String detail = exception.getMessage();
+            if (detail == null || detail.isBlank()) {
+                detail = exception.getClass().getSimpleName();
+            }
+            throw new IllegalStateException("MinIO 上传失败: " + bucket + "/" + objectKey + " (" + detail + ")", exception);
         }
     }
 

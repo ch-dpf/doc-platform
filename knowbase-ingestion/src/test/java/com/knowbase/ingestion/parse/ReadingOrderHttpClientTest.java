@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ReadingOrderHttpClientTest {
 
@@ -48,6 +50,60 @@ class ReadingOrderHttpClientTest {
         if (server != null) {
             server.stop(0);
         }
+    }
+
+    @Test
+    void retriesAfterTransientFailure() {
+        java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+        server.createContext("/reading-order-retry", exchange -> {
+            int attempt = attempts.incrementAndGet();
+            if (attempt == 1) {
+                exchange.sendResponseHeaders(503, -1);
+                exchange.close();
+                return;
+            }
+            byte[] response = """
+                    {
+                      "orders": [
+                        {"index": 1, "readingOrder": 0},
+                        {"index": 0, "readingOrder": 1}
+                      ]
+                    }
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            try (OutputStream output = exchange.getResponseBody()) {
+                output.write(response);
+            }
+        });
+        String retryUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/reading-order-retry";
+        List<StructuralBlock> blocks = List.of(
+                block("Second", 1, 200),
+                block("First", 0, 100)
+        );
+        List<StructuralBlock> ordered = new ReadingOrderHttpClient(Duration.ofSeconds(5)).order(retryUrl, blocks);
+        assertEquals("First", ordered.get(0).content());
+        assertTrue(attempts.get() >= 2);
+    }
+
+    @Test
+    void rejectsIncompleteOrderMapping() {
+        server.createContext("/reading-order-invalid", exchange -> {
+            byte[] response = """
+                    {"orders": [{"index": 0, "readingOrder": 0}]}
+                    """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            try (OutputStream output = exchange.getResponseBody()) {
+                output.write(response);
+            }
+        });
+        String invalidUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/reading-order-invalid";
+        List<StructuralBlock> blocks = List.of(
+                block("A", 0, 100),
+                block("B", 1, 200)
+        );
+        assertNull(new ReadingOrderHttpClient().order(invalidUrl, blocks));
     }
 
     @Test

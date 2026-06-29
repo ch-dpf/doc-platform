@@ -22,6 +22,14 @@ public final class PdfTableCellBboxAssigner {
         }
         float y = row.y();
         float height = Math.max(1f, row.height());
+        List<Float> rowBoundaries = row.cellBoundaryX();
+        if (rowBoundaries.size() >= columnCount + 1 && columnIndex < rowBoundaries.size() - 1) {
+            float minX = rowBoundaries.get(columnIndex);
+            float maxX = rowBoundaries.get(columnIndex + 1);
+            if (maxX > minX) {
+                return List.of(round(minX), round(y), round(maxX - minX), round(height));
+            }
+        }
         if (boundaries != null
                 && boundaries.size() == columnCount
                 && columnIndex < boundaries.size()) {
@@ -33,6 +41,26 @@ public final class PdfTableCellBboxAssigner {
         float segmentWidth = Math.max(1f, row.width() / columnCount);
         float minX = row.minX() + columnIndex * segmentWidth;
         return List.of(round(minX), round(y), round(segmentWidth), round(height));
+    }
+
+    public static String cellBboxSource(
+            PdfTableRowInput row,
+            int columnIndex,
+            int columnCount,
+            List<PdfTableColumnDetector.ColumnBoundary> boundaries
+    ) {
+        List<Float> rowBoundaries = row == null ? List.of() : row.cellBoundaryX();
+        if (rowBoundaries.size() >= columnCount + 1 && columnIndex < rowBoundaries.size() - 1) {
+            float minX = rowBoundaries.get(columnIndex);
+            float maxX = rowBoundaries.get(columnIndex + 1);
+            if (maxX > minX) {
+                return "pdf-ruled-column";
+            }
+        }
+        if (boundaries != null && boundaries.size() == columnCount) {
+            return "pdf-table-estimate";
+        }
+        return "pdf-table-split";
     }
 
     public static List<Double> tableRegionBbox(List<PdfTableRowInput> rows) {

@@ -71,6 +71,44 @@ public final class PdfAlignedColumnDetector {
         return boundaries;
     }
 
+    /**
+     * Derives stable column boundaries from repeated per-row TextPosition cell starts (ruled tables).
+     */
+    public static List<PdfTableColumnDetector.ColumnBoundary> detectRuledBoundaries(
+            List<PdfTableRowInput> rows,
+            int columnCount
+    ) {
+        if (rows == null || rows.isEmpty() || columnCount <= 1) {
+            return List.of();
+        }
+        List<List<Float>> boundarySets = new ArrayList<>();
+        for (PdfTableRowInput row : rows) {
+            List<Float> boundaries = row.cellBoundaryX();
+            if (boundaries.size() >= columnCount + 1) {
+                boundarySets.add(boundaries.subList(0, columnCount + 1));
+            }
+        }
+        if (boundarySets.size() < 2) {
+            return List.of();
+        }
+        List<PdfTableColumnDetector.ColumnBoundary> result = new ArrayList<>(columnCount);
+        for (int columnIndex = 0; columnIndex < columnCount; columnIndex++) {
+            List<Float> starts = new ArrayList<>(boundarySets.size());
+            List<Float> ends = new ArrayList<>(boundarySets.size());
+            for (List<Float> set : boundarySets) {
+                starts.add(set.get(columnIndex));
+                ends.add(set.get(columnIndex + 1));
+            }
+            float minX = median(starts);
+            float maxX = median(ends);
+            if (maxX <= minX) {
+                maxX = minX + 1f;
+            }
+            result.add(new PdfTableColumnDetector.ColumnBoundary(columnIndex, minX, maxX));
+        }
+        return result;
+    }
+
     public static boolean boundariesMatch(
             List<PdfTableColumnDetector.ColumnBoundary> left,
             List<PdfTableColumnDetector.ColumnBoundary> right

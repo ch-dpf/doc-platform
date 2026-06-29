@@ -30,6 +30,7 @@ import com.knowbase.persistence.store.EmbeddingStore;
 import com.knowbase.persistence.support.KnowbaseSchemaSupport;
 import com.knowbase.retrieval.Retriever;
 import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -138,5 +139,40 @@ public class KnowbasePersistenceAutoConfiguration {
             EmbeddingStore embeddingStore
     ) {
         return new PgVectorRetriever(repository, embeddingModelClient, embeddingStore);
+    }
+
+    @Bean
+    static KnowbasePersistenceSchemaRebindPostProcessor knowbasePersistenceSchemaRebindPostProcessor(
+            KnowbaseSchemaSupport schemaSupport,
+            @Qualifier("knowbaseJdbcTemplate") ObjectProvider<JdbcTemplate> knowbaseJdbcTemplateProvider,
+            LibraryMapper libraryMapper,
+            LibraryProfileMapper libraryProfileMapper,
+            TokenizerProfileMapper tokenizerProfileMapper,
+            DocumentProfileMapper documentProfileMapper,
+            IndexVersionMapper indexVersionMapper,
+            IngestionRunMapper ingestionRunMapper,
+            DocumentIndexJobMapper documentIndexJobMapper,
+            DocumentMapper documentMapper,
+            ChunkMapper chunkMapper,
+            AgentMapper agentMapper,
+            AgentVersionMapper agentVersionMapper,
+            QueryRunMapper queryRunMapper
+    ) {
+        return new KnowbasePersistenceSchemaRebindPostProcessor(
+                schemaSupport,
+                knowbaseJdbcTemplateProvider,
+                libraryMapper,
+                libraryProfileMapper,
+                tokenizerProfileMapper,
+                documentProfileMapper,
+                indexVersionMapper,
+                ingestionRunMapper,
+                documentIndexJobMapper,
+                documentMapper,
+                chunkMapper,
+                agentMapper,
+                agentVersionMapper,
+                queryRunMapper
+        );
     }
 }

@@ -134,6 +134,7 @@ public final class PdfTableCellExtractor {
                 : tableDetection);
         if (row.pageNumber() > firstPage) {
             metadata.put("tableContinuation", true);
+            metadata.put("continuationOf", tableRegionId);
             metadata.put("tableContinuationFromPage", firstPage);
         }
         metadata.put("tablePageSpan", List.of(firstPage, row.pageNumber()));
@@ -164,7 +165,7 @@ public final class PdfTableCellExtractor {
             List<Double> bbox = PdfTableCellBboxAssigner.cellBbox(row, columnIndex, columnCount, columnBoundaries);
             if (!bbox.isEmpty()) {
                 cell.put("bbox", bbox);
-                cell.put("bboxSource", "pdf-table-estimate");
+                cell.put("bboxSource", PdfTableCellBboxAssigner.cellBboxSource(row, columnIndex, columnCount, columnBoundaries));
             }
             cells.add(Map.copyOf(cell));
         }

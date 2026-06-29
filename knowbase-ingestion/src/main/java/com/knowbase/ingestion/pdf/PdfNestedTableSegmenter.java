@@ -14,7 +14,10 @@ public final class PdfNestedTableSegmenter {
     private PdfNestedTableSegmenter() {
     }
 
-    public record TableSegment(List<PdfTableRowInput> rows, int nestedDepth, boolean nested) {
+    public record TableSegment(List<PdfTableRowInput> rows, int nestedDepth, boolean nested, int segmentIndex) {
+        public TableSegment(List<PdfTableRowInput> rows, int nestedDepth, boolean nested) {
+            this(rows, nestedDepth, nested, 0);
+        }
     }
 
     public static List<TableSegment> segment(List<PdfTableRowInput> rows) {
@@ -22,26 +25,31 @@ public final class PdfNestedTableSegmenter {
             return List.of();
         }
         if (rows.size() == 1) {
-            return List.of(new TableSegment(List.copyOf(rows), 0, false));
+            return List.of(new TableSegment(List.copyOf(rows), 0, false, 0));
         }
         List<TableSegment> segments = new ArrayList<>();
         List<PdfTableRowInput> current = new ArrayList<>();
         int baseColumns = columnCount(rows.getFirst());
         float baseMinX = rows.getFirst().minX();
         int nestedDepth = 0;
+        int segmentIndex = 0;
 
         for (PdfTableRowInput row : rows) {
             if (!current.isEmpty() && shouldSplit(current, row, baseColumns, baseMinX)) {
-                segments.add(new TableSegment(List.copyOf(current), nestedDepth, nestedDepth > 0));
+                segments.add(new TableSegment(List.copyOf(current), nestedDepth, nestedDepth > 0, segmentIndex++));
                 current = new ArrayList<>();
-                nestedDepth = isNestedRelativeTo(row, baseMinX) ? 1 : 0;
+                if (isNestedRelativeTo(row, baseMinX)) {
+                    nestedDepth = Math.max(1, nestedDepth + 1);
+                } else if (columnCount(row) != baseColumns) {
+                    nestedDepth = 0;
+                }
                 baseColumns = columnCount(row);
                 baseMinX = row.minX();
             }
             current.add(row);
         }
         if (!current.isEmpty()) {
-            segments.add(new TableSegment(List.copyOf(current), nestedDepth, nestedDepth > 0));
+            segments.add(new TableSegment(List.copyOf(current), nestedDepth, nestedDepth > 0, segmentIndex));
         }
         return List.copyOf(segments);
     }

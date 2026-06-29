@@ -31,6 +31,16 @@ class PdfTableRegionMergerTest {
     }
 
     @Test
+    void continuationNormalizationInheritsBoundaries() {
+        List<PdfTableRowInput> pageOne = List.of(
+                row(1, "A\tB", 72f, List.of(72f, 150f, 220f))
+        );
+        List<PdfTableRowInput> pageTwo = List.of(row(2, "1\t2", 72f, List.of()));
+        List<PdfTableRowInput> normalized = PdfTableRegionMerger.normalizeContinuationRows(pageOne, pageTwo);
+        assertEquals(3, normalized.getFirst().cellBoundaryX().size());
+    }
+
+    @Test
     void mergesWhenNextPageRepeatsHeader() {
         List<PdfTableRowInput> pageOne = List.of(
                 row(1, "Name\tAge", 72f, List.of(72f, 150f, 220f)),

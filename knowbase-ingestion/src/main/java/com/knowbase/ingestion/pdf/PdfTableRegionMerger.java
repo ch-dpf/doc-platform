@@ -21,7 +21,10 @@ public final class PdfTableRegionMerger {
             PdfTableRegionSlice next = regions.get(index);
             if (isContinuation(current.rows(), next.rows())) {
                 List<PdfTableRowInput> combined = new ArrayList<>(current.rows());
-                combined.addAll(skipRepeatedHeader(current.rows(), next.rows()));
+                combined.addAll(normalizeContinuationRows(
+                        current.rows(),
+                        skipRepeatedHeaderRows(current.rows(), next.rows())
+                ));
                 current = new PdfTableRegionSlice(current.tableRegionId(), combined);
             } else {
                 merged.add(current);
@@ -54,17 +57,74 @@ public final class PdfTableRegionMerger {
         return Math.abs(first.minX() - last.minX()) < 24f;
     }
 
-    private static List<PdfTableRowInput> skipRepeatedHeader(
+    public static List<PdfTableRowInput> skipRepeatedHeaderRows(
             List<PdfTableRowInput> previous,
             List<PdfTableRowInput> next
     ) {
         if (next.isEmpty() || previous.isEmpty()) {
-            return next == null ? List.of() : next;
+            return next == null ? List.of() : List.copyOf(next);
         }
         if (looksLikeRepeatedHeader(previous.getFirst(), next.getFirst())) {
             return next.size() <= 1 ? List.of() : List.copyOf(next.subList(1, next.size()));
         }
         return List.copyOf(next);
+    }
+
+    /**
+     * Copies ruled column boundaries from the previous page when continuation rows lack TextPosition anchors.
+     */
+    public static List<PdfTableRowInput> normalizeContinuationRows(
+            List<PdfTableRowInput> previous,
+            List<PdfTableRowInput> next
+    ) {
+        if (previous == null || next == null || previous.isEmpty() || next.isEmpty()) {
+            return next == null ? List.of() : List.copyOf(next);
+        }
+        PdfTableRowInput template = boundaryTemplate(previous);
+        if (template == null) {
+            return List.copyOf(next);
+        }
+        List<Float> boundaries = template.cellBoundaryX();
+        int columnCount = PdfTableColumnDetector.estimateColumnCount(previous);
+        if (boundaries.size() < columnCount + 1) {
+            return List.copyOf(next);
+        }
+        List<PdfTableRowInput> normalized = new ArrayList<>(next.size());
+        for (PdfTableRowInput row : next) {
+            if (row.cellBoundaryX().size() >= columnCount + 1) {
+                normalized.add(row);
+                continue;
+            }
+            normalized.add(new PdfTableRowInput(
+                    row.pageNumber(),
+                    row.readingOrder(),
+                    row.columnIndex(),
+                    Math.max(row.columnCount(), columnCount),
+                    row.content(),
+                    row.minX(),
+                    row.y(),
+                    row.width(),
+                    row.height(),
+                    boundaries
+            ));
+        }
+        return List.copyOf(normalized);
+    }
+
+    private static PdfTableRowInput boundaryTemplate(List<PdfTableRowInput> rows) {
+        for (PdfTableRowInput row : rows) {
+            if (row.cellBoundaryX().size() >= 3) {
+                return row;
+            }
+        }
+        return rows.getFirst();
+    }
+
+    private static List<PdfTableRowInput> skipRepeatedHeader(
+            List<PdfTableRowInput> previous,
+            List<PdfTableRowInput> next
+    ) {
+        return skipRepeatedHeaderRows(previous, next);
     }
 
     private static boolean looksLikeRepeatedHeader(PdfTableRowInput previousFirst, PdfTableRowInput nextFirst) {

@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 try {
     Write-Host "Creating knowbase-reading-order model from Modelfile..."
@@ -29,7 +29,8 @@ try {
     Write-Host "Enable in application.yml:"
     Write-Host "  knowbase.ingestion.layout.ollama.enabled: true"
     Write-Host "  knowbase.ingestion.layout.default-provider: ollama-layout"
-    Write-Host "  knowbase.ingestion.reading-order.provider: ollama"
+    Write-Host "  knowbase.ingestion.reading-order.provider: ollama   # or http when endpoint is set; falls back to heuristic-bbox"
+    Write-Host "  knowbase.ingestion.reading-order.endpoint: http://localhost:8090/reading-order   # optional HTTP-first"
     Write-Host "  knowbase.ollama.vision-language-model: $VisionModel"
 } finally {
     Pop-Location

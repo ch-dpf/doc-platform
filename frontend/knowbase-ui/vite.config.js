@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
   const apiTarget =
     env.KNOWBASE_API_BASE_URL ||
     env.VITE_DEV_PROXY_TARGET ||
-    'http://127.0.0.1:8088';
+    'http://192.168.14.65:8088';
 
   console.log(`[knowbase-ui] API proxy target: ${apiTarget}`);
 

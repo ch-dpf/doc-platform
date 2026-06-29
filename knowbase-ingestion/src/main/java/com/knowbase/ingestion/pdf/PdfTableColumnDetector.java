@@ -23,6 +23,10 @@ public final class PdfTableColumnDetector {
         if (!aligned.isEmpty()) {
             return aligned;
         }
+        List<ColumnBoundary> ruled = PdfAlignedColumnDetector.detectRuledBoundaries(rows, columnCount);
+        if (!ruled.isEmpty()) {
+            return ruled;
+        }
         return detectFromRowStarts(rows);
     }
 
@@ -49,13 +53,24 @@ public final class PdfTableColumnDetector {
     }
 
     public static int estimateColumnCount(List<PdfTableRowInput> rows) {
-        List<ColumnBoundary> boundaries = detectFromRowStarts(rows);
-        if (boundaries.isEmpty()) {
+        if (rows == null || rows.isEmpty()) {
             return 1;
         }
+        int maxFromBoundaries = 1;
         int maxCells = 1;
         for (PdfTableRowInput row : rows) {
             maxCells = Math.max(maxCells, splitCells(row.content()).size());
+            List<Float> boundaries = row.cellBoundaryX();
+            if (boundaries.size() >= 2) {
+                maxFromBoundaries = Math.max(maxFromBoundaries, boundaries.size() - 1);
+            }
+        }
+        if (maxFromBoundaries >= 2) {
+            return Math.max(maxCells, maxFromBoundaries);
+        }
+        List<ColumnBoundary> boundaries = detectFromRowStarts(rows);
+        if (boundaries.isEmpty()) {
+            return Math.max(1, maxCells);
         }
         return Math.max(maxCells, boundaries.size());
     }

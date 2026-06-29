@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
  */
 public final class KnowbaseSchemaSupport {
 
-    private static final Pattern KB_TABLE = Pattern.compile("\\b(kb_[a-z_]+)\\b");
+    private static final Pattern KB_TABLE = Pattern.compile("(?<!\\w\\.)\\b(kb_[a-z_]+)\\b");
 
     private final String schema;
 

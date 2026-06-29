@@ -47,7 +47,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                     List.of(
                             documentProfile("default_markdown", "RICH_TEXT", "markdown-structure", "structure_token_window"),
                             documentProfile("default_docx", "RICH_TEXT", "docx-structure", "structure_token_window"),
-                            documentProfile("default_pdf", "RICH_TEXT", "pdf-layout", "page_token_window"),
+                            pdfDocumentProfile("default_pdf", "RICH_TEXT", "pdf-layout", "page_token_window"),
                             documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                             documentProfile("default_code_or_config", "CODE_OR_CONFIG", "code-config-structure", "code_token_window"),
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
@@ -69,7 +69,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
                             tableDocumentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                             documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window"),
-                            documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "pdf-layout", "page_token_window")
+                            pdfDocumentProfile("default_scanned_document", "SCANNED_DOCUMENT", "pdf-layout", "page_token_window")
                     )
             ),
             libraryPreset(
@@ -107,7 +107,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                             documentProfile("default_markdown", "RICH_TEXT", "markdown-structure", "structure_token_window"),
                             documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                             documentProfile("default_rich_text", "RICH_TEXT", "tika", "structure_token_window"),
-                            documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "pdf-layout", "page_token_window")
+                            pdfDocumentProfile("default_scanned_document", "SCANNED_DOCUMENT", "pdf-layout", "page_token_window")
                     )
             ),
             libraryPreset(
@@ -271,6 +271,52 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
             String parserCode,
             String chunkingStrategy
     ) {
+        return documentProfile(code, contentFamily, parserCode, chunkingStrategy, Map.of());
+    }
+
+    private static Map<String, Object> pdfDocumentProfile(
+            String code,
+            String contentFamily,
+            String parserCode,
+            String chunkingStrategy
+    ) {
+        Map<String, Object> readingOrderOptions = Map.of(
+                "readingOrderProvider", "ollama",
+                "readingOrderOllamaModel", "knowbase-reading-order"
+        );
+        return documentProfile(code, contentFamily, parserCode, chunkingStrategy, readingOrderOptions);
+    }
+
+    private static Map<String, Object> documentProfile(
+            String code,
+            String contentFamily,
+            String parserCode,
+            String chunkingStrategy,
+            Map<String, Object> extraOptions
+    ) {
+        Map<String, Object> options = new java.util.HashMap<>();
+        options.put("preserveStructureBoundary", true);
+        options.put("fallbackSplitMode", "recursive");
+        options.put("chunkMode", "parent_child");
+        options.put("splitMode", "recursive");
+        options.put("chunkSizeUnit", "token");
+        options.put("chunkMaxChars", 2048);
+        options.put("chunkOverlapChars", 256);
+        options.put("minChunkChars", 80);
+        options.put("prependHeadingContext", true);
+        options.put("unicodeNormalize", true);
+        options.put("dehyphenateLineBreaks", true);
+        options.put("removePageFooters", true);
+        options.put("chunkEngine", "smart");
+        options.put("llmDocumentSummary", false);
+        options.put("llmSummaryPromptId", "default_summary");
+        options.put("llmSummaryMaxInputChars", 16384);
+        options.put("llmSummaryMaxChars", 500);
+        options.put("llmSummaryTemperature", 0.3);
+        options.put("llmSummaryMaxCompletionTokens", 2048);
+        if (extraOptions != null) {
+            options.putAll(extraOptions);
+        }
         return Map.of(
                 "code", code,
                 "contentFamily", contentFamily,
@@ -283,27 +329,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                         "page", "integer",
                         "section", "string"
                 ),
-                "options", Map.ofEntries(
-                        Map.entry("preserveStructureBoundary", true),
-                        Map.entry("fallbackSplitMode", "recursive"),
-                        Map.entry("chunkMode", "parent_child"),
-                        Map.entry("splitMode", "recursive"),
-                        Map.entry("chunkSizeUnit", "token"),
-                        Map.entry("chunkMaxChars", 2048),
-                        Map.entry("chunkOverlapChars", 256),
-                        Map.entry("minChunkChars", 80),
-                        Map.entry("prependHeadingContext", true),
-                        Map.entry("unicodeNormalize", true),
-                        Map.entry("dehyphenateLineBreaks", true),
-                        Map.entry("removePageFooters", true),
-                        Map.entry("chunkEngine", "smart"),
-                        Map.entry("llmDocumentSummary", false),
-                        Map.entry("llmSummaryPromptId", "default_summary"),
-                        Map.entry("llmSummaryMaxInputChars", 16384),
-                        Map.entry("llmSummaryMaxChars", 500),
-                        Map.entry("llmSummaryTemperature", 0.3),
-                        Map.entry("llmSummaryMaxCompletionTokens", 2048)
-                )
+                "options", Map.copyOf(options)
         );
     }
 
@@ -362,7 +388,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
         return List.of(
                 documentProfile("default_markdown", "RICH_TEXT", "markdown-structure", "structure_token_window"),
                 documentProfile("default_docx", "RICH_TEXT", "docx-structure", "structure_token_window"),
-                documentProfile("default_pdf", "RICH_TEXT", "pdf-layout", "page_token_window"),
+                pdfDocumentProfile("default_pdf", "RICH_TEXT", "pdf-layout", "page_token_window"),
                 documentProfile("default_pdf_structure", "RICH_TEXT", "pdf-structure", "page_token_window"),
                 documentProfile("default_text", "PLAIN_TEXT", "text-structure", "paragraph_token_window"),
                 documentProfile("default_faq", "PLAIN_TEXT", "qa", "qa_token_window"),
@@ -371,7 +397,7 @@ public final class BuiltinPresetCatalog implements PresetCatalog {
                 tableDocumentProfile("default_table", "STRUCTURED_TABLE", "table-deep", "table_row_token_window"),
                 documentProfile("default_presentation", "PRESENTATION", "pptx-structure", "slide_token_window"),
                 documentProfile("default_web_page", "WEB_PAGE", "html-structure", "dom_token_window"),
-                documentProfile("default_scanned_document", "SCANNED_DOCUMENT", "pdf-layout", "page_token_window"),
+                pdfDocumentProfile("default_scanned_document", "SCANNED_DOCUMENT", "pdf-layout", "page_token_window"),
                 documentProfile("default_image", "IMAGE_TEXT", "ocr-layout", "page_token_window"),
                 documentProfile("default_code_or_config", "CODE_OR_CONFIG", "code-config-structure", "code_token_window")
         );

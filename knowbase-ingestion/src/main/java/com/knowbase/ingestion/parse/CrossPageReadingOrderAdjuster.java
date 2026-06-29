@@ -36,7 +36,56 @@ public final class CrossPageReadingOrderAdjuster {
             working.removeIf(block -> belongsToRegion(block, entry.getKey()));
             working.addAll(Math.min(anchor, working.size()), sorted);
         }
-        return renumber(working);
+        return renumber(deprioritizeFootersAfterTables(working));
+    }
+
+    /**
+     * Moves page footers that interrupt a cross-page table to immediately after the table rows.
+     */
+    private static List<StructuralBlock> deprioritizeFootersAfterTables(List<StructuralBlock> blocks) {
+        List<StructuralBlock> result = new ArrayList<>(blocks.size());
+        for (int index = 0; index < blocks.size(); index++) {
+            StructuralBlock block = blocks.get(index);
+            if (!isFooter(block)) {
+                result.add(block);
+                continue;
+            }
+            int tableEnd = findPrecedingTableEnd(result);
+            if (tableEnd < 0) {
+                result.add(block);
+                continue;
+            }
+            StructuralBlock footer = block;
+            int insertAt = tableEnd + 1;
+            while (insertAt < result.size() && isTableRow(result.get(insertAt))
+                    && pageNumber(result.get(insertAt)) <= pageNumber(footer)) {
+                insertAt++;
+            }
+            if (insertAt >= result.size()) {
+                result.add(footer);
+            } else {
+                result.add(insertAt, footer);
+            }
+        }
+        return result;
+    }
+
+    private static int findPrecedingTableEnd(List<StructuralBlock> blocks) {
+        for (int index = blocks.size() - 1; index >= 0; index--) {
+            if (isTableRow(blocks.get(index))) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean isFooter(StructuralBlock block) {
+        return "footer".equals(block.metadata().get("layoutRole"))
+                || "footer".equals(block.metadata().get("boundaryType"));
+    }
+
+    private static boolean isTableRow(StructuralBlock block) {
+        return "table_row".equals(block.blockType());
     }
 
     private static Map<Integer, List<StructuralBlock>> groupTableRows(List<StructuralBlock> blocks) {
