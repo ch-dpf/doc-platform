@@ -6,7 +6,7 @@ KnowBase 是面向内部知识管理场景的 RAG 平台，提供知识库建设
 
 ## 核心流程
 
-1. 建仓入库：创建知识库，按库类型预设生成默认 Profile，执行 tokenizer 驱动的文档切块、Embedding、pgvector 入库与索引发布。
+1. 建仓入库：创建知识库，按库类型预设生成默认 Profile；文档持续入库（tokenizer 驱动切块、Embedding、pgvector 写入 **active 索引代次**），日常路径下文档 `INDEXED` 即可检索。
 2. 智能体编排：创建知识智能体，绑定一个或多个知识库，叠加场景规则预设、路由策略、检索策略与回答策略。
 3. 智能问答：基于智能体执行多库路由、检索、证据融合、上下文拼装、回答生成、引用返回与运行轨迹记录。
 
@@ -69,12 +69,19 @@ mvn -q "-Dmaven.repo.local=.m2/repository" -DskipTests package
 
 | 路径 | 功能 |
 |------|------|
-| `/libraries` | 知识库分页列表、建库、详情抽屉（索引版本 / 文档 chunk / ACL） |
-| `/ingestions` | 三步入库向导：上传 → 分段预览 → 向量化入库 |
-| `/agents` | 智能体创建、版本发布、检索测试 |
-| `/qa` | 基于已发布智能体版本问答 |
-| `/observability` | Pipeline Trace 与评测运行 |
+| `/home` | 首页入口 |
+| `/libraries` | 知识库分页列表、建库（库类型预设与 product-guide） |
+| `/libraries/:libraryId/documents` | 文档列表、上传入库向导（快捷上传或分步：upload-batch → prepare → ingestion-runs） |
+| `/libraries/:libraryId/documents/:documentId` | 文档详情：原文预览、chunk 分页编辑、pipeline trace |
+| `/libraries/:libraryId/retrieval-test` | 库级召回测试、黄金集 CRUD、Recall@K 评测 |
+| `/libraries/:libraryId/settings` | Library / Document Profile、索引健康、重复文档、批量重索引 |
+| `/libraries/:libraryId/acl` | 库级 ACL |
+| `/agents` | 智能体创建、版本发布/禁用、检索测试 |
+| `/qa` | 基于已发布智能体版本的单次问答（`POST /query-runs`） |
+| `/observability` | Pipeline Trace 与 Observability 评测运行 |
 | `/presets` | 库类型 / 场景规则预设管理 |
+
+REST 一键上传入库：`POST .../documents` 或 `POST .../ingestion-runs/upload`；索引代次运维（rebuild / promote）见 [API.md](docs/API.md) §3.5，当前控制台未提供对应 UI。
 
 也可以在后端打包后使用 root compose 启动应用服务：
 
@@ -182,7 +189,7 @@ knowbase:
 
 该脚本会提交 `file://D:/document` 目录来源，后端按扩展名自动展开 Markdown、PDF、Word、Excel 等文件，并在同一个知识库内按文档 Profile 自动路由解析。默认只入库前 12 个样例文件，避免首次验证时批量处理过大；可通过 `-MaxFiles` 与 `-Extensions` 调整范围。
 
-当前入库解析遵循主流 RAG 项目的分层方式：来源加载与目录扫描、文件类型识别、Profile/Parser 自动路由、结构优先分段、模型 tokenizer token 窗口切块、Embedding、向量入库和索引发布分阶段执行。默认支持 Markdown/TXT、PDF、Word、Excel/CSV、PPT、HTML、代码配置文件，并为后续 OCR 图片解析与专用表格切分保留扩展点。
+当前入库解析遵循主流 RAG 项目的分层方式：来源加载与目录扫描、文件类型识别、Profile/Parser 自动路由、结构优先分段、模型 tokenizer token 窗口切块、Embedding、向量写入 active 索引代次分阶段执行。默认支持 Markdown/TXT、PDF、Word、Excel/CSV、PPT、HTML、代码配置文件，并为后续 OCR 图片解析与专用表格切分保留扩展点。
 
 Tokenizer Profile 已作为一等配置对象暴露：
 
@@ -203,12 +210,13 @@ POST /api/v1/agents/{agentId}/retrieval-tests
 
 **已实现的管理与运维能力**（详见 [API.md](docs/API.md)）：
 
-- 知识库分页查询与删除；索引版本 / 文档 / chunk 目录 API。
-- 文件上传（本地 FS 或 MinIO）、`upload-and-ingest` 一键入库、分阶段 `preview` / `prepare`。
-- 智能体版本生命周期（测试 → 发布 → 禁用）；库级 ACL；Pipeline Trace 与评测运行。
-- 多轮 Chat 会话 REST API（`/api/v1/chat/sessions`）。
+- 知识库 CRUD；文档分页 / 详情 / 预览 / 下载 / 批量删除；chunk 分页与编辑；文档 pipeline trace。
+- 索引代次运维 API（`index-generations` 列表 / rebuild / promote、健康检查、promote 门禁）；Library Profile 与 Document Profile 版本管理。
+- ObjectStorage 上传；`POST .../documents` 或 `ingestion-runs/upload` 一键入库；分阶段 `preview` / `prepare`。
+- 库级召回测试与黄金集评测（Recall@K、基线、generate-drafts）；智能体版本生命周期；库级 ACL；Observability Trace / 评测运行。
+- 多轮 Chat 会话 REST API（`/api/v1/chat/sessions`）— 后端已实现，控制台问答页当前使用单次 `POST /query-runs`。
 
-架构演进（文档一等、索引代次内化）见 [DESIGN_EVOLUTION_OUTLINE.md](docs/DESIGN_EVOLUTION_OUTLINE.md)。
+架构演进背景与迁移记录见 [DESIGN_EVOLUTION_OUTLINE.md](docs/DESIGN_EVOLUTION_OUTLINE.md)（Wave 3 文档一等入库与 `index-generations` 命名已完成；后续能力见该文档 Wave 4+）。
 
 ## 文档
 

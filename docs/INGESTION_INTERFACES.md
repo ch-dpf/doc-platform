@@ -17,7 +17,10 @@
 - 上传文件统一写入 `ObjectStorage` 抽象。
 - 默认 `knowbase.storage.type=local`，对象会写入本地文件系统对象存储根目录。
 - 配置 `knowbase.storage.type=minio` 时，对象会写入 MinIO，并返回 `minio://bucket/objectKey`。
-- `POST /api/v1/libraries/{libraryId}/ingestion-runs/upload` 使用路径参数 `libraryId` 绑定目标知识库，multipart 中只传文件、Profile 和发布选项。
+- **一键上传入库**（任选其一）：
+  - `POST /api/v1/libraries/{libraryId}/ingestion-runs/upload` — multipart 传 `files`、可选 `documentProfileCode` 与 `autoStart`
+  - `POST /api/v1/libraries/{libraryId}/documents` — 同上，路径挂在文档目录下
+- **分步入库**（前端向导）：先 `POST /api/v1/storage/upload-batch`，再 `POST .../ingestion/prepare`，最后 `POST .../ingestion-runs`（`sourceUris` 为上一步返回的 URI）。
 - 前端批量/文件夹上传会保留浏览器提供的相对路径作为 multipart filename，后端按对象 key 存储并返回 source URI。
 
 ## 核心接口

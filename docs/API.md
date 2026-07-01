@@ -154,17 +154,33 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 
 #### 查询文档列表
 
-`GET /api/v1/libraries/{libraryId}/documents?indexVersionId=`
+`GET /api/v1/libraries/{libraryId}/documents?page=1&size=20&indexVersionId=`
 
-响应 `data`：`KnowledgeDocumentResult[]`（含 `status`、`chunkCount`、`lastIndexedAt`）
+响应 `data`：`PageResult<KnowledgeDocumentResult>`（`items`、`total`、`page`、`size`；每项含 `status`、`chunkCount`、`lastIndexedAt`）
 
-说明：`indexVersionId` 可选；**默认省略**时只返回当前 `active` 索引代次下的文档。日常入库不再 bump 代次，文档 `INDEXED` 即可检索。
+说明：`page` 从 1 开始，`size` 默认 20、上限 100。`indexVersionId` 可选；**默认省略**时只返回当前 `active` 索引代次下的文档。日常入库不再 bump 代次，文档 `INDEXED` 即可检索。
 
 #### 删除文档
 
 `DELETE /api/v1/libraries/{libraryId}/documents/{documentId}`
 
 说明：同步删除 chunk 与 embedding。
+
+#### 批量删除文档
+
+`POST /api/v1/libraries/{libraryId}/documents/batch-delete`
+
+请求体：
+
+```json
+{
+  "documentIds": ["00000000-0000-0000-0000-000000000001"]
+}
+```
+
+响应 `data`：`BatchDeleteDocumentsResult`（`deletedCount`、`deletedDocumentIds`）
+
+说明：跳过不属于当前知识库或已不存在的 ID。
 
 #### 重索引文档
 
@@ -212,11 +228,17 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 
 `GET /api/v1/libraries/{libraryId}/profiles` — Profile 版本历史
 
+`GET /api/v1/libraries/{libraryId}/profiles/{profileId}` — 指定 Library Profile 版本详情
+
 `GET|POST|PUT|DELETE /api/v1/libraries/{libraryId}/document-profiles` — Document Profile CRUD
+
+`GET /api/v1/libraries/{libraryId}/document-profiles/{code}` — 按编码查询单个 Document Profile
 
 `POST /api/v1/libraries/{libraryId}/retrieval-eval-samples/import` — JSON 批量导入黄金集
 
 `POST /api/v1/libraries/{libraryId}/retrieval-eval-samples/bootstrap-sample-documents` — 从 sample-documents 引导样本
+
+`POST /api/v1/libraries/{libraryId}/retrieval-eval-samples/generate-drafts` — 基于入库结果自动生成评测样本草稿
 
 `GET /api/v1/libraries/{libraryId}/retrieval-eval-baseline` — 回归基线
 
@@ -291,6 +313,14 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 
 说明：至少提供 `content` 或 `retrievalEnabled` 之一。修改 `content` 会重新 token 计数并向量化；`retrievalEnabled=false` 的块不参与检索（vector/keyword/hybrid）。
 
+#### 查询文档入库 Trace
+
+`GET /api/v1/libraries/{libraryId}/documents/{documentId}/pipeline-trace`
+
+响应 `data`：`DocumentPipelineTraceResult`（`runId`、`traceId`、作业 `status`/`stage`、可见 chunk 数）
+
+说明：基于该文档最近一次 `DocumentIndexJob` 与关联 `IngestionRun` 汇总；无入库记录时 404。
+
 ### 3.6 创建入库运行
 
 `POST /api/v1/libraries/{libraryId}/ingestion-runs`
@@ -360,7 +390,16 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 }
 ```
 
-说明：文件先写入 ObjectStorage（默认本地 FS，可配置 MinIO），再按上传 URI 创建入库运行。前端入库向导与「上传并创建入库任务」快捷按钮均调用此接口。
+说明：文件先写入 ObjectStorage（默认本地 FS，可配置 MinIO），再按上传 URI 创建入库运行。与 `POST .../documents` 行为等价，路径挂在入库任务命名空间下，适合脚本或外部系统一键上传入库。
+
+**前端控制台实际路径**（`DocumentIngestWizard`）：
+
+| 模式 | 调用链 |
+|------|--------|
+| 快捷上传并入库 | `POST .../documents`（multipart，含 `autoStart=true`） |
+| 分步入库向导 | ① `POST /api/v1/storage/upload-batch` → ② `POST .../ingestion/prepare`（`prepareStage=all`）→ ③ `POST .../ingestion-runs` |
+
+向导**不**调用 `ingestion-runs/upload`；该接口仍供 API 客户端直接使用。
 
 ### 3.10 入库分段预览
 
@@ -380,6 +419,8 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 
 `POST /api/v1/libraries/{libraryId}/ingestion/prepare/chunk` — 解析 + 清洗 + 切块
 
+`POST /api/v1/libraries/{libraryId}/ingestion/prepare/summarize` — **已停用**（等价于 chunk 阶段，保留仅为兼容旧客户端）
+
 请求体：
 
 ```json
@@ -393,7 +434,7 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 
 响应 `data`：`IngestionPrepareResult`（含每文档的解析块、清洗统计与 chunk 预览）
 
-说明：前端入库向导第二步调用 `prepare/chunk`，用于在正式向量化前预览分段效果。
+说明：前端入库向导第二步调用 `POST .../ingestion/prepare`（请求体 `prepareStage=all`），在正式向量化前预览完整流水线效果。分阶段路径（`/parse`、`/normalize`、`/chunk`）供调试或 API 客户端按需使用。
 
 ### 3.12 对象存储上传
 
@@ -403,7 +444,7 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 
 响应 `data`：`ObjectUploadResult` 或 `BatchObjectUploadResult`
 
-说明：返回 `uri` 可作为入库 `sourceUris` 使用；与 `ingestion-runs/upload` 的区别在于后者上传后会自动创建入库任务。
+说明：返回 `uri` 可作为入库 `sourceUris` 使用。分步入库向导第一步调用 `upload-batch`；`ingestion-runs/upload` 则在同一请求内完成上传 + 创建入库任务。
 
 ### 3.13 创建知识智能体
 
@@ -660,34 +701,37 @@ knowbase:
 **知识库与目录**
 
 - 创建/分页查询/详情/删除知识库；按库类型预设生成默认 Profile 与 Document Profile。
-- 索引版本列表/详情/发布；文档与 chunk 目录查询（`LibraryCatalogController`）。
-- 库级 ACL 授予/撤销/列表（`AclController`）。
+- 索引代次运维（`index-generations` 列表/rebuild/promote、健康检查、promote 门禁）；文档分页列表/详情/预览/下载/批量删除；chunk 分页与编辑；文档级 pipeline trace（`LibraryCatalogController`）。
+- Library Profile 版本管理与 Document Profile CRUD（库配置页）；库级 ACL 授予/撤销/列表（`AclController`）。
 
 **入库 Pipeline**
 
 - URI 驱动入库（inline、file 单文件、file 目录）；同步/异步执行可配置。
-- 文件上传至本地 FS 或 MinIO；`upload-and-ingest` 一键上传入库。
-- 分阶段 preview / prepare（parse → normalize → chunk）；入库失败文档错误列表。
-- Tokenizer Profile 驱动分块；PostgreSQL + pgvector 持久化；索引版本发布。
+- ObjectStorage 上传（单文件/批量）；文档目录 `POST .../documents` 或 `ingestion-runs/upload` 一键上传入库。
+- 分阶段 preview / prepare（parse → normalize → chunk）；入库失败文档错误列表与 DocumentIndexJob 追踪。
+- Tokenizer Profile 驱动分块；PostgreSQL + pgvector 持久化；document upsert 写入 active 索引代次。
 
 **智能体与问答**
 
 - 知识智能体 CRUD；版本生命周期（创建 → 测试中 → 发布 → 禁用）。
 - 多库路由、RRF 融合、MMR 重排、contentFamily 权重；检索测试与正式问答。
-- 多轮 Chat 会话 API；QueryRun 轨迹与证据/引用返回。
+- 多轮 Chat 会话 API（后端已实现）；前端问答页当前以单次 QueryRun 为主。
 
-**预设与观测**
+**预设、评测与观测**
 
-- 库类型/场景规则预设分页 CRUD（租户自定义 + 系统内置）。
+- 库类型/场景规则预设分页 CRUD（租户自定义 + 系统内置）；ingestion 产品目录与 product-guide。
 - Tokenizer Profile REST/Facade 管理。
-- Pipeline Trace 查询；评测运行创建与列表（`ObservabilityController`）。
+- 库级黄金集 CRUD、Recall@K 评测、promote 评测门禁；Pipeline Trace 查询；Observability 评测运行。
 
 **前端控制台**（`frontend/knowbase-ui`）
 
-- 首页、知识库（详情抽屉：索引版本/文档/chunk/ACL）、入库向导、智能体、观测与评测、预设管理、智能问答共 7 个主路由。
+- 首页；知识库列表与建仓向导。
+- 库工作区：文档列表、召回与评测、库配置（Profile/Document Profile/索引健康）、ACL。
+- 入库向导（分步：upload-batch → prepare → ingestion-runs；快捷：`POST .../documents`）。
+- 智能体、观测评测、预设管理、智能问答。
 
 **运行形态**
 
 - REST API、Java Facade、Swagger/Knife4j、Vue 管理控制台、宿主 starter 与独立应用均已可用。
 
-仍在后续演进范围内的能力见 [DESIGN_EVOLUTION_OUTLINE.md](./DESIGN_EVOLUTION_OUTLINE.md) 与 [PHASE2_INGESTION_PLAN.md](./PHASE2_INGESTION_PLAN.md)，主要包括：文档一等 CRUD 与持续入库、索引代次内化、Document Profile 在线管理、OCR/表格深度解析、库级黄金集评测门禁、生产级异步队列与细粒度权限工作流等。
+仍在后续演进范围内的能力见 [DESIGN_EVOLUTION_OUTLINE.md](./DESIGN_EVOLUTION_OUTLINE.md) 与 [PHASE2_INGESTION_PLAN.md](./PHASE2_INGESTION_PLAN.md)，主要包括：知识库元数据更新 API、独立 evidence 查询、OCR/表格深度解析、生产级异步队列与细粒度权限工作流、Chat 多轮会话前端接入等。

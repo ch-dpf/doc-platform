@@ -719,15 +719,22 @@ REST 层另提供 `/api/v1/chat/sessions` 多轮会话 API，前端问答页当�
 - `GET /api/v1/libraries/{libraryId}/index-generations` — 索引代次列表
 - `POST /api/v1/libraries/{libraryId}/index-generations/rebuild` — 全库重建
 - `POST /api/v1/libraries/{libraryId}/index-generations/{indexGenerationId}/promote` — promote 代次
-- `GET /api/v1/libraries/{libraryId}/documents` — 文档列表（可选 `indexVersionId`）
+- `GET /api/v1/libraries/{libraryId}/documents` — 文档分页列表（可选 `indexVersionId`、`page`、`size`）
+- `POST /api/v1/libraries/{libraryId}/documents` — multipart 上传并入库
+- `POST /api/v1/libraries/{libraryId}/documents/batch-delete` — 批量删除
 - `GET /api/v1/libraries/{libraryId}/documents/{documentId}` — 文档详情
 - `GET /api/v1/libraries/{libraryId}/documents/{documentId}/preview` — 原文 inline 预览（二进制流）
 - `GET /api/v1/libraries/{libraryId}/documents/{documentId}/download` — 原文下载
+- `GET /api/v1/libraries/{libraryId}/documents/{documentId}/pipeline-trace` — 文档入库 Trace
 - `GET /api/v1/libraries/{libraryId}/documents/{documentId}/chunks` — 文档块分页列表
 - `PUT /api/v1/libraries/{libraryId}/documents/{documentId}/chunks/{chunkId}` — 更新块内容或 retrievalEnabled
+- `GET /api/v1/libraries/{libraryId}/profile` — 最新 Library Profile 与 L1 漂移
+- `POST /api/v1/libraries/{libraryId}/profiles` — 发布 Library Profile 新版本
+- `GET /api/v1/libraries/{libraryId}/profiles` — Profile 版本历史
+- `GET /api/v1/libraries/{libraryId}/profiles/{profileId}` — 指定 Profile 版本
+- `GET|POST|PUT|DELETE /api/v1/libraries/{libraryId}/document-profiles` — Document Profile CRUD
+- `GET /api/v1/libraries/{libraryId}/document-profiles/{code}` — 按编码查询 Document Profile
 - `PUT /api/v1/libraries/{libraryId}` — **规划**：更新知识库元数据
-- `POST /api/v1/libraries/{libraryId}/profiles` — **规划**：更新 Library Profile
-- `POST /api/v1/libraries/{libraryId}/document-profiles` — **规划**：Document Profile CRUD
 
 ### 11.2 入库 API
 

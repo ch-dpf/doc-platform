@@ -211,14 +211,13 @@ POST   /api/v1/libraries/{libraryId}/index-generations/rebuild
 POST   /api/v1/libraries/{libraryId}/index-generations/{id}/promote
 ```
 
-#### 兼容策略
+#### 兼容策略（2026-07 已执行）
 
-| 旧 API | 处理 |
+| 旧 API / 参数 | 处理 |
 |--------|------|
-| `GET .../index-versions` | 保留，标记 `@Deprecated`，映射到 index-generations |
-| `POST .../index-versions/{id}/publish` | 保留，行为 = promote（仅运维角色） |
-| `POST .../ingestion-runs` | 保留，内部改为 document job 聚合 |
-| `publishIndexOnSuccess` 参数 | 默认 `true` 且语义改为「完成后文档 INDEXED」；代次不递增 |
+| `GET .../index-versions` 及同族 publish/detail | **已移除**；客户端改用 `index-generations` |
+| `POST .../ingestion-runs` | 保留，内部为 document job 聚合 |
+| REST 层 `publishIndexOnSuccess` 参数 | **已移除**；document upsert 模式下文档成功即 `INDEXED` 可检索；内部 rebuild 等场景通过 `options.publishIndexOnSuccess` 控制 |
 
 #### 评测 API（二期）
 
@@ -296,14 +295,14 @@ UPLOADED → PARSING → NORMALIZING → CHUNKING → EMBEDDING → INDEXED
 
 ### 4.1 API.md
 
-> **2026-06-23 已同步**：当前已实现的 REST 端点（知识库分页/删除、索引版本与文档目录、upload/prepare、ACL、观测等）见 `API.md` §3 与 §5。下表仍为**演进目标**，与现状的差异主要在文档一等 CRUD 与 index-generations 命名。
+> **2026-07 已同步**：REST 明细见 `API.md` §3；废弃的 `index-versions` 与 REST 层 `publishIndexOnSuccess` 已清理。§5 实现摘要与前端入库路径已与 `knowbase-ui` 对齐。
 
-| 章节 | 修订 |
+| 章节 | 状态 |
 |------|------|
-| §3.4 创建入库运行 | 补充：批处理语义；指向文档 API 作为单文件推荐路径 |
-| 新增 §3.x 文档 API | 请求/响应示例、`DocumentResult` 含 status |
-| index-versions | 标注 deprecated，指向 index-generations |
-| 说明 | `listDocuments` 默认不传 `indexVersionId`，返回 active 代次下全量文档 |
+| §3.5 文档与索引代次 | 已实现（含 batch-delete、pipeline-trace、generate-drafts） |
+| §3.9 / §3.11 入库上传与 prepare | 已区分 API 客户端路径与前端向导实际调用链 |
+| index-generations | 唯一对外索引代次 REST 命名 |
+| `listDocuments` | 默认不传 `indexVersionId`，返回 active 代次下分页文档 |
 
 ### 4.2 PHASE2_INGESTION_PLAN.md
 
@@ -385,7 +384,7 @@ Wave 5  可观测 + Citation 闭环（原二期 9–10 + 4.5–4.6）
 | W3-4 | `IngestionRun` 拆为文档 job 聚合（目录批导入） | W3-3 | `verify-sample-documents.ps1` 通过 |
 | W3-5 | **Phase C**：新 embedding/tokenizer 才新 generation；`promote` API | W3-3 | 换模型走 rebuild，日常入库不 bump version |
 | W3-6 | 前端：知识库文档 Tab 替代索引版本主 Tab | W3-1 | 用户路径库 → 文档 |
-| W3-7 | `publishIndexOnSuccess` 语义迁移 + 旧 API deprecated 标注 | W3-5 | API.md 更新 |
+| W3-7 | `publishIndexOnSuccess` 语义迁移 + 旧 API 清理 | W3-5 | **已完成**（REST 参数与 `index-versions` 路径已移除，`API.md` 已更新） |
 
 **里程碑 M3（北极星基线）**：同一库持续加文档可检索；代次对用户不可见；黄金集可脚本跑 Recall@k。
 
@@ -459,8 +458,9 @@ W1 ──────► W2 ──────► W3 ──────► W4 �
 
 ### 6.2 API 兼容
 
-- v1 客户端：`index-versions`、`ingestion-runs` 继续工作 ≥1 个小版本。
-- 响应增加 `deprecation` header 或文档标注。
+- 旧 `index-versions` REST 路径已移除；客户端统一使用 `index-generations`。
+- `ingestion-runs` 及全局 `GET /api/v1/ingestion-runs/{runId}` 保持不变。
+- 功能开关 `knowbase.ingestion.document-upsert-enabled=false` 仍可回退 run 快照模式（内部 legacy pipeline）。
 
 ### 6.3 回滚策略
 
