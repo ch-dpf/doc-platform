@@ -87,7 +87,6 @@ $ingestion = Invoke-KnowbaseJson -Method Post -Path "/api/v1/libraries/$($librar
     sourceUris = @("verify://postgres-rag-$suffix.md")
     sourceType = "inline"
     documentProfileCode = "default_markdown"
-    publishIndexOnSuccess = $true
     options = @{
         content = $content
     }

@@ -42,14 +42,6 @@ public final class DefaultLibraryCatalogService {
                 .toList();
     }
 
-    public IndexVersionResult getIndexVersion(UUID libraryId, UUID indexVersionId) {
-        accessControlService.requireLibraryAccess(libraryId, AclPermission.READ);
-        IndexVersion version = repository.findIndexVersion(indexVersionId)
-                .filter(item -> item.libraryId().equals(libraryId))
-                .orElseThrow(() -> new ResourceNotFoundException("索引版本不存在: " + indexVersionId));
-        return toIndexVersionResult(version);
-    }
-
     public List<KnowledgeDocumentResult> listDocuments(UUID libraryId, UUID indexVersionId) {
         accessControlService.requireLibraryAccess(libraryId, AclPermission.READ);
         return repository.listDocuments(libraryId, indexVersionId).stream()

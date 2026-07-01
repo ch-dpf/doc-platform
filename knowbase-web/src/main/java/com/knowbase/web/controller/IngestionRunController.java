@@ -66,7 +66,6 @@ public class IngestionRunController {
                 command.sourceUris(),
                 command.sourceType(),
                 command.documentProfileCode(),
-                command.publishIndexOnSuccess(),
                 command.options()
         );
         return ApiResponse.ok(runIngestionUseCase.create(normalized));
@@ -81,7 +80,6 @@ public class IngestionRunController {
             @Parameter(description = "知识库 ID") @PathVariable UUID libraryId,
             @RequestParam("files") List<MultipartFile> files,
             @RequestParam(required = false) String documentProfileCode,
-            @RequestParam(defaultValue = "true") boolean publishIndexOnSuccess,
             @RequestParam(defaultValue = "true") boolean autoStart,
             @RequestParam(required = false) Integer maxFiles
     ) throws Exception {
@@ -107,7 +105,6 @@ public class IngestionRunController {
                     sourceUris,
                     uploadService.storageType(),
                     documentProfileCode,
-                    publishIndexOnSuccess,
                     options
             ));
         }

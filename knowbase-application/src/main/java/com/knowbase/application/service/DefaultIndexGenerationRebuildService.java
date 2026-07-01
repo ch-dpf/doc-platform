@@ -64,13 +64,13 @@ public final class DefaultIndexGenerationRebuildService {
         options.put(IngestionPipelineOptions.TARGET_INDEX_GENERATION_ID, pending.indexVersionId().toString());
         options.put(IngestionPipelineOptions.DEFER_DOCUMENT_GENERATION_UPDATE, true);
         options.put(IngestionPipelineOptions.REBUILD, true);
+        options.put(IngestionPipelineOptions.PUBLISH_INDEX_ON_SUCCESS, false);
 
         IngestionRunResult run = runIngestionUseCase.create(new CreateIngestionRunCommand(
                 libraryId,
                 sourceUris,
                 "rebuild",
                 null,
-                false,
                 Map.copyOf(options)
         ));
 

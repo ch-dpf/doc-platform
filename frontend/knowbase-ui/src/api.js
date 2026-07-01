@@ -98,14 +98,6 @@ export async function listTokenizerProfiles(params = {}) {
   return unwrap(await http.get('/tokenizer-profiles', { params }));
 }
 
-export async function listIndexVersions(libraryId) {
-  return unwrap(await http.get(`/libraries/${libraryId}/index-versions`));
-}
-
-export async function getIndexVersion(libraryId, indexVersionId) {
-  return unwrap(await http.get(`/libraries/${libraryId}/index-versions/${indexVersionId}`));
-}
-
 export async function listDocuments(libraryId, params = {}) {
   const data = await pageDocuments(libraryId, params);
   return data.items ?? [];
@@ -202,7 +194,6 @@ export async function uploadDocuments(libraryId, files, options = {}) {
   if (options.documentProfileCode) {
     formData.append('documentProfileCode', options.documentProfileCode);
   }
-  formData.append('publishIndexOnSuccess', String(options.publishIndexOnSuccess !== false));
   formData.append('autoStart', String(options.autoStart !== false));
   return unwrap(await http.post(`/libraries/${libraryId}/documents`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -405,7 +396,6 @@ export async function uploadAndIngest(libraryId, files, options = {}) {
   if (options.documentProfileCode) {
     formData.append('documentProfileCode', options.documentProfileCode);
   }
-  formData.append('publishIndexOnSuccess', String(options.publishIndexOnSuccess !== false));
   formData.append('autoStart', String(options.autoStart !== false));
   if (options.maxFiles) {
     formData.append('maxFiles', String(options.maxFiles));

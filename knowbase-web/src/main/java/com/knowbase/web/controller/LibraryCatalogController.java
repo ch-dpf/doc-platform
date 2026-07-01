@@ -115,30 +115,6 @@ public class LibraryCatalogController {
         this.documentChunkService = documentChunkService;
     }
 
-    @Operation(summary = "查询索引代次列表（运维）", deprecated = true)
-    @GetMapping("/index-versions")
-    public ApiResponse<List<IndexVersionResult>> listIndexVersions(@PathVariable UUID libraryId) {
-        return ApiResponse.ok(catalogService.listIndexVersions(libraryId));
-    }
-
-    @Operation(summary = "查询索引版本详情")
-    @GetMapping("/index-versions/{indexVersionId}")
-    public ApiResponse<IndexVersionResult> getIndexVersion(
-            @PathVariable UUID libraryId,
-            @PathVariable UUID indexVersionId
-    ) {
-        return ApiResponse.ok(catalogService.getIndexVersion(libraryId, indexVersionId));
-    }
-
-    @Operation(summary = "Promote 索引代次为 active（运维）")
-    @PostMapping("/index-versions/{indexVersionId}/publish")
-    public ApiResponse<IndexVersionResult> publishIndexVersion(
-            @PathVariable UUID libraryId,
-            @PathVariable UUID indexVersionId
-    ) {
-        return ApiResponse.ok(indexVersionService.publish(libraryId, indexVersionId));
-    }
-
     @Operation(summary = "查询索引代次列表")
     @GetMapping("/index-generations")
     public ApiResponse<List<IndexVersionResult>> listIndexGenerations(@PathVariable UUID libraryId) {
@@ -443,7 +419,6 @@ public class LibraryCatalogController {
             @PathVariable UUID libraryId,
             @RequestParam("files") List<MultipartFile> files,
             @RequestParam(required = false) String documentProfileCode,
-            @RequestParam(defaultValue = "true") @Deprecated boolean publishIndexOnSuccess,
             @RequestParam(defaultValue = "true") boolean autoStart
     ) throws Exception {
         List<DefaultObjectUploadService.UploadCandidate> candidates = new ArrayList<>();
@@ -459,7 +434,6 @@ public class LibraryCatalogController {
                 libraryId,
                 candidates,
                 documentProfileCode,
-                publishIndexOnSuccess,
                 autoStart
         ));
     }

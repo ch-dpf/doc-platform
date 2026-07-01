@@ -9,6 +9,7 @@ public final class IngestionPipelineOptions {
     public static final String DEFER_DOCUMENT_GENERATION_UPDATE = "deferDocumentGenerationUpdate";
     public static final String REBUILD = "rebuild";
     public static final String AUTO_EVAL_DRAFTS = "autoEvalDrafts";
+    public static final String PUBLISH_INDEX_ON_SUCCESS = "publishIndexOnSuccess";
 
     private IngestionPipelineOptions() {
     }
@@ -44,5 +45,12 @@ public final class IngestionPipelineOptions {
             return true;
         }
         return Boolean.TRUE.equals(options.get(AUTO_EVAL_DRAFTS));
+    }
+
+    public static boolean publishIndexOnSuccess(Map<String, Object> options) {
+        if (options == null || !options.containsKey(PUBLISH_INDEX_ON_SUCCESS)) {
+            return true;
+        }
+        return Boolean.TRUE.equals(options.get(PUBLISH_INDEX_ON_SUCCESS));
     }
 }

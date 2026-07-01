@@ -716,9 +716,9 @@ REST 层另提供 `/api/v1/chat/sessions` 多轮会话 API，前端问答页当�
 - `GET /api/v1/libraries` — 分页列表（`page`、`size`）
 - `GET /api/v1/libraries/{libraryId}` — 详情
 - `DELETE /api/v1/libraries/{libraryId}` — 删除
-- `GET /api/v1/libraries/{libraryId}/index-versions` — 索引版本列表
-- `GET /api/v1/libraries/{libraryId}/index-versions/{indexVersionId}` — 索引版本详情
-- `POST /api/v1/libraries/{libraryId}/index-versions/{indexVersionId}/publish` — 发布
+- `GET /api/v1/libraries/{libraryId}/index-generations` — 索引代次列表
+- `POST /api/v1/libraries/{libraryId}/index-generations/rebuild` — 全库重建
+- `POST /api/v1/libraries/{libraryId}/index-generations/{indexGenerationId}/promote` — promote 代次
 - `GET /api/v1/libraries/{libraryId}/documents` — 文档列表（可选 `indexVersionId`）
 - `GET /api/v1/libraries/{libraryId}/documents/{documentId}` — 文档详情
 - `GET /api/v1/libraries/{libraryId}/documents/{documentId}/preview` — 原文 inline 预览（二进制流）

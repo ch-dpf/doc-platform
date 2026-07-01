@@ -11,6 +11,7 @@ import com.knowbase.domain.model.IngestionRun;
 import com.knowbase.domain.model.KnowledgeLibrary;
 import com.knowbase.domain.repository.KnowbaseRepository;
 import com.knowbase.domain.status.IngestionRunStatus;
+import com.knowbase.ingestion.IngestionPipelineOptions;
 import com.knowbase.ingestion.IngestionRequest;
 
 import java.time.Instant;
@@ -46,6 +47,8 @@ public class DefaultIngestionService implements RunIngestionUseCase, KnowbaseIng
 
         Instant now = Instant.now();
         UUID runId = UUID.randomUUID();
+        Map<String, Object> options = command.options() == null ? Map.of() : command.options();
+        boolean publishIndexOnSuccess = IngestionPipelineOptions.publishIndexOnSuccess(options);
         IngestionRun created = new IngestionRun(
                 runId,
                 command.libraryId(),
@@ -53,14 +56,14 @@ public class DefaultIngestionService implements RunIngestionUseCase, KnowbaseIng
                 List.copyOf(command.sourceUris()),
                 command.sourceType(),
                 command.documentProfileCode(),
-                command.publishIndexOnSuccess(),
+                publishIndexOnSuccess,
                 command.sourceUris().size(),
                 0,
                 0,
                 0,
                 null,
                 "入库运行已创建，等待 Pipeline 执行",
-                command.options() == null ? Map.of() : command.options(),
+                options,
                 now,
                 now
         );
@@ -80,8 +83,8 @@ public class DefaultIngestionService implements RunIngestionUseCase, KnowbaseIng
                 command.libraryId(),
                 command.sourceUris(),
                 command.documentProfileCode(),
-                command.publishIndexOnSuccess(),
-                command.options() == null ? Map.of() : command.options()
+                publishIndexOnSuccess,
+                options
         ));
         if (isTerminal(result.status())) {
             auditSink.record(AuditEvent.now(

@@ -152,26 +152,6 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 
 控制器：`LibraryCatalogController`，路径前缀 `/api/v1/libraries/{libraryId}`。
 
-#### 查询索引版本列表
-
-`GET /api/v1/libraries/{libraryId}/index-versions`
-
-响应 `data`：`IndexVersionResult[]`
-
-#### 查询索引版本详情
-
-`GET /api/v1/libraries/{libraryId}/index-versions/{indexVersionId}`
-
-响应 `data`：`IndexVersionResult`
-
-#### 发布索引版本
-
-`POST /api/v1/libraries/{libraryId}/index-versions/{indexVersionId}/publish`
-
-响应 `data`：`IndexVersionResult`
-
-说明：将指定索引版本标记为 `PUBLISHED`，问答检索只读取已发布版本。
-
 #### 查询文档列表
 
 `GET /api/v1/libraries/{libraryId}/documents?indexVersionId=`
@@ -204,16 +184,15 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 |------|------|------|
 | `files` | 是 | 一个或多个文件 |
 | `documentProfileCode` | 否 | 文档 Profile 编码 |
-| `publishIndexOnSuccess` | 否 | 默认 `true` |
 | `autoStart` | 否 | 默认 `true`；上传成功后自动创建入库任务 |
 
 响应 `data`：`DocumentUploadResult`（`upload`、`ingestionRun`、`documents`）
 
 说明：文件先写入 ObjectStorage，再按 active 索引代次 upsert 文档与块；与 `ingestion-runs/upload` 等价但路径挂在文档目录下。
 
-#### 索引代次运维（别名）
+#### 索引代次运维
 
-`GET /api/v1/libraries/{libraryId}/index-generations` — 同 `index-versions` 列表
+`GET /api/v1/libraries/{libraryId}/index-generations` — 索引代次列表
 
 `POST /api/v1/libraries/{libraryId}/index-generations/rebuild?autoPromote=false`
 
@@ -324,7 +303,6 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
   "sourceUris": ["file://D:/document"],
   "sourceType": "local_directory",
   "documentProfileCode": null,
-  "publishIndexOnSuccess": true,
   "options": {
     "recursive": true,
     "maxFiles": 50,
@@ -369,7 +347,6 @@ REST API 统一前缀为 `/api/v1`，响应统一包装为：
 |------|------|------|
 | `files` | 文件列表 | 必填，支持多文件 |
 | `documentProfileCode` | string | 可选 |
-| `publishIndexOnSuccess` | boolean | 默认 `true` |
 | `autoStart` | boolean | 默认 `true`，上传后立即创建入库任务 |
 | `maxFiles` | int | 可选 |
 

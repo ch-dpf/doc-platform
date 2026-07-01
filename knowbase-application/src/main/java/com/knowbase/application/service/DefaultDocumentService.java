@@ -138,7 +138,6 @@ public final class DefaultDocumentService {
                 List.of(document.sourceUri()),
                 "reindex",
                 null,
-                true,
                 Map.of()
         ));
     }
@@ -147,7 +146,6 @@ public final class DefaultDocumentService {
             UUID libraryId,
             List<DefaultObjectUploadService.UploadCandidate> candidates,
             String documentProfileCode,
-            boolean publishIndexOnSuccess,
             boolean autoStart
     ) throws Exception {
         accessControlService.requireLibraryAccess(libraryId, AclPermission.WRITE);
@@ -164,7 +162,6 @@ public final class DefaultDocumentService {
                     sourceUris,
                     uploadService.storageType(),
                     documentProfileCode,
-                    publishIndexOnSuccess,
                     Map.of()
             ));
             UUID generationId = ingestionRun.indexVersionId() != null
@@ -195,7 +192,6 @@ public final class DefaultDocumentService {
                 sourceUris,
                 "reindex-failed",
                 null,
-                true,
                 Map.of()
         ));
         return new BatchReindexResult(libraryId, sourceUris.size(), sourceUris, run);
@@ -220,7 +216,6 @@ public final class DefaultDocumentService {
                 sourceUris,
                 "reindex-by-profile",
                 documentProfileCode,
-                true,
                 Map.of()
         ));
         return new BatchReindexResult(libraryId, sourceUris.size(), sourceUris, run);

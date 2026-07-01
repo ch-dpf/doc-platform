@@ -487,7 +487,6 @@ const advanced = ref({
 const previewValidated = ref(false);
 const latestRun = ref(null);
 const ingestionErrors = ref([]);
-const publishIndexOnSuccess = ref(true);
 
 const uploading = ref(false);
 const quickIngesting = ref(false);
@@ -663,7 +662,6 @@ async function quickUploadAndIngest() {
   try {
     const data = await uploadDocuments(props.libraryId, selectedFiles.value, {
       documentProfileCode: buildDocumentProfileCode(),
-      publishIndexOnSuccess: publishIndexOnSuccess.value,
       autoStart: true
     });
     uploadedUris.value = (data.upload?.uploaded || []).map(item => item.uri);
@@ -724,7 +722,6 @@ async function confirmIngestion() {
       sourceUris: uploadedUris.value,
       sourceType: 'minio',
       documentProfileCode: buildDocumentProfileCode(),
-      publishIndexOnSuccess: publishIndexOnSuccess.value,
       options: buildSegmentationOptions()
     });
     latestRun.value = data;
@@ -783,7 +780,6 @@ function resetWizard() {
   previewValidated.value = false;
   latestRun.value = null;
   ingestionErrors.value = [];
-  publishIndexOnSuccess.value = true;
   parseMode.value = 'standard';
   ocrLanguage.value = '';
   prepareTab.value = 'parse';

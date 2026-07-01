@@ -99,7 +99,6 @@ $ingestion = Invoke-KnowbaseJson -Method Post -Path $ingestionPath -Body @{
     sourceUris = @((ConvertTo-FileUri -Path $DocumentRoot))
     sourceType = "local_directory"
     documentProfileCode = $null
-    publishIndexOnSuccess = $true
     options = @{
         recursive = $true
         maxFiles = $MaxFiles
