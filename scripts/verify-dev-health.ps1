@@ -1,5 +1,5 @@
 param(
-    [int]$ApiPort = 8080,
+    [int]$ApiPort = 8088,
     [int]$UiPort = 5173,
     [int]$PostgresPort = 5433
 )

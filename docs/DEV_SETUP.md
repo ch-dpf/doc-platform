@@ -31,26 +31,26 @@ cd D:\workspace\doc-platform
 | 入口 | URL |
 |------|-----|
 | 控制台 | http://localhost:5173 |
-| API | http://localhost:8080/api/v1 |
-| Knife4j | http://localhost:8080/doc.html |
+| API | http://localhost:8088/api/v1 |
+| Knife4j | http://localhost:8088/doc.html |
 
 ## 一键脚本
 
 | 脚本 | 作用 |
 |------|------|
 | `start-infra.ps1` | `docker compose up -d postgres`（+ `-WithMinio` / `-WithOllama`）并等待健康 |
-| `start-app.ps1` | `mvn package` + 启动 JAR（`-Profile dev`、`-Port 8080`） |
+| `start-app.ps1` | `mvn package` + 启动 JAR（`-Profile dev`、`-Port 8088`） |
 | `start-dev.ps1` | infra + app（不含 UI） |
-| `verify-dev-health.ps1` | 检查 5433 / 8080 / 5173 等端口 |
+| `verify-dev-health.ps1` | 检查 5433 / 8088 / 5173 等端口 |
 | `verify-postgres-rag.ps1` | 端到端 RAG 冒烟 |
 
 ## 配置说明
 
 | 文件 | 用途 |
 |------|------|
-| `application.yml` | 提交默认：8080、local 存储、启发式 reading-order、VLM 默认关 |
+| `application.yml` | 提交默认：8088、local 存储、启发式 reading-order、VLM 默认关 |
 | `application-dev.yml` | `spring.profiles.active=dev` 时加载；与 compose 本地服务对齐 |
-| `frontend/knowbase-ui/.env.development` | Vite 代理 → `http://127.0.0.1:8080` |
+| `frontend/knowbase-ui/.env.development` | Vite 代理 → `http://127.0.0.1:8088` |
 
 ### PostgreSQL
 
@@ -96,7 +96,7 @@ docker compose up -d postgres
 
 ```powershell
 .\scripts\verify-dev-health.ps1
-.\scripts\verify-postgres-rag.ps1 -BaseUrl http://localhost:8080
+.\scripts\verify-postgres-rag.ps1 -BaseUrl http://localhost:8088
 ```
 
 ## 相关文档

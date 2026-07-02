@@ -76,12 +76,12 @@
 
 | 项 | 默认 | 说明 |
 |----|------|------|
-| 后端端口 | `8080` | `application.yml`；IDEA 勿混用 8088 |
+| 后端端口 | `8088` | `application.yml`；IDEA 勿混用 8088 |
 | PostgreSQL | `localhost:5433` | Docker `knowbase-postgres` 或本机 PG |
 | 对象存储 | `local` | `./data/knowbase-storage`；MinIO 见 `application-dev.yml` 注释 |
 | Ollama | 可选 | 未启动时 layout/reading-order 回退启发式 |
 | PaddleOCR-VL | 默认关闭 | `dev` profile 或手动开启 |
-| 前端代理 | `127.0.0.1:8080` | `vite.config.js` / `.env.development` |
+| 前端代理 | `127.0.0.1:8088` | `vite.config.js` / `.env.development` |
 
 ---
 

@@ -57,7 +57,7 @@ services:
       - java
       - -jar
       - /workspace/knowbase-app/target/knowbase-app-1.0.0-SNAPSHOT.jar
-      - --server.port=8080
+      - --server.port=8088
       - --spring.datasource.url=jdbc:postgresql://postgres:5432/knowbase
       - --spring.datasource.username=knowbase
       - --spring.datasource.password=knowbase
@@ -68,7 +68,7 @@ services:
       ollama:
         condition: service_started
     ports:
-      - "8080:8080"
+      - "8088:8088"
     volumes:
       - ./:/workspace:ro
 

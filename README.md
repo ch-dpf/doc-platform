@@ -54,7 +54,7 @@ docker compose up -d postgres minio ollama   # 可选组件
 
 ```powershell
 mvn -q "-Dmaven.repo.local=.m2/repository" -DskipTests package
-.\scripts\start-app.ps1 -Port 8080 -Profile dev -SkipPackage
+.\scripts\start-app.ps1 -Port 8088 -Profile dev -SkipPackage
 ```
 
 启动前端控制台：
@@ -66,9 +66,9 @@ mvn -q "-Dmaven.repo.local=.m2/repository" -DskipTests package
 访问入口：
 
 - 管理控制台：`http://localhost:5173`
-- REST API：`http://localhost:8080/api/v1`
-- Swagger UI：`http://localhost:8080/swagger-ui.html`
-- Knife4j：`http://localhost:8080/doc.html`
+- REST API：`http://localhost:8088/api/v1`
+- Swagger UI：`http://localhost:8088/swagger-ui.html`
+- Knife4j：`http://localhost:8088/doc.html`
 
 管理控制台主路由：
 
@@ -175,7 +175,7 @@ knowbase:
 后端服务启动后，可执行真实 API 纵向验证：
 
 ```powershell
-.\scripts\verify-postgres-rag.ps1 -BaseUrl http://localhost:8080
+.\scripts\verify-postgres-rag.ps1 -BaseUrl http://localhost:8088
 ```
 
 验证内容包括：
@@ -189,7 +189,7 @@ knowbase:
 如需使用本机样例目录验证异构文档入库，可执行：
 
 ```powershell
-.\scripts\verify-sample-documents.ps1 -BaseUrl http://localhost:8080 -DocumentRoot D:\document -MaxFiles 12
+.\scripts\verify-sample-documents.ps1 -BaseUrl http://localhost:8088 -DocumentRoot D:\document -MaxFiles 12
 ```
 
 该脚本会提交 `file://D:/document` 目录来源，后端按扩展名自动展开 Markdown、PDF、Word、Excel 等文件，并在同一个知识库内按文档 Profile 自动路由解析。默认只入库前 12 个样例文件，避免首次验证时批量处理过大；可通过 `-MaxFiles` 与 `-Extensions` 调整范围。

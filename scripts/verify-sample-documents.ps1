@@ -1,5 +1,5 @@
 param(
-    [string]$BaseUrl = "http://localhost:8080",
+    [string]$BaseUrl = "http://localhost:8088",
     [string]$DocumentRoot = "D:\document",
     [int]$MaxFiles = 12,
     [string[]]$Extensions = @("md", "pdf", "docx", "xlsx"),
