@@ -1,0 +1,35 @@
+# 本地开发 profile：docker compose 基础设施 + 可选 MinIO/Ollama
+# 启动：java -jar ... --spring.profiles.active=dev
+# 或：.\scripts\start-app.ps1 -Profile dev
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+knowbase:
+  storage:
+    type: local
+    local-root: ./data/knowbase-storage
+  ollama:
+    enabled: true
+    base-url: http://localhost:11434
+  vision-document:
+    enabled: false
+  ingestion:
+    reading-order:
+      provider: heuristic
+    layout:
+      default-provider: local-pdf-layout
+      ollama:
+        enabled: false
+
+# 若已 docker compose up minio，可改为：
+# knowbase:
+#   storage:
+#     type: minio
+#     minio:
+#       endpoint: http://localhost:9000
+#       access-key: minioadmin
+#       secret-key: minioadmin
+#       auto-create-bucket: true

@@ -2,6 +2,7 @@ param(
     [int]$Port = 8080,
     [string]$Profile = "dev",
     [string]$MavenRepo = ".m2/repository",
+    [switch]$SkipInfra,
     [switch]$SkipPackage
 )
 
@@ -9,18 +10,20 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+if (-not $SkipInfra) {
+    & "$PSScriptRoot\start-infra.ps1"
+}
+
 if (-not $SkipPackage) {
     mvn -q "-Dmaven.repo.local=$MavenRepo" -DskipTests package
 }
 
 $jar = Join-Path $root "knowbase-app\target\knowbase-app-1.0.0-SNAPSHOT.jar"
-$javaArgs = @(
+$args = @(
     "-jar", $jar,
-    "--server.port=$Port"
+    "--server.port=$Port",
+    "--spring.profiles.active=$Profile"
 )
-if ($Profile) {
-    $javaArgs += "--spring.profiles.active=$Profile"
-}
 
-Write-Host "Starting KnowBase on port $Port (profile: $Profile)" -ForegroundColor Cyan
-java @javaArgs
+Write-Host "Starting backend: profile=$Profile port=$Port" -ForegroundColor Cyan
+java @args

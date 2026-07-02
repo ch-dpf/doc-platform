@@ -47,13 +47,13 @@ knowbase:
     vision-language-timeout: 120s
   vision-document:
     enabled: true
-    # paddleocr-vl = 官方完整版面 pipeline (POST /layout-parsing)
-    # vllm = 独立 vLLM OpenAI 接口 (POST /v1/chat/completions)
+    # paddleocr-vl = 官方完整版面 pipeline (POST /layout-parsing)，推荐
+    # vllm = 独立 vLLM OpenAI 接口 (POST /v1/chat/completions)，仅快速验证
     # ollama = 回退到 knowbase.ollama.vision-language-model
-    provider: vllm
+    provider: paddleocr-vl
     timeout: 600s
     paddleocr-vl:
-      base-url: http://localhost:8080
+      base-url: http://localhost:8888
       layout-parsing-path: /layout-parsing
       pipeline-name: PaddleOCR-VL-1.6
       prettify-markdown: true

@@ -10,11 +10,13 @@
 #   knowbase.vision-document.provider: vllm
 #   knowbase.vision-document.vllm.base-url: http://localhost:8118
 #
-# Full PaddleOCR-VL pipeline (layout + table bbox, port 8080) — use official HPS:
+# Full PaddleOCR-VL pipeline (layout + table bbox) — use official HPS on host port 8888:
 #   git clone https://github.com/PaddlePaddle/PaddleOCR.git
 #   cd PaddleOCR/deploy/paddleocr_vl_docker/hps
-#   cp .env.example .env && bash prepare.sh && docker compose up -d
-# Then set provider=paddleocr-vl and base-url=http://localhost:8080
+#   cp .env.example .env && bash prepare.sh
+#   ..\..\doc-platform\scripts\patch-paddleocr-hps-port.ps1 -HpsDir . -HostPort 8888
+#   docker compose up -d
+# Then set provider=paddleocr-vl and base-url=http://localhost:8888
 #
 # See docs/PADDLEOCR_VL_DEPLOYMENT.md
 

@@ -21,6 +21,7 @@ KnowBase 是面向内部知识管理场景的 RAG 平台，提供知识库建设
 - `knowbase-preset`：库类型预设、文档 Profile 默认值与场景规则预设。
 - `knowbase-model`：Embedding 与 Chat 模型适配。
 - `knowbase-tokenizer`：模型 tokenizer 注册、token 计数与 token 窗口切分。
+- `knowbase-storage`：本地文件系统 / MinIO 对象存储抽象。
 - `knowbase-persistence`：PostgreSQL、pgvector、MyBatis 与 Flyway 持久化。
 - `knowbase-web`：REST API、Swagger/Knife4j 与异常处理。
 - `knowbase-autoconfigure`：Spring Boot 自动配置。
@@ -29,27 +30,31 @@ KnowBase 是面向内部知识管理场景的 RAG 平台，提供知识库建设
 - `frontend/knowbase-ui`：Vue 管理控制台。
 - `infra`、`scripts`：本地基础设施与验证脚本。
 
-当前 ingestion core 接口演进：
-
-- `DocumentParser`：解析器 SPI，按 `sourceUri` 与 `mimeType` 选择 Markdown、HTML、PDF、Word、Excel、OCR、ZIP 等解析器，表格默认走 `table-deep`。
-- `DocumentNormalizer`：清洗阶段接口，默认 `DocumentTextNormalizer` 执行文本归一化和结构块清洗。
-- `DocumentMetadataEnricher`：元数据增强接口，默认实现补充块统计、首标题、Profile 与 chunk/token 配置上下文。
-- `DocumentChunker`：切分阶段接口，默认 `TokenBasedDocumentChunker` 统一为语义边界优先、token 预算约束、字符切分兜底。
-- `DocumentPreparationPipeline`：入库准备编排，将加载、解析、结构增强、清洗、元数据增强和切分串联为可分阶段验证的流程。
+模块依赖与职责详见 [docs/MODULES.md](docs/MODULES.md)；实现进度对照见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
 
 ## 独立运行
 
-启动基础设施：
+**开箱即用（Windows + Docker）** — 完整步骤见 [docs/DEV_SETUP.md](docs/DEV_SETUP.md)。
 
 ```powershell
-docker compose up -d postgres minio ollama
+.\scripts\start-infra.ps1          # PostgreSQL :5433
+.\scripts\start-app.ps1 -Profile dev
+.\scripts\start-ui.ps1             # 另一终端
+.\scripts\verify-dev-health.ps1
+```
+
+启动基础设施（按需加 MinIO / Ollama）：
+
+```powershell
+docker compose up -d postgres
+docker compose up -d postgres minio ollama   # 可选组件
 ```
 
 构建并启动后端：
 
 ```powershell
 mvn -q "-Dmaven.repo.local=.m2/repository" -DskipTests package
-.\scripts\start-app.ps1 -Port 8080 -SkipPackage
+.\scripts\start-app.ps1 -Port 8080 -Profile dev -SkipPackage
 ```
 
 启动前端控制台：
@@ -83,11 +88,11 @@ mvn -q "-Dmaven.repo.local=.m2/repository" -DskipTests package
 
 REST 一键上传入库：`POST .../documents` 或 `POST .../ingestion-runs/upload`；索引代次运维（rebuild / promote）见 [API.md](docs/API.md) §3.5，当前控制台未提供对应 UI。
 
-也可以在后端打包后使用 root compose 启动应用服务：
+也可以在后端打包后使用 compose 启动应用容器（需 `--profile app`）：
 
 ```powershell
 mvn -q "-Dmaven.repo.local=.m2/repository" -DskipTests package
-docker compose up -d
+docker compose --profile app up -d
 ```
 
 ## 宿主服务引入
@@ -220,6 +225,9 @@ POST /api/v1/agents/{agentId}/retrieval-tests
 
 ## 文档
 
+- [本地开发与环境](docs/DEV_SETUP.md)
+- [模块划分](docs/MODULES.md)
+- [实现进度对照](docs/PROJECT_STATUS.md)
 - [总体设计规划](docs/DESIGN.md)
 - [接口规范](docs/API.md)
 - [Ingestion 接口说明](docs/INGESTION_INTERFACES.md)

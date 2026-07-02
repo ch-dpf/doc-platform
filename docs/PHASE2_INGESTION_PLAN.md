@@ -187,7 +187,7 @@ knowbase:
     provider: paddleocr-vl   # paddleocr-vl | vllm | ollama
     timeout: 600s
     paddleocr-vl:
-      base-url: http://localhost:8080
+      base-url: http://localhost:8888
     vllm:
       base-url: http://localhost:8118
       model: PaddleOCR-VL-1.6-0.9B
@@ -212,7 +212,7 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 
 启用前：
 
-- **官方 pipeline**：`PaddleOCR/deploy/paddleocr_vl_docker/hps` → `docker compose up`（端口 8080）
+- **官方 pipeline**：`PaddleOCR/deploy/paddleocr_vl_docker/hps` → 映射宿主机 **8888** → `docker compose up`
 - **独立 vLLM**：`docker compose -f infra/docker-compose.paddleocr-vl.yml up -d`（端口 8118）
 - **Ollama 回退**：`ollama pull MedAIBase/PaddleOCR-VL:0.9b`，`provider: ollama`
 
@@ -391,13 +391,14 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 
 现状：
 
+- **已有**库级召回测试页：`/libraries/:libraryId/retrieval-test`（`LibraryRetrievalTestPage.vue`），支持单库调试与黄金集 CRUD。
 - 已有智能体级检索测试，可验证多库路由、检索、证据构建和上下文 token 拼装。
 
 不足：
 
-- 缺少不依赖智能体的知识库级召回沙盒，无法直接按 `libraryId` 或 `indexVersionId` 调试单库召回。
-- 缺少 raw/fusion/rerank 分阶段候选对比、metadata filter 命中解释和分数组成明细。
+- 缺少 raw/fusion/rerank 分阶段候选对比、metadata filter 命中解释和分数组成明细（部分字段已有，产品化不足）。
 - 缺少面向产品运营的召回测试历史记录、策略快照和失败样本沉淀。
+- 发布索引前的 **promote-eval-gate** 默认关闭（`promote-eval-gate-enabled: false`）。
 
 后续完善：
 

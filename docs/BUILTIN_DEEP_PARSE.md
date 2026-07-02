@@ -93,7 +93,7 @@ knowbase:
     enabled: true
     provider: paddleocr-vl   # 或 vllm / ollama
     paddleocr-vl:
-      base-url: http://localhost:8080
+      base-url: http://localhost:8888
     vllm:
       base-url: http://localhost:8118
       model: PaddleOCR-VL-1.6-0.9B
