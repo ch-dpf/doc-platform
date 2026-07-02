@@ -40,8 +40,8 @@ knowbase:
     base-url: http://localhost:11434
     embedding-model: bge-m3
     chat-model: llama3.2
-    # ML 版面默认需要 vision 模型；官方 PaddleOCR-VL 扫描路由时可留空
-    vision-language-model: llama3.2-vision
+    # ML 版面默认需要 vision 模型；使用 vLLM / PaddleOCR-VL 扫描路由时应留空
+    vision-language-model: ""
     embedding-dimension: 1024
     timeout: 60s
     vision-language-timeout: 120s
@@ -50,7 +50,7 @@ knowbase:
     # paddleocr-vl = 官方完整版面 pipeline (POST /layout-parsing)
     # vllm = 独立 vLLM OpenAI 接口 (POST /v1/chat/completions)
     # ollama = 回退到 knowbase.ollama.vision-language-model
-    provider: paddleocr-vl
+    provider: vllm
     timeout: 600s
     paddleocr-vl:
       base-url: http://localhost:8080
@@ -64,7 +64,7 @@ knowbase:
       chat-completions-path: /v1/chat/completions
       model: PaddleOCR-VL-1.6-0.9B
       api-key: ""
-      temperature: 0.1
+      temperature: 0.0
   ingestion:
     async-enabled: false
     document-upsert-enabled: true
@@ -77,13 +77,13 @@ knowbase:
       vl-max-pages: 0
     ocr:
       default-engine: tesseract
-      language: auto
+      language: chi_sim+eng
       confidence-threshold: 0.6
       downweight-mode: downweight
     layout:
-      default-provider: ollama-layout       # ML first; falls back to local-pdf-layout heuristic
+      default-provider: local-pdf-layout     # vLLM/PaddleOCR-VL 扫描路由；需要 Ollama 表格检测时再启用 ollama
       ollama:
-        enabled: true
+        enabled: false
         model: ""
         fallback-to-heuristic: true
     reading-order:

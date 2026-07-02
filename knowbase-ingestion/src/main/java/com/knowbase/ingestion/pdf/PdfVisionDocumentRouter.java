@@ -122,7 +122,11 @@ public final class PdfVisionDocumentRouter {
 
         LayoutAnalysisService layoutAnalysisService = settings.layoutAnalysisService();
 
-        Map<String, Object> options = source.metadata() == null ? Map.of() : source.metadata();
+        Map<String, Object> options = new HashMap<>();
+        if (source.metadata() != null) {
+            options.putAll(source.metadata());
+        }
+        options.putIfAbsent("layoutProvider", com.knowbase.ingestion.layout.VisionMarkdownLayoutProvider.PROVIDER_CODE);
 
         List<StructuralBlock> blocks = layoutAnalysisService.analyzePdfPages(source, bytes, settings.vlMaxPages(), options);
 

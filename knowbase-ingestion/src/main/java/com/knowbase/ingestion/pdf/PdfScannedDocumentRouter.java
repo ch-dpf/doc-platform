@@ -3,6 +3,7 @@ package com.knowbase.ingestion.pdf;
 import com.knowbase.ingestion.DocumentSource;
 import com.knowbase.ingestion.OcrLayoutDocumentParser;
 import com.knowbase.ingestion.ParsedDocument;
+import com.knowbase.ingestion.layout.LayoutAnalysisService;
 
 import java.io.ByteArrayInputStream;
 import java.util.HashMap;
@@ -45,7 +46,20 @@ public final class PdfScannedDocumentRouter {
         return "ocr".equals(normalized) || "ocr-layout".equals(normalized) || "scanned".equals(normalized);
     }
 
-    public static ParsedDocument parseWithOcr(DocumentSource source, byte[] bytes, PdfTextExtractabilityAnalyzer.Analysis analysis) {
+    public static ParsedDocument parseWithOcr(
+            DocumentSource source,
+            byte[] bytes,
+            PdfTextExtractabilityAnalyzer.Analysis analysis
+    ) {
+        return parseWithOcr(source, bytes, analysis, null);
+    }
+
+    public static ParsedDocument parseWithOcr(
+            DocumentSource source,
+            byte[] bytes,
+            PdfTextExtractabilityAnalyzer.Analysis analysis,
+            LayoutAnalysisService layoutAnalysisService
+    ) {
         Map<String, Object> metadata = new HashMap<>();
         if (source.metadata() != null) {
             metadata.putAll(source.metadata());
@@ -57,7 +71,7 @@ public final class PdfScannedDocumentRouter {
             metadata.put("pdfCharsPerPage", analysis.charsPerPage());
             metadata.put("pdfScannedLikely", analysis.scannedLikely());
         }
-        ParsedDocument parsed = new OcrLayoutDocumentParser().parse(new DocumentSource(
+        ParsedDocument parsed = new OcrLayoutDocumentParser(layoutAnalysisService).parse(new DocumentSource(
                 source.sourceUri(),
                 source.filename(),
                 source.mimeType() == null ? "application/pdf" : source.mimeType(),

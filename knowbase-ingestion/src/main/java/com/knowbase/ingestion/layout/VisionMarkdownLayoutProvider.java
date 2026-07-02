@@ -1,6 +1,10 @@
 package com.knowbase.ingestion.layout;
 
+import com.knowbase.ingestion.layout.VisionMarkdownLayoutProvider;
 import com.knowbase.model.vision.VisionDocumentModelClient;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -9,6 +13,8 @@ import java.util.Map;
  * VLM providers (Ollama / vLLM / PaddleOCR-VL markdown path) via {@link VisionDocumentModelClient}.
  */
 public final class VisionMarkdownLayoutProvider implements LayoutAnalysisProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(VisionMarkdownLayoutProvider.class);
 
     public static final String PROVIDER_CODE = "vision-markdown";
 
@@ -35,12 +41,25 @@ public final class VisionMarkdownLayoutProvider implements LayoutAnalysisProvide
 
     @Override
     public LayoutPageResult analyze(LayoutPageRequest request) {
-        String markdown = client.recognizePage(
+        VisionPageImageSupport.PreparedImage prepared = VisionPageImageSupport.prepareForVlm(
                 request.imageBytes(),
-                request.mimeType(),
+                request.mimeType()
+        );
+        String markdown = client.recognizePage(
+                prepared.bytes(),
+                prepared.mimeType(),
                 request.pageNumber(),
                 request.effectiveOptions()
         );
+        if (markdown == null || markdown.isBlank()) {
+            log.warn(
+                    "VLM 页面识别为空: provider={}, model={}, page={}, uri={}",
+                    PROVIDER_CODE,
+                    client.modelName(),
+                    request.pageNumber(),
+                    request.sourceUri()
+            );
+        }
         List<com.knowbase.ingestion.StructuralBlock> blocks = LayoutResultMapper.fromVisionMarkdown(
                 markdown,
                 request,

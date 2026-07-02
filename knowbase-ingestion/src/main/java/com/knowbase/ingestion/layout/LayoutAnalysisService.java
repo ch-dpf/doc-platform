@@ -6,6 +6,9 @@ import com.knowbase.ingestion.StructureParsingSupport;
 import com.knowbase.ingestion.pdf.PdfPageImageRenderer;
 import com.knowbase.ingestion.parse.IngestionParseOptionsSupport;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -16,6 +19,8 @@ import java.util.Map;
  * Unified raster-page layout analysis with provider selection and fallback.
  */
 public final class LayoutAnalysisService {
+
+    private static final Logger log = LoggerFactory.getLogger(LayoutAnalysisService.class);
 
     private final List<LayoutAnalysisProvider> providers;
     private final boolean fallbackEnabled;
@@ -41,11 +46,21 @@ public final class LayoutAnalysisService {
                 if (result != null && !result.blocks().isEmpty()) {
                     return applyTableRegions(result);
                 }
-                if (result != null && lastFailure == null) {
-                    return applyTableRegions(result);
-                }
+                log.debug(
+                        "layout provider 返回空 blocks: provider={}, page={}, uri={}",
+                        provider.providerCode(),
+                        request.pageNumber(),
+                        request.sourceUri()
+                );
             } catch (RuntimeException exception) {
                 lastFailure = exception;
+                log.warn(
+                        "layout provider 失败: provider={}, page={}, uri={}, error={}",
+                        provider.providerCode(),
+                        request.pageNumber(),
+                        request.sourceUri(),
+                        exception.getMessage()
+                );
                 if (!fallbackEnabled) {
                     throw exception;
                 }
@@ -54,7 +69,12 @@ public final class LayoutAnalysisService {
         if (lastFailure != null) {
             throw lastFailure;
         }
-        throw new IllegalStateException("无可用的 layout provider");
+        throw new IllegalStateException(
+                "无可用的 layout provider: tried="
+                        + chain.stream().map(LayoutAnalysisProvider::providerCode).toList()
+                        + ", uri="
+                        + request.sourceUri()
+        );
     }
 
     public List<StructuralBlock> analyzePdfPages(

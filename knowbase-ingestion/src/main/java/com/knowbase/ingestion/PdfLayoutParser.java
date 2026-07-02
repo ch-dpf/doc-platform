@@ -83,12 +83,9 @@ public final class PdfLayoutParser implements DocumentParser {
             }
 
             if (PdfScannedDocumentRouter.shouldRouteToOcr(extractability, source.metadata(), false)) {
-                try {
-                    return PdfScannedDocumentRouter.parseWithOcr(source, bytes, extractability);
-                } catch (RuntimeException ocrFailure) {
-                    if (extractability.totalChars() == 0) {
-                        throw ocrFailure;
-                    }
+                ParsedDocument ocrParsed = tryOcrParse(source, bytes, extractability);
+                if (ocrParsed != null) {
+                    return withEvidenceArtifacts(source, bytes, ocrParsed);
                 }
             }
 
@@ -110,11 +107,11 @@ public final class PdfLayoutParser implements DocumentParser {
 
             if (blocks.isEmpty()) {
                 if (PdfScannedDocumentRouter.shouldRouteToOcr(extractability, source.metadata(), true)) {
-                    try {
-                        return PdfScannedDocumentRouter.parseWithOcr(source, bytes, extractability);
-                    } catch (RuntimeException ocrFailure) {
-                        return fallbackStructureParse(source, bytes);
+                    ParsedDocument ocrParsed = tryOcrParse(source, bytes, extractability);
+                    if (ocrParsed != null) {
+                        return withEvidenceArtifacts(source, bytes, ocrParsed);
                     }
+                    return fallbackStructureParse(source, bytes);
                 }
                 return fallbackStructureParse(source, bytes);
             }
@@ -180,13 +177,47 @@ public final class PdfLayoutParser implements DocumentParser {
             return null;
         }
         try {
-            return PdfVisionDocumentRouter.parseWithVision(source, bytes, extractability, visionSettings);
+            ParsedDocument parsed = PdfVisionDocumentRouter.parseWithVision(
+                    source, bytes, extractability, visionSettings);
+            if (visionSettings.vlFallbackToHeuristic() && isVisionParseEmpty(parsed)) {
+                log.warn(
+                        "VLM 解析无文本，回退后续链路: sourceUri={}, blocks={}",
+                        source.sourceUri(),
+                        parsed.blocks().size()
+                );
+                return null;
+            }
+            return parsed;
         } catch (RuntimeException visionFailure) {
             if (!visionSettings.vlFallbackToHeuristic()) {
                 throw visionFailure;
             }
             return null;
         }
+    }
+
+    private ParsedDocument tryOcrParse(
+            DocumentSource source,
+            byte[] bytes,
+            PdfTextExtractabilityAnalyzer.Analysis extractability
+    ) {
+        try {
+            ParsedDocument parsed = PdfScannedDocumentRouter.parseWithOcr(
+                    source, bytes, extractability, layoutAnalysisService);
+            if (isVisionParseEmpty(parsed)) {
+                log.warn("OCR 回退无文本: sourceUri={}", source.sourceUri());
+                return null;
+            }
+            return parsed;
+        } catch (RuntimeException ocrFailure) {
+            log.warn("OCR 回退失败: sourceUri={}", source.sourceUri(), ocrFailure);
+            return null;
+        }
+    }
+
+    private static boolean isVisionParseEmpty(ParsedDocument parsed) {
+        return parsed.blocks().isEmpty()
+                && (parsed.text() == null || parsed.text().isBlank());
     }
 
     private ParsedDocument withEvidenceArtifacts(DocumentSource source, byte[] bytes, ParsedDocument parsed) {

@@ -1,7 +1,11 @@
 package com.knowbase.ingestion;
 
 import com.knowbase.domain.status.ContentFamily;
+import com.knowbase.ingestion.layout.LayoutAnalysisOptions;
 import com.knowbase.ingestion.layout.LayoutAnalysisService;
+import com.knowbase.ingestion.layout.OcrRasterLayoutProvider;
+import com.knowbase.ingestion.layout.VisionMarkdownLayoutProvider;
+import com.knowbase.ingestion.pdf.PdfPageImageRenderer;
 import com.knowbase.ingestion.layout.LayoutPageRequest;
 import com.knowbase.ingestion.layout.LayoutPageResult;
 import com.knowbase.ingestion.ocr.OcrBlockFactory;
@@ -66,6 +70,9 @@ public final class OcrLayoutDocumentParser implements DocumentParser {
             byte[] content = source.inputStream().readAllBytes();
             Map<String, Object> options = source.metadata() == null ? Map.of() : source.metadata();
             IngestionParseOptionsSupport.IngestionParseOptions parseOptions = IngestionParseOptionsSupport.resolve(options);
+            if (isPdf(source) && layoutAnalysisService != null && layoutAnalysisService.hasAvailableProvider()) {
+                return parsePdfViaRasterLayout(source, content, options, parseOptions);
+            }
             if (layoutAnalysisService != null && layoutAnalysisService.hasAvailableProvider() && !isPdf(source)) {
                 return parseViaLayoutService(source, content, options, parseOptions);
             }
@@ -75,6 +82,93 @@ public final class OcrLayoutDocumentParser implements DocumentParser {
         } catch (Exception exception) {
             throw new IllegalStateException("OCR 版面解析失败: " + source.sourceUri(), exception);
         }
+    }
+
+    private ParsedDocument parsePdfViaRasterLayout(
+            DocumentSource source,
+            byte[] content,
+            Map<String, Object> options,
+            IngestionParseOptionsSupport.IngestionParseOptions parseOptions
+    ) {
+        Map<String, Object> mergedOptions = new HashMap<>(options);
+        mergedOptions.put(LayoutAnalysisOptions.PDF_BYTES, content);
+        mergedOptions.put("layoutProvider", OcrRasterLayoutProvider.PROVIDER_CODE);
+        List<StructuralBlock> blocks;
+        try {
+            blocks = layoutAnalysisService.analyzePdfPages(
+                    source,
+                    content,
+                    0,
+                    Map.copyOf(mergedOptions)
+            );
+        } catch (RuntimeException rasterFailure) {
+            blocks = List.of();
+        }
+        if (blocks.isEmpty()) {
+            mergedOptions.remove("layoutProvider");
+            mergedOptions.putIfAbsent("layoutProvider", VisionMarkdownLayoutProvider.PROVIDER_CODE);
+            try {
+                blocks = layoutAnalysisService.analyzePdfPages(
+                        source,
+                        content,
+                        0,
+                        Map.copyOf(mergedOptions)
+                );
+            } catch (RuntimeException visionFailure) {
+                blocks = List.of();
+            }
+        }
+        blocks = OcrConfidencePolicy.apply(
+                blocks,
+                parseOptions.ocrConfidenceThreshold(),
+                parseOptions.ocrDownweightMode()
+        );
+        Map<String, Object> parsedMetadata = new HashMap<>();
+        if (source.metadata() != null) {
+            parsedMetadata.putAll(source.metadata());
+        }
+        parsedMetadata.put("parserCode", PARSER_CODE);
+        parsedMetadata.put("parser", PARSER_CODE);
+        parsedMetadata.put("layoutAnalysisApplied", true);
+        String layoutProvider = resolveLayoutProvider(blocks, OcrRasterLayoutProvider.PROVIDER_CODE);
+        parsedMetadata.put("layoutProvider", layoutProvider);
+        parsedMetadata.put("ocrApplied", true);
+        parsedMetadata.put("layoutParsing", true);
+        parsedMetadata.put("pdfParseRoute", VisionMarkdownLayoutProvider.PROVIDER_CODE.equals(layoutProvider)
+                ? "vision-vl"
+                : "ocr-raster");
+        parsedMetadata.put("parseConfidence", OcrConfidencePolicy.aggregateDocumentScore(blocks));
+        parsedMetadata.put("parseConfidenceSource", "ocr-layout");
+        parsedMetadata.put("structureAware", !blocks.isEmpty());
+        parsedMetadata.put("blockCount", blocks.size());
+        parsedMetadata.put("pageCount", countPdfPages(content));
+        String flatText = blocks.isEmpty() ? "" : StructureParsingSupport.blocksToText(blocks);
+        return new ParsedDocument(
+                source.sourceUri(),
+                firstNonBlank(source.filename(), source.sourceUri()),
+                flatText,
+                ContentFamily.SCANNED_DOCUMENT,
+                Map.copyOf(parsedMetadata),
+                blocks
+        );
+    }
+
+    private static int countPdfPages(byte[] content) {
+        try {
+            return Math.max(1, PdfPageImageRenderer.render(content, 0).size());
+        } catch (RuntimeException exception) {
+            return 0;
+        }
+    }
+
+    private static String resolveLayoutProvider(List<StructuralBlock> blocks, String defaultProvider) {
+        for (StructuralBlock block : blocks) {
+            Object provider = block.metadata().get("layoutProvider");
+            if (provider != null && !String.valueOf(provider).isBlank()) {
+                return String.valueOf(provider);
+            }
+        }
+        return defaultProvider;
     }
 
     private ParsedDocument parseViaLayoutService(

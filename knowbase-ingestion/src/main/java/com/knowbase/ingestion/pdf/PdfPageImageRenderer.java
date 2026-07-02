@@ -17,7 +17,7 @@ import java.util.List;
  */
 public final class PdfPageImageRenderer {
 
-    private static final float DEFAULT_DPI = 150f;
+    private static final float DEFAULT_DPI = 200f;
 
     private PdfPageImageRenderer() {
     }

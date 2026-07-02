@@ -72,7 +72,11 @@ class VllmVisionDocumentModelClientTest {
 
         assertEquals("## Section\n\nParsed text", markdown);
         assertTrue(lastRequestBody.contains("\"model\":\"PaddleOCR-VL-1.6-0.9B\""));
+        assertTrue(lastRequestBody.contains("\"text\":\"OCR:\""));
+        assertTrue(lastRequestBody.contains("\"max_tokens\":8192"));
+        assertTrue(lastRequestBody.contains("\"temperature\":0.0"));
         assertTrue(lastRequestBody.contains("data:image/png;base64,"));
+        assertTrue(lastRequestBody.indexOf("image_url") < lastRequestBody.indexOf("\"text\":\"OCR:\""));
         assertEquals("Bearer test-key", lastAuthorization);
     }
 }
