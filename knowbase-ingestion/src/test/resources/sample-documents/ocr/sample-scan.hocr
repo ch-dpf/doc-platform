@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="chi_sim">
+  <body>
+    <div class="ocr_page" id="page_1" title='image "scan.png"; bbox 0 0 800 600; ppageno 0'>
+      <span class="ocr_line" id="line_1" title="bbox 72 100 420 24; x_wconf 92">季度营收 同比增长 12%</span>
+      <span class="ocr_line" id="line_2" title="bbox 72 140 360 24; x_wconf 48">模糊字段 待复核</span>
+    </div>
+  </body>
+</html>

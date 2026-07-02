@@ -1,0 +1,51 @@
+# PaddleOCR-VL / vLLM local deployment for KnowBase `knowbase.vision-document`.
+#
+# GPU + nvidia-container-toolkit required.
+#
+# Quick start (standalone vLLM, port 8118):
+#   docker compose -f infra/docker-compose.paddleocr-vl.yml up -d
+#
+# application.yml:
+#   knowbase.vision-document.enabled: true
+#   knowbase.vision-document.provider: vllm
+#   knowbase.vision-document.vllm.base-url: http://localhost:8118
+#
+# Full PaddleOCR-VL pipeline (layout + table bbox, port 8080) — use official HPS:
+#   git clone https://github.com/PaddlePaddle/PaddleOCR.git
+#   cd PaddleOCR/deploy/paddleocr_vl_docker/hps
+#   cp .env.example .env && bash prepare.sh && docker compose up -d
+# Then set provider=paddleocr-vl and base-url=http://localhost:8080
+#
+# See docs/PADDLEOCR_VL_DEPLOYMENT.md
+
+services:
+  paddleocr-vlm-vllm:
+    image: ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-genai-vllm-server:latest-nvidia-gpu
+    container_name: knowbase-paddleocr-vlm-vllm
+    command:
+      - paddleocr
+      - genai_server
+      - --model_name
+      - PaddleOCR-VL-1.6-0.9B
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8118"
+      - --backend
+      - vllm
+    ports:
+      - "8118:8118"
+    shm_size: "4gb"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8118/health || curl -sf http://localhost:8118/v1/models || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 180s

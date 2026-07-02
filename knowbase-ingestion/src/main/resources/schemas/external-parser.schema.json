@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowbase.local/schemas/external-parser.schema.json",
+  "title": "KnowBase External Parser Response",
+  "description": "Docling / Unstructured style HTTP parser response mapped to ParsedDocument.",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "enum": ["1.0", "1.1"]
+    },
+    "text": {
+      "type": "string",
+      "description": "Flat text fallback when blocks are absent."
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Machine-readable error code (e.g. service_error, schema_unsupported, unsupported_format)."
+        },
+        "message": { "type": "string" }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pageNumber"],
+        "properties": {
+          "pageNumber": { "type": "integer", "minimum": 1 },
+          "width": { "type": "number" },
+          "height": { "type": "number" },
+          "text": { "type": "string" },
+          "assetUri": { "type": "string" }
+        }
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "content"],
+        "properties": {
+          "type": { "type": "string" },
+          "content": { "type": "string" },
+          "level": { "type": "integer" },
+          "pageNumber": { "type": "integer" },
+          "bbox": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "readingOrder": { "type": "integer" },
+          "confidence": { "type": "number" },
+          "tableRegionId": { "type": "integer" },
+          "tableRegionLabel": { "type": "string" },
+          "metadata": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tableRegionId": { "type": "integer" },
+          "tableRegionLabel": { "type": "string" },
+          "pageNumber": { "type": "integer" },
+          "bbox": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rowRole": { "type": "string" },
+                "content": { "type": "string" },
+                "cells": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      { "type": "string" },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "text": { "type": "string" },
+                          "value": { "type": "string" },
+                          "rowSpan": { "type": "integer", "minimum": 1 },
+                          "columnSpan": { "type": "integer", "minimum": 1 },
+                          "merged": { "type": "boolean" },
+                          "bbox": {
+                            "type": "array",
+                            "items": { "type": "number" },
+                            "minItems": 4,
+                            "maxItems": 4
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                "bbox": {
+                  "type": "array",
+                  "items": { "type": "number" },
+                  "minItems": 4,
+                  "maxItems": 4
+                },
+                "headerPath": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "images": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pageNumber": { "type": "integer" },
+          "bbox": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "assetUri": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

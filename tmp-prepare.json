@@ -1,0 +1,9 @@
+{
+  "libraryId": "953e12ba-5676-46ff-8e7b-b20d5088a679",
+  "sourceUris": [
+    "minio://knowbase/1fff6b6c-3d3e-4b30-aa3e-41ee06827d9b/杜鹏飞-软件技术部-工作周报(2026年5月06日-5月09日).xlsx"
+  ],
+  "documentProfileCode": "default_table",
+  "prepareStage": "parse",
+  "options": {}
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://knowbase.local/schemas/external-parser-request.schema.json",
+  "title": "KnowBase External Parser Request",
+  "description": "Optional JSON request body for Docling / Unstructured style HTTP parsers.",
+  "type": "object",
+  "required": ["schemaVersion", "contentBase64"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "sourceUri": { "type": "string" },
+    "filename": { "type": "string" },
+    "mimeType": { "type": "string" },
+    "parserCode": { "type": "string" },
+    "documentProfileCode": { "type": "string" },
+    "libraryId": { "type": "string" },
+    "contentBase64": {
+      "type": "string",
+      "description": "Base64-encoded raw document bytes."
+    },
+    "options": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

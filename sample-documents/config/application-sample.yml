@@ -1,0 +1,13 @@
+knowbase:
+  server:
+    port: 8080
+  ollama:
+    enabled: false
+  storage:
+    type: local
+  ingestion:
+    ocrConfidenceThreshold: 0.6
+    parsers:
+      pdf: pdf-layout
+      table: table-deep
+      ocr: ocr-layout

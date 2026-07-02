@@ -1,0 +1,4 @@
+Release checklist:
+- Parse markdown headings
+- Preserve table row metadata
+- Export citation bbox fields

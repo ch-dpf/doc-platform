@@ -1,0 +1,131 @@
+server:
+  port: 8088
+
+logging:
+  level:
+    root: INFO
+    com.knowbase: INFO
+    com.knowbase.ingestion: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+spring:
+  application:
+    name: knowbase-app
+  datasource:
+    url: jdbc:postgresql://localhost:5433/knowbase
+    username: knowbase
+    password: knowbase
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 500MB
+
+knowbase:
+  enabled: true
+  web:
+    exposed: true
+  tenant:
+    default-tenant-id: default
+  persistence:
+    enabled: true
+  flyway:
+    enabled: false
+  ollama:
+    enabled: true
+    base-url: http://localhost:11434
+    embedding-model: bge-m3
+    chat-model: llama3.2
+    # ML 版面默认需要 vision 模型；使用 vLLM / PaddleOCR-VL 扫描路由时应留空
+    vision-language-model: ""
+    embedding-dimension: 1024
+    timeout: 60s
+    vision-language-timeout: 120s
+  vision-document:
+    enabled: true
+    # paddleocr-vl = 官方完整版面 pipeline (POST /layout-parsing)
+    # vllm = 独立 vLLM OpenAI 接口 (POST /v1/chat/completions)
+    # ollama = 回退到 knowbase.ollama.vision-language-model
+    provider: vllm
+    timeout: 600s
+    paddleocr-vl:
+      base-url: http://localhost:8080
+      layout-parsing-path: /layout-parsing
+      pipeline-name: PaddleOCR-VL-1.6
+      prettify-markdown: true
+      return-markdown-images: false
+      visualize: false
+    vllm:
+      base-url: http://localhost:8118
+      chat-completions-path: /v1/chat/completions
+      model: PaddleOCR-VL-1.6-0.9B
+      api-key: ""
+      temperature: 0.0
+  ingestion:
+    async-enabled: false
+    document-upsert-enabled: true
+    promote-eval-gate-enabled: false
+    pdf:
+      vl-on-scanned: true
+      vl-on-low-confidence: true
+      vl-low-confidence-threshold: 0.55
+      vl-fallback-to-heuristic: true
+      vl-max-pages: 0
+    ocr:
+      default-engine: tesseract
+      language: chi_sim+eng
+      confidence-threshold: 0.6
+      downweight-mode: downweight
+    layout:
+      default-provider: local-pdf-layout     # vLLM/PaddleOCR-VL 扫描路由；需要 Ollama 表格检测时再启用 ollama
+      ollama:
+        enabled: false
+        model: ""
+        fallback-to-heuristic: true
+    reading-order:
+      provider: ollama
+      endpoint: ""
+      ollama-model: knowbase-reading-order
+      fallback-to-heuristic: true
+      timeout: 30s
+    evidence-artifacts:
+      enabled: false
+      bucket: knowbase-evidence
+      max-pages: 20
+    summary:
+      prompt-id: default_summary
+      language: the same language as the source content
+      max-input-chars: 16384
+      max-output-chars: 500
+      min-input-chars: 100
+      temperature: 0.3
+      max-completion-tokens: 2048
+  upload:
+    max-file-size-bytes: 209715200   # 200MB
+    max-files-per-batch: 50
+  storage:
+# 本地FS存储系统，默认本地文件系统对象存储根目录
+#    type: local
+#    local-root: D:\data\knowbase-storage
+    type: minio
+    default-bucket: knowbase
+    minio:
+      endpoint: http://192.168.14.65:9000
+      access-key: minioadmin
+      secret-key: minioadmin
+      auto-create-bucket: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn

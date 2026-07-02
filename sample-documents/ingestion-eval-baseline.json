@@ -1,0 +1,63 @@
+{
+  "version": "1",
+  "minimumAverageCitationScore": 0.94,
+  "documents": {
+    "pdf-table": {
+      "minimumCitationScore": 0.7,
+      "blockCount": 4,
+      "tableRowCount": 2,
+      "indexableChunkCount": 3,
+      "totalChunkCount": 4,
+      "maxIndexableTokens": 18,
+      "indexableFingerprints": [
+        "[表区摘要] pdf-table-0 · 数据行: 1 · 总行: 1\n\n[表区摘要] pdf-",
+        "Name | Age",
+        "[Sheet: PDF] Bob: Alice | 25: 30"
+      ]
+    },
+    "pdf-multi-column": {
+      "minimumCitationScore": 1.0,
+      "blockCount": 4,
+      "tableRowCount": 0,
+      "indexableChunkCount": 1,
+      "totalChunkCount": 2,
+      "maxIndexableTokens": 22,
+      "indexableFingerprints": [
+        "Left column line one\n\nLeft column line two\n\nRigh"
+      ]
+    },
+    "pdf-formula": {
+      "minimumCitationScore": 1.0,
+      "blockCount": 1,
+      "tableRowCount": 0,
+      "indexableChunkCount": 1,
+      "totalChunkCount": 2,
+      "maxIndexableTokens": 9,
+      "indexableFingerprints": [
+        "Equation $E=mc^2$ for citation eval."
+      ]
+    },
+    "xlsx-metrics": {
+      "minimumCitationScore": 1.0,
+      "blockCount": 3,
+      "tableRowCount": 2,
+      "indexableChunkCount": 1,
+      "totalChunkCount": 2,
+      "maxIndexableTokens": 15,
+      "indexableFingerprints": [
+        "[Sheet: Metrics]\n[Sheet: Metrics] 姓名: 张三 | 部门: 研"
+      ]
+    },
+    "xlsx-multi-header": {
+      "minimumCitationScore": 1.0,
+      "blockCount": 4,
+      "tableRowCount": 3,
+      "indexableChunkCount": 1,
+      "totalChunkCount": 3,
+      "maxIndexableTokens": 17,
+      "indexableFingerprints": [
+        "[Sheet: Metrics]\n[Sheet: Metrics] A: 张三 | Q1: 10"
+      ]
+    }
+  }
+}
