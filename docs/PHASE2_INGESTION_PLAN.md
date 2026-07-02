@@ -1,10 +1,10 @@
-# 二期实施方案：复杂文档解析与分段质量增强
+# 二期实施方案：复杂文档解析、召回评测与知识库治理增强
 
 ## 1. 背景
 
 一期已经完成入库主链路：来源加载、Parser/Profile 路由、文本清洗、元数据增强、结构优先分段、token 预算约束、字符兜底、Embedding、索引写入和发布。
 
-二期不替换现有 Java Pipeline，而是在现有 SPI 上增强复杂文档质量，重点面向扫描件、复杂 PDF、Excel/CSV 报表、多栏文档、表格型知识和高质量引用。
+二期不替换现有 Java Pipeline，而是在现有 SPI 上增强复杂文档质量，并补齐知识库配置、召回测试、评测治理和文档生命周期等产品化能力，重点面向扫描件、复杂 PDF、Excel/CSV 报表、多栏文档、表格型知识、高质量引用和可运营的入库闭环。
 
 ## 2. 二期目标
 
@@ -13,6 +13,9 @@
 3. 强化表格语义模型，支持多级表头、合并单元格、公式值、隐藏行列、跨 sheet 引用。
 4. 建立解析与切分评测集，用固定样本回归 chunk 边界、引用粒度和召回质量。
 5. 固化外部解析器协议，支持按场景接入 Docling、Unstructured 或其他文档解析服务。
+6. 产品化知识库 Profile 配置，支持创建后治理、版本对比、回滚和重建索引提示。
+7. 增加知识库级召回测试与批量召回评测，支持在智能体发布前验证 topK、过滤、融合、重排和 citation 质量。
+8. 补齐文档生命周期和数据源同步能力，支持文档删除、增量入库、单文档重建、目录/对象存储同步和索引清理策略。
 
 ## 3. 范围
 
@@ -97,6 +100,54 @@
 - Docling/Unstructured mock 响应可稳定映射到 `ParsedDocument`。
 - 外部解析器与 Java parser 共用同一 chunker。
 - 外部解析器禁用时，默认 Java pipeline 不受影响。
+
+### 3.6 知识库配置与 Profile 治理
+
+交付项：
+
+- 增加 `LibraryProfile` 版本列表、详情、版本对比、复制新版本、回滚和禁用能力。
+- 增加 `DocumentProfile` 列表、创建、编辑、启停、复制、删除和差异对比能力。
+- Profile 配置项覆盖 parser、cleaning、chunking、tokenizer、embedding、metadata schema、OCR/外部解析器参数和 retrievalTopK。
+- Profile 变更时输出影响分析：受影响文档数、索引版本、是否需要重新入库、是否可仅重建增量。
+- 前端增加知识库 Profile 管理页和变更确认流程。
+
+验收标准：
+
+- 创建知识库后仍可独立调整 `LibraryProfile` 和 `DocumentProfile`，并生成可追踪版本。
+- Profile 变更不会修改已发布索引版本的读取结果，除非用户显式触发重建或发布新版本。
+- 前端能展示 Profile 差异，并提示重新入库或重建索引的影响范围。
+
+### 3.7 召回测试与批量评测
+
+交付项：
+
+- 增加知识库级召回测试接口，支持 `libraryId`、`indexVersionId`、question、topK、metadata filter、contentFamilyWeights、fusion、rerank、dedup 和 score 明细。
+- 保留现有智能体级 retrieval test，并增加与知识库级测试共享的结果模型：raw candidates、fused candidates、reranked candidates、evidence、citation 和 context token。
+- 建立批量召回评测数据集格式，样本包含 question、expectedDocumentIds、expectedChunkIds、expectedCitationMetadata、tags 和难度等级。
+- 增加批量评测指标：recall@k、precision@k、MRR、nDCG、citation completeness、evidence coverage、table/OCR/PDF 专项命中率。
+- 支持按 Profile 版本、索引版本、检索策略和模型配置做 A/B 对比。
+
+验收标准：
+
+- 用户无需创建智能体即可对单个知识库和指定索引版本做召回调试。
+- 批量评测报告能定位失败样本、缺失 chunk、低分原因、策略差异和 citation metadata 缺口。
+- 发布智能体或发布索引版本前，可引用最近一次召回评测结果作为质量门禁。
+
+### 3.8 文档生命周期与数据源同步
+
+交付项：
+
+- 增加文档级查询、删除、停用、重新入库和单文档重建接口。
+- 支持按 source URI、文件 hash、etag、lastModified 或外部 document key 做幂等 upsert。
+- 增加目录、对象存储和外部数据源的同步任务抽象，支持全量扫描、增量扫描、dry run 和同步差异预览。
+- 删除或停用文档时生成新索引版本，并明确清理旧 chunk、embedding、artifact 和引用缓存的策略。
+- 前端增加文档生命周期操作入口，展示文档来源、版本、最近入库任务、当前索引状态和可重建原因。
+
+验收标准：
+
+- 同一文档重复入库能识别未变化、内容更新、来源删除和 Profile 变更四类情况。
+- 删除或停用文档后，新发布索引不再召回对应 chunk，旧已发布索引仍遵守版本兼容策略。
+- 同步任务能输出新增、更新、删除、跳过和失败文档明细。
 
 ## 4. 缺项与后续完善项
 
@@ -287,6 +338,7 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 - Document Profile 仍主要在建库和入库时隐式使用，缺少独立 CRUD、启停、版本历史和差异对比。
 - Library Profile 缺少版本历史、复制、回滚和变更影响提示。
 - 前端缺少面向租户/知识库维度的 Profile 配置台账。
+- Profile 变更与索引版本、入库任务、召回评测之间缺少明确联动。
 
 后续完善：
 
@@ -294,6 +346,7 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 - 增加 Library Profile 版本列表、版本对比、复制为新版本和回滚能力。
 - 前端增加 Profile 管理页，展示 parser、cleaning、chunking、tokenizer、metadata schema 配置。
 - 变更 Profile 时提示是否需要创建新索引版本或重新入库。
+- Profile 保存后可触发 chunk 预览、单文档试切和知识库级召回测试，作为发布前验证入口。
 
 ### 4.9 入库任务运维
 
@@ -334,6 +387,62 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 - 支持按 runId 跳转观测 trace，并从观测页反查知识库、文档和索引版本。
 - 增加慢任务、失败率和低 OCR 置信度告警指标。
 
+### 4.10 知识库级召回测试
+
+现状：
+
+- 已有智能体级检索测试，可验证多库路由、检索、证据构建和上下文 token 拼装。
+
+不足：
+
+- 缺少不依赖智能体的知识库级召回沙盒，无法直接按 `libraryId` 或 `indexVersionId` 调试单库召回。
+- 缺少 raw/fusion/rerank 分阶段候选对比、metadata filter 命中解释和分数组成明细。
+- 缺少面向产品运营的召回测试历史记录、策略快照和失败样本沉淀。
+
+后续完善：
+
+- 增加 `POST /api/v1/libraries/{libraryId}/retrieval-tests`，支持指定索引版本、topK、过滤条件、策略覆盖和 tokenizer/context 预算。
+- 返回 raw candidates、fused candidates、reranked candidates、evidence、citation、vectorScore、keywordScore、rerankScore 和 trace。
+- 前端增加单库召回测试页，支持保存测试用例、复制为批量评测样本、对比不同 Profile/索引版本。
+
+### 4.11 批量召回评测与质量门禁
+
+现状：
+
+- 已有观测与问答评测接口基础，可记录 eval run 和样本结果。
+
+不足：
+
+- 当前评测偏问答结果，缺少针对入库与检索质量的标准召回指标。
+- 缺少带标注 document/chunk/citation 的固定评测集和版本化报告。
+- 缺少发布索引或智能体前的质量门禁机制。
+
+后续完善：
+
+- 定义 retrieval eval dataset schema，支持 expectedDocumentIds、expectedChunkIds、expectedCitationMetadata、tags、difficulty。
+- 增加 recall@k、precision@k、MRR、nDCG、citation completeness、evidence coverage 和专项样本命中率。
+- 支持评测报告按 library、indexVersion、profileVersion、agentVersion、retrievalPolicy 和 embeddingModel 维度聚合。
+- 支持质量阈值配置，未达到阈值时阻止或警告索引发布、智能体发布。
+
+### 4.12 文档生命周期与数据源同步
+
+现状：
+
+- 已支持上传、目录展开、批量 source URI 入库、文档与 chunk 查询。
+
+不足：
+
+- 缺少文档级删除、停用、重新入库、单文档重建和增量 upsert。
+- 缺少数据源连接器、同步任务、dry run、变更预览和同步历史。
+- 文档删除后 chunk、embedding、artifact、citation cache 与旧索引版本之间的清理策略仍需明确。
+
+后续完善：
+
+- 增加文档生命周期接口：查询来源、删除/停用、重新入库、单文档重建、按 source key 查找。
+- 增加 source connector 抽象，覆盖本地目录、对象存储、HTTP/Sitemap、Git/代码仓库和业务系统导出。
+- 使用 hash、etag、lastModified、externalDocumentKey 识别新增、更新、删除和未变化文档。
+- 删除和增量更新均通过新索引版本发布，确保已发布版本可回滚、可审计。
+
 ## 5. 实施顺序
 
 1. 定义外部解析器响应 Schema 与样例。
@@ -343,9 +452,12 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 5. 建立样本文档回归集与 chunk 边界快照。
 6. 接入可选 Docling/Unstructured adapter。
 7. 补齐 Document Profile 与 Library Profile 管理能力。
-8. 补齐入库任务列表、取消、失败重试和索引版本运维能力。
-9. 建立 Pipeline 阶段耗时、失败分布与 runId trace 联动。
-10. 将高质量 citation metadata 接入证据构造与前端展示。
+8. 增加知识库级召回测试，并与智能体级 retrieval test 复用结果模型。
+9. 建立批量召回评测数据集、指标和质量门禁。
+10. 补齐文档删除、增量 upsert、单文档重建和数据源同步任务。
+11. 补齐入库任务列表、取消、失败重试和索引版本运维能力。
+12. 建立 Pipeline 阶段耗时、失败分布与 runId trace 联动。
+13. 将高质量 citation metadata 接入证据构造与前端展示。
 
 ## 6. 非目标
 
@@ -353,6 +465,7 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 - 二期不强制所有部署环境安装 Docling/Unstructured。
 - 二期不改变已发布索引版本的读取兼容性。
 - 二期不替换现有 Java 入库主链路。
+- 二期不实现所有第三方 SaaS 数据源的深度双向同步，优先提供可扩展 connector 抽象和只读导入能力。
 
 ## 7. 风险与约束
 
@@ -361,3 +474,5 @@ Docker 部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 - bbox 和 reading order 会影响 citation 展示，必须有快照测试约束。
 - OCR confidence 不同引擎口径不一致，需要记录 `confidenceSource`。
 - Profile 与入库任务运维会影响已发布索引版本，必须明确版本兼容和回滚策略。
+- 知识库级召回测试和批量评测会暴露不同模型、索引版本、Profile 版本的质量差异，需要保存策略快照和测试数据版本。
+- 文档删除、增量同步和单文档重建会影响索引一致性，需要明确软删除、旧索引保留、artifact 清理和审计边界。
