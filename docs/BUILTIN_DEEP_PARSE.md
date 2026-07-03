@@ -87,18 +87,12 @@ flowchart LR
 
 ## 5. 配置速查
 
+`application.yml` 仅保留可独立运行的最小默认集。**互斥项**（storage、VLM provider、layout、reading-order 等）见 [APPLICATION_CONFIG.md](./APPLICATION_CONFIG.md)。
+
+常用非互斥键（与默认 yml 一致）：
+
 ```yaml
 knowbase:
-  vision-document:
-    enabled: true
-    provider: paddleocr-vl   # 或 vllm / ollama
-    paddleocr-vl:
-      base-url: http://localhost:8888
-    vllm:
-      base-url: http://localhost:8118
-      model: PaddleOCR-VL-1.6-0.9B
-  ollama:
-    vision-language-model: ""  # 官方服务启用时留空
   ingestion:
     pdf:
       vl-on-scanned: true
@@ -106,19 +100,13 @@ knowbase:
       vl-fallback-to-heuristic: true
     ocr:
       default-engine: tesseract
-      language: auto
       confidence-threshold: 0.6
-      downweight-mode: downweight   # filter | downweight | review
-    layout:
-      default-provider: ollama-layout   # ML first (Ollama vision); fallback local-pdf-layout
-    reading-order:
-      provider: ollama                  # knowbase-reading-order via Ollama; fallback heuristic-bbox
-      timeout: 30s
+      downweight-mode: downweight
     evidence-artifacts:
-      enabled: false                # 生成 PDF 页 PNG 至 ObjectStorage
-      bucket: knowbase-evidence
-      max-pages: 20
+      enabled: false
 ```
+
+启用 VLM / Ollama layout / HTTP 阅读顺序时，按 [APPLICATION_CONFIG.md](./APPLICATION_CONFIG.md) 对应章节**只选一套**写入 profile 或环境覆盖，勿在 base yml 并列 `paddleocr-vl` 与 `vllm` 块。
 
 Docker 本地部署见 [PADDLEOCR_VL_DEPLOYMENT.md](./PADDLEOCR_VL_DEPLOYMENT.md)。
 

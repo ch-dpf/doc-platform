@@ -48,8 +48,9 @@ cd D:\workspace\doc-platform
 
 | 文件 | 用途 |
 |------|------|
-| `application.yml` | 提交默认：8088、local 存储、启发式 reading-order、VLM 默认关 |
-| `application-dev.yml` | `spring.profiles.active=dev` 时加载；与 compose 本地服务对齐 |
+| `application.yml` | 最小默认：8088、local 存储、启发式 layout/reading-order、VLM 关 |
+| `application-dev.yml` | `spring.profiles.active=dev` 占位 profile（与默认一致） |
+| `docs/APPLICATION_CONFIG.md` | **互斥配置组**（storage / VLM / layout / reading-order 等）及场景示例 |
 | `frontend/knowbase-ui/.env.development` | Vite 代理 → `http://127.0.0.1:8088` |
 
 ### PostgreSQL
@@ -84,7 +85,7 @@ docker compose up -d postgres
 
 ### PaddleOCR-VL（可选，扫描 PDF）
 
-见 [PADDLEOCR_VL_DEPLOYMENT.md](PADDLEOCR_VL_DEPLOYMENT.md)。启用后在 `application.yml` 设 `knowbase.vision-document.enabled: true`。
+见 [PADDLEOCR_VL_DEPLOYMENT.md](PADDLEOCR_VL_DEPLOYMENT.md) 与 [APPLICATION_CONFIG.md](APPLICATION_CONFIG.md) §2（VLM 三选一，勿与默认 yml 混写多套 provider 块）。
 
 ## IDEA 启动
 

@@ -40,11 +40,8 @@ knowbase:
     base-url: http://localhost:11434
     embedding-model: bge-m3
     chat-model: llama3.2
-    # ML 版面默认需要 vision 模型；使用 vLLM / PaddleOCR-VL 扫描路由时应留空
-    vision-language-model: ""
     embedding-dimension: 1024
     timeout: 60s
-    vision-language-timeout: 120s
   vision-document:
     enabled: true
     # paddleocr-vl = 官方完整版面 pipeline (POST /layout-parsing)，推荐
@@ -59,12 +56,6 @@ knowbase:
       prettify-markdown: true
       return-markdown-images: false
       visualize: false
-    vllm:
-      base-url: http://localhost:8118
-      chat-completions-path: /v1/chat/completions
-      model: PaddleOCR-VL-1.6-0.9B
-      api-key: ""
-      temperature: 0.0
   ingestion:
     async-enabled: false
     document-upsert-enabled: true
@@ -74,28 +65,17 @@ knowbase:
       vl-on-low-confidence: true
       vl-low-confidence-threshold: 0.55
       vl-fallback-to-heuristic: true
-      vl-max-pages: 0
     ocr:
       default-engine: tesseract
       language: chi_sim+eng
       confidence-threshold: 0.6
       downweight-mode: downweight
     layout:
-      default-provider: local-pdf-layout     # vLLM/PaddleOCR-VL 扫描路由；需要 Ollama 表格检测时再启用 ollama
-      ollama:
-        enabled: false
-        model: ""
-        fallback-to-heuristic: true
+      default-provider: local-pdf-layout
     reading-order:
-      provider: ollama
-      endpoint: ""
-      ollama-model: knowbase-reading-order
+      provider: heuristic
       fallback-to-heuristic: true
       timeout: 30s
-    evidence-artifacts:
-      enabled: false
-      bucket: knowbase-evidence
-      max-pages: 20
     summary:
       prompt-id: default_summary
       language: the same language as the source content
@@ -105,12 +85,9 @@ knowbase:
       temperature: 0.3
       max-completion-tokens: 2048
   upload:
-    max-file-size-bytes: 209715200   # 200MB
+    max-file-size-bytes: 209715200
     max-files-per-batch: 50
   storage:
-# 本地FS存储系统，默认本地文件系统对象存储根目录
-#    type: local
-#    local-root: D:\data\knowbase-storage
     type: minio
     default-bucket: knowbase
     minio:
