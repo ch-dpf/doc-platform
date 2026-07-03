@@ -21,6 +21,8 @@ public record ParserCatalogItemResult(
         @Schema(description = "典型文件扩展名")
         List<String> supportedExtensions,
         @Schema(description = "能力标签")
-        List<String> capabilities
+        List<String> capabilities,
+        @Schema(description = "解析器依赖健康状态")
+        ParserHealthResult health
 ) {
 }

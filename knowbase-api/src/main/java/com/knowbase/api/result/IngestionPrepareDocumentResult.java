@@ -20,6 +20,8 @@ public record IngestionPrepareDocumentResult(
         ChunkStageResult chunk,
         /** 后处理阶段结果；prepareStage 含 post_process 时非空 */
         PostProcessStageResult postProcess,
+        /** 面向产品预览的质量洞察：评分、风险、建议与关键指标 */
+        IngestionQualityInsightResult qualityInsight,
         String error
 ) {
 }

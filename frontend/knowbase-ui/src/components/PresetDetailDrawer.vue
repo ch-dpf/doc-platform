@@ -83,6 +83,15 @@
               </el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="健康" width="110">
+            <template #default="{ row }">
+              <el-tooltip :content="row.health?.message || '未返回健康状态'" placement="top">
+                <el-tag size="small" :type="healthTagType(row.health?.status)" effect="plain">
+                  {{ healthLabel(row.health?.status) }}
+                </el-tag>
+              </el-tooltip>
+            </template>
+          </el-table-column>
           <el-table-column prop="descriptionZh" label="说明" min-width="160" show-overflow-tooltip />
           <el-table-column label="扩展名" width="120" show-overflow-tooltip>
             <template #default="{ row }">{{ (row.supportedExtensions || []).join(', ') }}</template>
@@ -180,6 +189,20 @@ const sceneSummary = computed(() => {
 function parserLabel(code) {
   const item = catalog.value?.parsers?.find((p) => p.code === code);
   return item?.nameZh || code;
+}
+
+function healthTagType(status) {
+  if (status === 'READY') return 'success';
+  if (status === 'DEGRADED') return 'warning';
+  if (status === 'UNCONFIGURED') return 'danger';
+  return 'info';
+}
+
+function healthLabel(status) {
+  if (status === 'READY') return '可用';
+  if (status === 'DEGRADED') return '降级';
+  if (status === 'UNCONFIGURED') return '未配置';
+  return '未知';
 }
 
 async function loadPreset() {

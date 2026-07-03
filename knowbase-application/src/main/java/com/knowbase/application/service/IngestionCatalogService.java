@@ -15,9 +15,15 @@ import java.util.Map;
 public final class IngestionCatalogService {
 
     private final CompositePresetCatalog presetCatalog;
+    private final ParserHealthProbe parserHealthProbe;
 
     public IngestionCatalogService(CompositePresetCatalog presetCatalog) {
+        this(presetCatalog, ParserHealthProbe.noop());
+    }
+
+    public IngestionCatalogService(CompositePresetCatalog presetCatalog, ParserHealthProbe parserHealthProbe) {
         this.presetCatalog = presetCatalog;
+        this.parserHealthProbe = parserHealthProbe == null ? ParserHealthProbe.noop() : parserHealthProbe;
     }
 
     public IngestionCatalogResult getCatalog() {
@@ -30,7 +36,8 @@ public final class IngestionCatalogService {
                         parser.external(),
                         parser.endpointRequired(),
                         parser.supportedExtensions(),
-                        parser.capabilities()
+                        parser.capabilities(),
+                        parserHealthProbe.check(parser.code())
                 ))
                 .toList();
         List<DocumentProfileCatalogItemResult> profiles = IngestionProductCatalog.profileTemplates().stream()

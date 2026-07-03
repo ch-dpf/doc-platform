@@ -11,6 +11,8 @@ public record IngestionPrepareResult(
         int sourceCount,
         int succeeded,
         int failed,
+        /** 批次级质量洞察，聚合 documents 中的问题与建议 */
+        IngestionQualityInsightResult qualityInsight,
         List<IngestionPrepareDocumentResult> documents
 ) {
 }

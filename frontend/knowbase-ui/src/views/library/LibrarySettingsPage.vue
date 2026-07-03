@@ -18,6 +18,24 @@
         :description="`本库创建于「${presetGuide?.name || library.libraryTypePresetCode}」预设（${library.libraryTypePresetCode}）。下方为实例副本，与预设管理中的模板独立演化。`"
       />
 
+      <div class="config-flow section-gap">
+        <div class="config-flow__item">
+          <span>1</span>
+          <strong>库预设</strong>
+          <p>建库时确定语料方向并生成配置快照。</p>
+        </div>
+        <div class="config-flow__item config-flow__item--active">
+          <span>2</span>
+          <strong>库配置</strong>
+          <p>长期维护解析、清洗、分块和重索引策略。</p>
+        </div>
+        <div class="config-flow__item">
+          <span>3</span>
+          <strong>上传入库</strong>
+          <p>执行预览与本次覆盖，确认质量后入库。</p>
+        </div>
+      </div>
+
       <div class="section-head">
         <h4 class="section-title">L1 · Library Profile · v{{ profile.version }}</h4>
         <el-button type="primary" round @click="openProfileDialog">发布新版本</el-button>
@@ -128,6 +146,31 @@
         <ul v-if="presetGuide?.changeImpactHintsZh?.length" class="hint-list section-gap">
           <li v-for="(hint, i) in presetGuide.changeImpactHintsZh" :key="i">{{ hint }}</li>
         </ul>
+      </div>
+
+      <div class="section-gap">
+        <div class="section-head">
+          <h4 class="section-title">解析依赖健康</h4>
+          <el-tag size="small" type="info" effect="plain">Parser Health</el-tag>
+        </div>
+        <p class="helper-text">复杂 PDF、OCR 与外接解析器依赖外部服务或运行时能力；上传前先在这里确认依赖状态。</p>
+        <el-table v-if="criticalParserHealth.length" :data="criticalParserHealth" size="small" stripe>
+          <el-table-column prop="nameZh" label="解析器" min-width="130" />
+          <el-table-column prop="code" label="编码" width="130" />
+          <el-table-column label="健康" width="100">
+            <template #default="{ row }">
+              <el-tooltip :content="row.health?.message || '无健康信息'" placement="top">
+                <el-tag size="small" :type="healthTagType(row.health?.status)" effect="plain">
+                  {{ healthLabel(row.health?.status) }}
+                </el-tag>
+              </el-tooltip>
+            </template>
+          </el-table-column>
+          <el-table-column label="配置" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.health?.endpoint || row.health?.provider || '—' }}</template>
+          </el-table-column>
+          <el-table-column prop="descriptionZh" label="说明" min-width="220" show-overflow-tooltip />
+        </el-table>
       </div>
 
       <div class="section-gap">
@@ -286,6 +329,11 @@ const enrichedDocumentProfiles = computed(() =>
 
 const selectedParser = computed(() => findParser(docProfileForm.value.parserCode));
 
+const criticalParserHealth = computed(() => {
+  const priority = new Set(['pdf-layout', 'ocr-layout', 'docling', 'unstructured', 'external']);
+  return (catalog.value?.parsers || []).filter((parser) => priority.has(parser.code));
+});
+
 const chunkingOptions = computed(() => {
   const fromCatalog = (catalog.value?.documentProfiles || []).map((p) => ({
     value: p.defaultChunkingStrategy,
@@ -325,6 +373,20 @@ function emptyDocProfileForm() {
 function formatOption(key, fallback) {
   const value = profile.value?.options?.[key];
   return value == null ? fallback : String(value);
+}
+
+function healthLabel(status) {
+  if (status === 'READY') return '可用';
+  if (status === 'DEGRADED') return '降级';
+  if (status === 'UNCONFIGURED') return '未配置';
+  return '未知';
+}
+
+function healthTagType(status) {
+  if (status === 'READY') return 'success';
+  if (status === 'DEGRADED') return 'warning';
+  if (status === 'UNCONFIGURED') return 'danger';
+  return 'info';
 }
 
 async function loadAll() {
@@ -484,6 +546,47 @@ onMounted(loadAll);
   gap: 12px;
   margin-bottom: 12px;
 }
+.config-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.config-flow__item {
+  position: relative;
+  padding: 12px 14px 12px 46px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.config-flow__item--active {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+.config-flow__item span {
+  position: absolute;
+  left: 14px;
+  top: 13px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+}
+.config-flow__item strong {
+  display: block;
+  color: #0f172a;
+  font-size: 14px;
+}
+.config-flow__item p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
 .profile-block { margin-bottom: 16px; }
 .section-gap { margin-top: 24px; }
 .section-title { margin: 0; font-size: 14px; font-weight: 600; }
@@ -494,4 +597,10 @@ onMounted(loadAll);
 .hint-list { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--el-text-color-regular); line-height: 1.6; }
 .mini-tag { margin-left: 6px; }
 .full-width { width: 100%; }
+
+@media (max-width: 960px) {
+  .config-flow {
+    grid-template-columns: 1fr;
+  }
+}
 </style>

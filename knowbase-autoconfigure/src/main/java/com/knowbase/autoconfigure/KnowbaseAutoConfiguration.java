@@ -37,6 +37,7 @@ import com.knowbase.application.usecase.PrepareIngestionUseCase;
 import com.knowbase.application.usecase.PreviewIngestionUseCase;
 import com.knowbase.application.usecase.ManageTokenizerProfileUseCase;
 import com.knowbase.application.service.DefaultPresetService;
+import com.knowbase.application.service.ParserHealthProbe;
 import com.knowbase.application.service.IngestionCatalogService;
 import com.knowbase.application.service.DefaultQuestionService;
 import com.knowbase.application.service.DefaultRetrievalTestService;
@@ -1160,8 +1161,17 @@ public class KnowbaseAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(IngestionCatalogService.class)
-    IngestionCatalogService ingestionCatalogService(CompositePresetCatalog presetCatalog) {
-        return new IngestionCatalogService(presetCatalog);
+    IngestionCatalogService ingestionCatalogService(
+            CompositePresetCatalog presetCatalog,
+            ParserHealthProbe parserHealthProbe
+    ) {
+        return new IngestionCatalogService(presetCatalog, parserHealthProbe);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(ParserHealthProbe.class)
+    ParserHealthProbe parserHealthProbe(KnowbaseProperties properties) {
+        return new DefaultParserHealthProbe(properties);
     }
 
     @Bean

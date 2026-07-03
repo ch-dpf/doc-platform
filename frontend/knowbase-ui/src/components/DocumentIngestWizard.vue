@@ -39,7 +39,7 @@
     </PageCard>
 
     <!-- Step 2: Parse + Segmentation -->
-    <PageCard v-show="currentStep === 1" title="第二步：解析模式与分段预览">
+    <PageCard v-show="currentStep === 1" title="第二步：解析预览与本次覆盖">
       <template #actions>
         <el-tag v-if="prepareResult" :type="prepareOk ? 'success' : 'warning'">
           {{ prepareResult.succeeded }}/{{ prepareResult.sourceCount }} 文档就绪
@@ -47,38 +47,64 @@
       </template>
 
       <el-form label-position="top" class="wizard-form wizard-form--wide">
-        <el-form-item label="解析模式">
-          <el-radio-group v-model="parseMode" class="parse-mode-group">
-            <el-radio-button label="standard">标准结构解析</el-radio-button>
-            <el-radio-button label="layout">Layout 版面解析</el-radio-button>
-            <el-radio-button label="ocr">OCR + 版面</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-
-        <div class="segment-panel" :class="parsePanelClass">
-          <template v-if="parseMode === 'standard'">
-            <p>按文件类型自动选择结构解析器（Markdown / Word / PDF 文本层 / HTML）。</p>
-          </template>
-          <template v-else-if="parseMode === 'layout'">
-            <p>PDF 使用 TextPosition 聚类识别标题、正文、表格块，并保留页码与 bbox 元数据。</p>
-          </template>
-          <template v-else>
-            <p>对扫描 PDF / 图片执行 OCR，并按行/段落/表格启发式重建版面结构块。</p>
-            <el-form-item label="OCR 语言" class="ocr-language-item">
-              <el-input v-model="ocrLanguage" placeholder="chi_sim+eng（留空自动）" />
-            </el-form-item>
-          </template>
+        <div class="parse-strategy-panel">
+          <div class="parse-strategy-main">
+            <span class="parse-strategy-main__label">解析策略</span>
+            <div class="parse-strategy-main__title">
+              <strong>{{ parseStrategyTitle }}</strong>
+              <el-tag v-if="parseMode === 'standard'" size="small" type="success" effect="plain">默认</el-tag>
+              <el-tag v-else size="small" type="warning" effect="plain">修复模式</el-tag>
+            </div>
+            <p>{{ parseStrategyDescription }}</p>
+          </div>
+          <div class="parse-repair-actions">
+            <el-button
+              v-for="action in parseRepairActions"
+              :key="action.value"
+              size="small"
+              plain
+              :type="parseMode === action.value ? 'primary' : action.type"
+              :title="action.hint"
+              @click="setParseMode(action.value)"
+            >
+              {{ action.label }}
+            </el-button>
+          </div>
+          <el-form-item v-if="parseMode === 'ocr'" label="OCR 语言" class="ocr-language-item">
+            <el-input v-model="ocrLanguage" placeholder="chi_sim+eng（留空自动）" />
+          </el-form-item>
         </div>
 
-        <el-form-item label="分段方式">
-          <el-radio-group v-model="segmentationMode">
-            <el-radio-button label="smart">智能分段</el-radio-button>
-            <el-radio-button label="advanced">高级分段</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
+        <div class="ingest-config-panel" :class="{ 'ingest-config-panel--override': segmentationMode === 'advanced' }">
+          <div class="ingest-config-main">
+            <span class="ingest-config-main__label">分段配置</span>
+            <div class="ingest-config-main__title">
+              <strong>{{ segmentationMode === 'advanced' ? '本次上传覆盖' : '使用库默认配置' }}</strong>
+              <el-tag v-if="segmentationMode === 'smart'" size="small" type="success" effect="plain">推荐</el-tag>
+              <el-tag v-else size="small" type="warning" effect="plain">仅本次</el-tag>
+            </div>
+            <p>
+              {{ segmentationMode === 'advanced'
+                ? '只影响当前这批文档的预览与入库；长期规则请回到库配置中调整 Library Profile / Document Profile。'
+                : '按库配置中的 Library Profile / Document Profile 执行解析、清洗与分块；上传页用于预览和临时修复。' }}
+            </p>
+          </div>
+          <div class="ingest-config-actions">
+            <el-button
+              v-if="segmentationMode === 'smart'"
+              size="small"
+              plain
+              type="warning"
+              @click="segmentationMode = 'advanced'"
+            >
+              本次上传覆盖
+            </el-button>
+            <el-button v-else size="small" plain @click="segmentationMode = 'smart'">取消覆盖</el-button>
+          </div>
+        </div>
 
         <div v-if="segmentationMode === 'smart'" class="segment-panel segment-panel--smart">
-          <p>语义/结构边界优先 → 模型 tokenizer 预算约束 → 递归字符切分兜底，默认适合多数生产入库场景。</p>
+          <p>库默认配置会按文档类型自动选择分块策略，并保留语义/结构边界、token 预算和递归字符切分兜底。</p>
           <div class="capability-strip">
             <span><b>表格</b> 多表区 / 多级表头 / 行角色 / 解析置信度</span>
             <span><b>PDF</b> 单元格级 table_row + bbox</span>
@@ -87,6 +113,10 @@
         </div>
 
         <div v-else class="segment-panel segment-panel--advanced">
+          <div class="override-panel-head">
+            <strong>本次上传覆盖</strong>
+            <span>适合预览发现切块过长、标题上下文不足、或需要指定文档 Profile 的一次性修复。</span>
+          </div>
           <div class="grid cols-2 compact-grid">
             <el-form-item label="Chunk 上限 (tokens)">
               <el-input-number v-model="advanced.chunkMaxTokens" :min="128" :max="8192" class="full-width" />
@@ -176,17 +206,47 @@
 
       <div v-if="prepareResult" class="preview-panel">
         <el-alert
-          v-if="hasLowParseConfidence"
-          type="warning"
+          v-if="qualityAlertVisible"
+          :type="qualityAlertType"
           :closable="false"
           show-icon
           class="parse-confidence-banner"
-          title="解析置信度偏低，建议检查「分段」预览后再确认入库。"
+          :title="qualityAlertTitle"
         >
-          <template v-if="lowConfidenceReasons.length" #default>
-            <span>{{ lowConfidenceReasons.join('；') }}</span>
+          <template #default>
+            <span>{{ qualityAlertDescription }}</span>
           </template>
         </el-alert>
+
+        <div v-if="batchQualityInsight" class="quality-dashboard" :class="qualityPanelClass">
+          <div class="quality-score">
+            <strong>{{ batchQualityInsight.score ?? '--' }}</strong>
+            <span>质量分</span>
+          </div>
+          <div class="quality-main">
+            <div class="quality-main__head">
+              <h4>{{ batchQualityInsight.summary || '入库质量分析' }}</h4>
+              <el-tag :type="qualityTagType(batchQualityInsight.level)" effect="plain">
+                {{ qualityLevelText(batchQualityInsight.level) }}
+              </el-tag>
+            </div>
+            <p>{{ qualityBatchDescription }}</p>
+            <div v-if="qualityQuickActions.length" class="quality-actions">
+              <el-button
+                v-for="action in qualityQuickActions"
+                :key="action.id"
+                size="small"
+                plain
+                :type="action.type"
+                :title="action.hint || action.label"
+                @click="applyQualityAction(action)"
+              >
+                {{ action.label }}
+              </el-button>
+            </div>
+          </div>
+        </div>
+
         <div class="ingestion-insight-grid">
           <div class="insight-card">
             <span class="insight-card__label">命中文档 Profile</span>
@@ -205,7 +265,38 @@
             <strong>{{ parseQualitySummary }}</strong>
             <span v-if="hasLowParseConfidence" class="insight-card__hint">建议复核分段预览</span>
           </div>
+          <div class="insight-card" :class="{ 'insight-card--warning': qualityIssues.length }">
+            <span class="insight-card__label">质量问题</span>
+            <strong>{{ qualityIssues.length ? `${qualityIssues.length} 项` : '无明显风险' }}</strong>
+            <span v-if="qualityIssues.length" class="insight-card__hint">查看下方建议动作</span>
+          </div>
         </div>
+
+        <div v-if="qualityIssues.length" class="quality-issue-list">
+          <div v-for="issue in qualityIssues" :key="`${issue.stage}-${issue.title}-${issue.description}`" class="quality-issue">
+            <div class="quality-issue__head">
+              <el-tag size="small" :type="issueTagType(issue.severity)" effect="dark">{{ issueSeverityText(issue.severity) }}</el-tag>
+              <span>{{ issueStageLabel(issue.stage) }}</span>
+              <strong>{{ issue.title }}</strong>
+            </div>
+            <p>{{ issue.description }}</p>
+            <small>{{ issue.action }}</small>
+            <div v-if="issueQuickActions(issue).length" class="quality-issue__actions">
+              <el-button
+                v-for="action in issueQuickActions(issue)"
+                :key="action.id"
+                size="small"
+                plain
+                :type="action.type"
+                :title="action.hint || action.label"
+                @click="applyQualityAction(action)"
+              >
+                {{ action.label }}
+              </el-button>
+            </div>
+          </div>
+        </div>
+
         <el-tabs v-model="prepareTab" class="pipeline-tabs">
           <el-tab-pane label="解析" name="parse">
             <div class="preview-summary">
@@ -219,6 +310,11 @@
               >
                 <p v-if="document.error" class="error-text">{{ document.error }}</p>
                 <template v-else-if="document.parse">
+                  <div v-if="document.qualityInsight" class="document-quality-strip" :class="documentQualityClass(document)">
+                    <span>{{ document.qualityInsight.score }} 分</span>
+                    <strong>{{ document.qualityInsight.summary }}</strong>
+                    <em v-if="document.qualityInsight.issues?.length">{{ document.qualityInsight.issues.length }} 项建议</em>
+                  </div>
                   <p class="helper-text">
                     {{ document.parse.parserCode }} · {{ document.parse.blockCount }} 结构块 ·
                     {{ document.parse.structureAware ? '结构感知' : '纯文本' }}
@@ -397,6 +493,7 @@ import PageCard from './PageCard.vue';
 import DocumentPickPanel from './DocumentPickPanel.vue';
 import {
   createIngestionRun,
+  getIngestionCatalog,
   getIngestionRun,
   listIngestionErrors,
   prepareIngestion,
@@ -467,6 +564,7 @@ const parseMode = ref('standard');
 const ocrLanguage = ref('');
 const prepareTab = ref('parse');
 const prepareResult = ref(null);
+const ingestionCatalog = ref(null);
 
 const segmentationMode = ref('smart');
 const advanced = ref({
@@ -521,6 +619,15 @@ const parserCapabilitySummary = computed(() => {
   }
   return [...parsers].join(' / ') || '—';
 });
+const parserHealthByCode = computed(() => {
+  const mapped = {};
+  for (const parser of ingestionCatalog.value?.parsers || []) {
+    if (parser.code) {
+      mapped[parser.code] = parser.health || null;
+    }
+  }
+  return mapped;
+});
 const parseQualitySummary = computed(() =>
   summarizeParseQuality(prepareResult.value?.documents)
 );
@@ -530,11 +637,60 @@ const hasLowParseConfidence = computed(() =>
 const lowConfidenceReasons = computed(() =>
   collectLowConfidenceReasons(prepareResult.value?.documents)
 );
-const parsePanelClass = computed(() => ({
-  'segment-panel--smart': parseMode.value === 'standard',
-  'segment-panel--layout': parseMode.value === 'layout',
-  'segment-panel--ocr': parseMode.value === 'ocr'
-}));
+const batchQualityInsight = computed(() => prepareResult.value?.qualityInsight || null);
+const qualityIssues = computed(() => batchQualityInsight.value?.issues || []);
+const qualityQuickActions = computed(() => {
+  const actions = [];
+  for (const issue of qualityIssues.value) {
+    actions.push(...issueQuickActions(issue));
+  }
+  if (!actions.some(action => action.id === 'rerun-preview')) {
+    actions.push({ id: 'rerun-preview', label: '重新预览', type: 'primary', kind: 'rerun-preview' });
+  }
+  return dedupeActions(actions).slice(0, 5);
+});
+const qualityPanelClass = computed(() => `quality-dashboard--${batchQualityInsight.value?.level || 'good'}`);
+const qualityAlertVisible = computed(() =>
+  Boolean(batchQualityInsight.value && batchQualityInsight.value.level !== 'good') || hasLowParseConfidence.value
+);
+const qualityAlertType = computed(() => batchQualityInsight.value?.level === 'risk' ? 'error' : 'warning');
+const qualityAlertTitle = computed(() => {
+  if (batchQualityInsight.value?.level === 'risk') return '入库质量存在高风险，建议处理后再确认入库。';
+  if (batchQualityInsight.value?.level === 'review') return '入库质量建议复核。';
+  return '解析置信度偏低，建议检查「分段」预览后再确认入库。';
+});
+const qualityAlertDescription = computed(() => {
+  const backendReasons = qualityIssues.value.map(issue => issue.title).filter(Boolean);
+  if (backendReasons.length) return backendReasons.slice(0, 3).join('；');
+  if (lowConfidenceReasons.value.length) return lowConfidenceReasons.value.join('；');
+  return batchQualityInsight.value?.summary || '请检查解析、清洗和分段预览。';
+});
+const qualityBatchDescription = computed(() => {
+  const facts = batchQualityInsight.value?.facts || {};
+  const parts = [];
+  if (facts.succeeded != null || facts.failed != null) {
+    parts.push(`成功 ${facts.succeeded ?? 0} 个，失败 ${facts.failed ?? 0} 个`);
+  }
+  if (facts.reviewDocuments != null || facts.riskDocuments != null) {
+    parts.push(`需复核 ${Number(facts.reviewDocuments || 0) + Number(facts.riskDocuments || 0)} 个`);
+  }
+  return parts.length ? parts.join(' · ') : '基于解析、清洗、分段和引用线索自动生成。';
+});
+const parseStrategyTitle = computed(() => {
+  if (parseMode.value === 'layout') return '版面优先';
+  if (parseMode.value === 'ocr') return 'OCR 识别优先';
+  return '自动推荐';
+});
+const parseStrategyDescription = computed(() => {
+  if (parseMode.value === 'layout') return '用于修复复杂 PDF 的阅读顺序、表格区域和页内定位问题。';
+  if (parseMode.value === 'ocr') return '用于修复扫描 PDF、图片或文本层为空的文档，速度会更慢。';
+  return '默认按文件类型和文档 Profile 自动选择解析器；多数文档无需手动调整。';
+});
+const parseRepairActions = computed(() => [
+  { value: 'standard', label: '自动推荐', type: 'success', hint: '恢复后端自动路由' },
+  { value: 'layout', label: '版面优先', type: 'warning', hint: 'PDF 顺序乱、表格弱、缺少 bbox 时使用' },
+  { value: 'ocr', label: 'OCR 识别', type: 'warning', hint: '扫描件、图片或解析为空时使用' }
+]);
 const progressPercent = computed(() => {
   if (!latestRun.value) return 0;
   const total = Math.max(1, latestRun.value.inputDocuments || 0);
@@ -647,11 +803,21 @@ async function goToSegmentationStep() {
     prepareResult.value = null;
     previewValidated.value = false;
     currentStep.value = 1;
+    loadIngestionCatalog();
     showMessage('文件已上传，请选择解析模式并运行流水线预览', 'success');
   } catch (error) {
     showMessage(error.message, 'error');
   } finally {
     uploading.value = false;
+  }
+}
+
+async function loadIngestionCatalog() {
+  if (ingestionCatalog.value) return;
+  try {
+    ingestionCatalog.value = await getIngestionCatalog();
+  } catch {
+    ingestionCatalog.value = null;
   }
 }
 
@@ -691,6 +857,7 @@ async function runPipelinePreview() {
   if (!props.libraryId || !uploadedUris.value.length) return;
   previewing.value = true;
   try {
+    await loadIngestionCatalog();
     prepareResult.value = await prepareIngestion(props.libraryId, {
       libraryId: props.libraryId,
       sourceUris: uploadedUris.value,
@@ -823,6 +990,221 @@ function chunkPreviewRowClass({ row }) {
   return row?.indexable ? '' : 'chunk-preview-row--muted';
 }
 
+function setParseMode(value) {
+  parseMode.value = value;
+  prepareTab.value = 'parse';
+}
+
+function issueQuickActions(issue) {
+  if (!issue) return [];
+  const stage = String(issue.stage || '');
+  const title = String(issue.title || '');
+  const description = String(issue.description || '');
+  const actionText = String(issue.action || '');
+  const text = `${title} ${description} ${actionText}`;
+  const actions = [];
+
+  if (stage === 'parse' || text.includes('解析') || text.includes('OCR') || text.includes('Layout')) {
+    actions.push({ id: 'view-parse', label: '查看解析', type: 'info', kind: 'tab', tab: 'parse' });
+    if (parseMode.value !== 'layout') {
+      actions.push({ id: 'set-layout', label: '改用 Layout', type: 'warning', kind: 'set-parse-mode', value: 'layout' });
+    }
+    if (parseMode.value !== 'ocr') {
+      actions.push({ id: 'set-ocr', label: '改用 OCR', type: 'warning', kind: 'set-parse-mode', value: 'ocr' });
+    }
+  }
+
+  if (stage === 'normalize' || text.includes('清洗')) {
+    actions.push({ id: 'view-normalize', label: '查看清洗', type: 'info', kind: 'tab', tab: 'normalize' });
+  }
+
+  if (stage === 'chunk' || stage === 'citation' || text.includes('分块') || text.includes('分段') || text.includes('引用')) {
+    actions.push({ id: 'view-chunk', label: '查看分段', type: 'info', kind: 'tab', tab: 'chunk' });
+    actions.push({ id: 'open-advanced', label: '打开高级分段', type: 'warning', kind: 'open-advanced' });
+  }
+
+  if (text.includes('偏碎') || text.includes('行组合') || text.includes('提高 chunk')) {
+    actions.push({ id: 'increase-chunk-budget', label: '增大 Chunk', type: 'warning', kind: 'adjust-chunk-budget', direction: 'increase' });
+  }
+
+  if (text.includes('过大') || text.includes('降低 chunk')) {
+    actions.push({ id: 'decrease-chunk-budget', label: '减小 Chunk', type: 'warning', kind: 'adjust-chunk-budget', direction: 'decrease' });
+  }
+
+  if (text.includes('父子')) {
+    actions.push({ id: 'set-parent-child', label: '启用父子分段', type: 'warning', kind: 'set-parent-child' });
+  }
+
+  if (text.includes('table-deep') || text.includes('表格') || text.includes('tableRegion')) {
+    actions.push({ id: 'set-table-profile', label: '使用表格 Profile', type: 'warning', kind: 'set-document-profile', value: 'default_table' });
+  }
+
+  return enrichQualityActions(dedupeActions(actions));
+}
+
+function dedupeActions(actions) {
+  const seen = new Set();
+  const result = [];
+  for (const action of actions || []) {
+    if (!action?.id || seen.has(action.id)) continue;
+    seen.add(action.id);
+    result.push(action);
+  }
+  return result;
+}
+
+function enrichQualityActions(actions) {
+  return (actions || []).map(action => {
+    const parserCode = actionParserCode(action);
+    if (!parserCode) return action;
+    const health = parserHealthByCode.value[parserCode];
+    if (!health) return action;
+    const status = health.status || 'UNKNOWN';
+    const suffix = parserHealthSuffix(status);
+    return {
+      ...action,
+      parserCode,
+      health,
+      label: suffix ? `${action.label}${suffix}` : action.label,
+      type: parserHealthActionType(status, action.type),
+      hint: health.message || action.label
+    };
+  });
+}
+
+function actionParserCode(action) {
+  if (action.kind === 'set-parse-mode' && action.value === 'layout') {
+    return 'pdf-layout';
+  }
+  if (action.kind === 'set-parse-mode' && action.value === 'ocr') {
+    return 'ocr-layout';
+  }
+  if (action.kind === 'set-document-profile' && action.value === 'default_table') {
+    return 'table-deep';
+  }
+  return null;
+}
+
+function parserHealthSuffix(status) {
+  if (status === 'DEGRADED') return '（降级）';
+  if (status === 'UNCONFIGURED') return '（未配置）';
+  if (status === 'UNKNOWN') return '（待验证）';
+  return '';
+}
+
+function parserHealthActionType(status, fallback) {
+  if (status === 'UNCONFIGURED') return 'danger';
+  if (status === 'DEGRADED' || status === 'UNKNOWN') return 'warning';
+  return fallback;
+}
+
+function applyQualityAction(action) {
+  if (!action) return;
+  if (action.kind === 'tab') {
+    prepareTab.value = action.tab;
+    return;
+  }
+  if (action.kind === 'rerun-preview') {
+    runPipelinePreview();
+    return;
+  }
+  if (action.kind === 'set-parse-mode') {
+    setParseMode(action.value);
+    showMessage(actionHealthMessage(
+      action,
+      `已切换为${action.value === 'ocr' ? 'OCR + 版面' : 'Layout 版面'}解析，请重新运行预览`
+    ), action.health?.status === 'UNCONFIGURED' ? 'error' : 'success');
+    return;
+  }
+  if (action.kind === 'open-advanced') {
+    segmentationMode.value = 'advanced';
+    prepareTab.value = 'chunk';
+    showMessage('已打开高级分段，请调整后重新运行预览', 'success');
+    return;
+  }
+  if (action.kind === 'adjust-chunk-budget') {
+    segmentationMode.value = 'advanced';
+    if (action.direction === 'increase') {
+      advanced.value.chunkMaxTokens = Math.min(8192, Math.max(advanced.value.chunkMaxTokens + 256, Math.round(advanced.value.chunkMaxTokens * 1.5)));
+      advanced.value.chunkOverlapTokens = Math.min(1024, Math.max(advanced.value.chunkOverlapTokens, 96));
+    } else {
+      advanced.value.chunkMaxTokens = Math.max(128, Math.floor(advanced.value.chunkMaxTokens * 0.7));
+      advanced.value.chunkOverlapTokens = Math.min(advanced.value.chunkOverlapTokens, Math.floor(advanced.value.chunkMaxTokens * 0.2));
+    }
+    prepareTab.value = 'chunk';
+    showMessage('已调整 Chunk 参数，请重新运行预览', 'success');
+    return;
+  }
+  if (action.kind === 'set-parent-child') {
+    segmentationMode.value = 'advanced';
+    advanced.value.chunkMode = 'parent_child';
+    advanced.value.prependHeadingContext = true;
+    prepareTab.value = 'chunk';
+    showMessage('已启用父子分段，请重新运行预览', 'success');
+    return;
+  }
+  if (action.kind === 'set-document-profile') {
+    segmentationMode.value = 'advanced';
+    advanced.value.documentProfileCode = action.value;
+    advanced.value.chunkingStrategy = action.value === 'default_table' ? 'table_row_token_window' : advanced.value.chunkingStrategy;
+    prepareTab.value = 'parse';
+    showMessage(actionHealthMessage(action, '已切换文档 Profile，请重新运行预览'), 'success');
+  }
+}
+
+function actionHealthMessage(action, baseMessage) {
+  if (!action?.health || action.health.status === 'READY') {
+    return baseMessage;
+  }
+  return `${baseMessage}；解析依赖${healthLabel(action.health.status)}：${action.health.message || '请检查解析器配置'}`;
+}
+
+function qualityTagType(level) {
+  if (level === 'good') return 'success';
+  if (level === 'risk') return 'danger';
+  return 'warning';
+}
+
+function qualityLevelText(level) {
+  if (level === 'good') return '可入库';
+  if (level === 'risk') return '高风险';
+  return '建议复核';
+}
+
+function healthLabel(status) {
+  if (status === 'READY') return '可用';
+  if (status === 'DEGRADED') return '降级';
+  if (status === 'UNCONFIGURED') return '未配置';
+  return '待验证';
+}
+
+function issueTagType(severity) {
+  if (severity === 'high') return 'danger';
+  if (severity === 'medium') return 'warning';
+  return 'info';
+}
+
+function issueSeverityText(severity) {
+  if (severity === 'high') return '高';
+  if (severity === 'medium') return '中';
+  return '提示';
+}
+
+function issueStageLabel(stage) {
+  const labels = {
+    parse: '解析',
+    normalize: '清洗',
+    chunk: '分段',
+    citation: '引用',
+    prepare: '准备'
+  };
+  return labels[stage] || stage || '质量';
+}
+
+function documentQualityClass(document) {
+  return `document-quality-strip--${document?.qualityInsight?.level || 'good'}`;
+}
+
 function isTerminal(status) {
   return ['SUCCEEDED', 'PARTIAL_FAILED', 'FAILED', 'CANCELLED'].includes(String(status || '').toUpperCase());
 }
@@ -880,18 +1262,114 @@ watch(
   max-width: 960px;
 }
 
-.parse-mode-group {
+.parse-strategy-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.parse-strategy-main {
+  min-width: 0;
+}
+
+.parse-strategy-main__label {
+  display: block;
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.parse-strategy-main__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.parse-strategy-main__title strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.parse-strategy-main p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.parse-repair-actions {
+  display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 360px;
 }
 
-.segment-panel--layout {
-  background: #ecf5ff;
-  border: 1px solid #d9ecff;
+.parse-repair-actions :deep(.el-button) {
+  margin-left: 0;
 }
 
-.segment-panel--ocr {
-  background: #fdf6ec;
-  border: 1px solid #faecd8;
+.ingest-config-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  background: #f0fdf4;
+}
+
+.ingest-config-panel--override {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.ingest-config-main {
+  min-width: 0;
+}
+
+.ingest-config-main__label {
+  display: block;
+  margin-bottom: 5px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.ingest-config-main__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.ingest-config-main__title strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.ingest-config-main p {
+  margin: 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ingest-config-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ingest-config-actions :deep(.el-button) {
+  margin-left: 0;
 }
 
 .ocr-language-item {
@@ -972,6 +1450,22 @@ watch(
   border: 1px solid #e9e9eb;
 }
 
+.override-panel-head {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.override-panel-head strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.override-panel-head span {
+  color: #64748b;
+  font-size: 13px;
+}
+
 .segment-hints {
   margin: 8px 0 0;
   padding-left: 18px;
@@ -988,9 +1482,91 @@ watch(
   margin-top: 20px;
 }
 
+.quality-dashboard {
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  gap: 14px;
+  align-items: stretch;
+  padding: 14px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fafc;
+  margin-bottom: 14px;
+}
+
+.quality-dashboard--good {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.quality-dashboard--review {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.quality-dashboard--risk {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.quality-score {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: 88px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.quality-score strong {
+  color: #0f172a;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.quality-score span {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.quality-main {
+  min-width: 0;
+}
+
+.quality-main__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.quality-main__head h4 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.quality-main p {
+  margin: 0 0 10px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.quality-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quality-actions :deep(.el-button) {
+  margin-left: 0;
+}
+
 .ingestion-insight-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -1017,7 +1593,7 @@ watch(
 .insight-card {
   padding: 14px 16px;
   border: 1px solid rgba(14, 165, 233, 0.14);
-  border-radius: 14px;
+  border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(16, 185, 129, 0.04)),
     #fff;
@@ -1044,6 +1620,97 @@ watch(
   margin-bottom: 12px;
   font-size: 13px;
   color: var(--text-secondary, #666);
+}
+
+.quality-issue-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.quality-issue {
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.quality-issue__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.quality-issue__head strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.quality-issue p {
+  margin: 0 0 4px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.quality-issue small {
+  color: #0f766e;
+}
+
+.quality-issue__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.quality-issue__actions :deep(.el-button) {
+  margin-left: 0;
+}
+
+.document-quality-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+}
+
+.document-quality-strip--good {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.document-quality-strip--review {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.document-quality-strip--risk {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.document-quality-strip span {
+  font-weight: 700;
+}
+
+.document-quality-strip strong {
+  font-size: 12px;
+}
+
+.document-quality-strip em {
+  color: #64748b;
+  font-style: normal;
 }
 
 .metadata-tags {
@@ -1080,6 +1747,17 @@ watch(
 }
 
 @media (max-width: 960px) {
+  .parse-strategy-panel,
+  .ingest-config-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .parse-repair-actions,
+  .ingest-config-actions {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
   .ingestion-insight-grid {
     grid-template-columns: 1fr;
   }
